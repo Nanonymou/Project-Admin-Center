@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { CalendarDays, Download, Info, Lock, RefreshCcw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CalendarDays, Download, Info, Lock, MapPin, RefreshCcw, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar } from "@/components/calendar/deadline-calendar";
@@ -17,13 +17,35 @@ import { AlarmClock, CalendarClock, CheckCircle2 } from "lucide-react";
 
 export function CalendarClient() {
   const { persona } = usePersona();
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
   );
 
-  const deadlines = useMemo(() => buildDeadlines(scopedSites), [scopedSites]);
+  const filteredSites = useMemo(
+    () =>
+      selectedLocationIds.length === 0
+        ? scopedSites
+        : scopedSites.filter((s) => selectedLocationIds.includes(s.locationId)),
+    [scopedSites, selectedLocationIds],
+  );
+
+  const deadlines = useMemo(() => buildDeadlines(filteredSites), [filteredSites]);
+
+  function toggleSite(id: string) {
+    setSelectedLocationIds((prev) =>
+      prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id],
+    );
+  }
+
+  const sitesByProject = useMemo(() => {
+    return scopedSites.reduce<Record<string, typeof scopedSites>>((acc, s) => {
+      (acc[s.projectCode] ??= []).push(s);
+      return acc;
+    }, {});
+  }, [scopedSites]);
 
   const counts = useMemo(() => {
     return deadlines.reduce(
@@ -74,6 +96,60 @@ export function CalendarClient() {
             Klik tanggal untuk melihat detail deadline. Titik warna menandakan status tiap tenggat.
           </span>
         </div>
+
+        {scopedSites.length > 1 && (
+          <div className="rounded-lg border bg-card p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5" />
+                Filter Site
+              </span>
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <span>
+                  {selectedLocationIds.length === 0
+                    ? "Semua site"
+                    : `${selectedLocationIds.length} site`}
+                </span>
+                {selectedLocationIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6"
+                    onClick={() => setSelectedLocationIds([])}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Reset
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {Object.entries(sitesByProject).map(([project, sites]) => (
+                <div key={project} className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground">{project}</span>
+                  {sites.map((s) => {
+                    const active = selectedLocationIds.includes(s.locationId);
+                    return (
+                      <button
+                        key={s.locationId}
+                        type="button"
+                        onClick={() => toggleSite(s.locationId)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                          active
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-input bg-background hover:bg-accent",
+                        )}
+                      >
+                        {s.locationName}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Total Deadline" value={counts.total} format="number" icon={CalendarDays} tone="primary" />
