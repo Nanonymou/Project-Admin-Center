@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, Lock, RefreshCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Filter, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
+import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { RankingPodium } from "@/components/ranking/ranking-podium";
 import { RankingList } from "@/components/ranking/ranking-list";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
-import { PROJECT_OPTIONS } from "@/lib/mock/filters";
+import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -58,19 +60,48 @@ const METRIC_MAP: Record<
 
 export function RankingClient() {
   const { persona } = usePersona();
+  const { filters, setFilters, reset } = useGlobalFilters();
   const [metric, setMetric] = useState<Metric>("sales");
-  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
   );
 
+  const personaProjectOptions = useMemo(
+    () => PROJECT_OPTIONS.filter((p) => scopedSites.some((s) => s.projectCode === p.code)),
+    [scopedSites],
+  );
+  const personaLocationOptions = useMemo(
+    () => LOCATION_OPTIONS.filter((l) => scopedSites.some((s) => s.locationId === l.id)),
+    [scopedSites],
+  );
+
+  // Drop any global filter entries outside persona scope so users don't see
+  // "0 sites" after switching personas.
+  useEffect(() => {
+    const validProjects = new Set(personaProjectOptions.map((p) => p.code));
+    const validLocations = new Set(personaLocationOptions.map((l) => l.id));
+    const nextProjects = filters.projects.filter((p) => validProjects.has(p));
+    const nextLocations = filters.locations.filter((l) => validLocations.has(l));
+    if (
+      nextProjects.length !== filters.projects.length ||
+      nextLocations.length !== filters.locations.length
+    ) {
+      setFilters({ ...filters, projects: nextProjects, locations: nextLocations });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaProjectOptions, personaLocationOptions]);
+
+  const selectedLocationIds = useMemo(() => new Set(filters.locations), [filters.locations]);
+
   const filteredSites = useMemo(() => {
-    return scopedSites.filter((s) =>
-      selectedProjects.length === 0 ? true : selectedProjects.includes(s.projectCode),
-    );
-  }, [scopedSites, selectedProjects]);
+    return scopedSites.filter((s) => {
+      if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
+      if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
+      return true;
+    });
+  }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
   const cfg = METRIC_MAP[metric];
 
@@ -79,25 +110,13 @@ export function RankingClient() {
   }, [filteredSites, cfg]);
 
   const scopeSummary = `${scopedSites.length} site accessible`;
-
   const canExport = persona.capabilities.canExport;
-
-  const availableProjects = useMemo(
-    () => Array.from(new Set(scopedSites.map((s) => s.projectCode))),
-    [scopedSites],
-  );
-
-  function toggleProject(code: string) {
-    setSelectedProjects((prev) =>
-      prev.includes(code) ? prev.filter((p) => p !== code) : [...prev, code],
-    );
-  }
 
   return (
     <div>
       <PageHeader
         title="Ranking Site"
-        description="Perbandingan performa site berdasarkan Sales, Margin, atau SLA — untuk menyorot top performer & yang butuh perhatian."
+        description="Perbandingan performa site berdasarkan Sales, Margin, atau SLA — filter global tersinkronisasi dengan halaman lain."
         breadcrumbs={[{ label: "Overview" }, { label: "Ranking Site" }]}
         actions={
           <>
@@ -121,10 +140,28 @@ export function RankingClient() {
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={scopeSummary} />
 
+        <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Filter di bawah bersifat <b>global</b> — pilihan tanggal, project, dan location
+            sinkron dengan Activity Dashboard dan tersimpan di sesi Anda.
+          </span>
+        </div>
+
+        <ActivityFilterBar
+          value={filters}
+          onChange={setFilters}
+          onReset={reset}
+          matchedCount={filteredSites.length}
+          projectOptions={personaProjectOptions}
+          locationOptions={personaLocationOptions}
+        />
+
         <Card>
           <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Metrik
+            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Filter className="h-3.5 w-3.5" />
+              Metrik Ranking
             </span>
             {(Object.keys(METRIC_MAP) as Metric[]).map((k) => (
               <button
@@ -141,31 +178,9 @@ export function RankingClient() {
                 {METRIC_MAP[k].short}
               </button>
             ))}
-            <span className="ml-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Project
-            </span>
-            {availableProjects.length === 0 && (
-              <span className="text-xs italic text-muted-foreground">
-                Tidak ada project dalam scope.
-              </span>
-            )}
-            {PROJECT_OPTIONS.filter((p) => availableProjects.includes(p.code)).map((p) => (
-              <button
-                key={p.code}
-                type="button"
-                onClick={() => toggleProject(p.code)}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs font-medium",
-                  selectedProjects.includes(p.code)
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-input bg-background hover:bg-accent",
-                )}
-              >
-                {p.code}
-              </button>
-            ))}
             <div className="ml-auto text-xs text-muted-foreground">
-              Menampilkan <b className="text-foreground">{rankedSites.length}</b> site
+              Ranking <b className="text-foreground">{rankedSites.length}</b> site ·
+              periode <b className="text-foreground">{filters.from} → {filters.to}</b>
             </div>
           </CardContent>
         </Card>
@@ -190,7 +205,7 @@ export function RankingClient() {
           <CardHeader>
             <CardTitle>Ranking Lengkap</CardTitle>
             <CardDescription>
-              Diurutkan berdasarkan <b>{cfg.label}</b>. Klik &ldquo;Detail&rdquo; untuk masuk ke Site Dashboard.
+              Diurutkan berdasarkan <b>{cfg.label}</b> dengan filter global aktif.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">

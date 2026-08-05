@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { Download, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -23,17 +24,15 @@ import {
   SLA_STAGE_BARS,
 } from "@/lib/mock/activity";
 import {
-  DEFAULT_FILTER_STATE,
   LOCATION_OPTIONS,
   PROJECT_OPTIONS,
-  type ActivityFilterState,
 } from "@/lib/mock/filters";
 import { canAccessLocation, canAccessProject } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
 export function ActivityDashboardClient() {
   const { persona } = usePersona();
-  const [filters, setFilters] = useState<ActivityFilterState>(DEFAULT_FILTER_STATE);
+  const { filters, setFilters, reset } = useGlobalFilters();
   const [showComparison, setShowComparison] = useState(true);
 
   // Persona-scoped option lists (drives what shows in the filter bar).
@@ -50,14 +49,15 @@ export function ActivityDashboardClient() {
   useEffect(() => {
     const validProjectCodes = new Set(personaProjectOptions.map((p) => p.code));
     const validLocationIds = new Set(personaLocationOptions.map((l) => l.id));
-    setFilters((prev) => {
-      const nextProjects = prev.projects.filter((p) => validProjectCodes.has(p));
-      const nextLocations = prev.locations.filter((l) => validLocationIds.has(l));
-      if (nextProjects.length === prev.projects.length && nextLocations.length === prev.locations.length) {
-        return prev;
-      }
-      return { ...prev, projects: nextProjects, locations: nextLocations };
-    });
+    const nextProjects = filters.projects.filter((p) => validProjectCodes.has(p));
+    const nextLocations = filters.locations.filter((l) => validLocationIds.has(l));
+    if (
+      nextProjects.length !== filters.projects.length ||
+      nextLocations.length !== filters.locations.length
+    ) {
+      setFilters({ ...filters, projects: nextProjects, locations: nextLocations });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaProjectOptions, personaLocationOptions]);
 
   const selectedLocationNames = useMemo(
@@ -168,7 +168,7 @@ export function ActivityDashboardClient() {
         <ActivityFilterBar
           value={filters}
           onChange={setFilters}
-          onReset={() => setFilters({ ...DEFAULT_FILTER_STATE })}
+          onReset={reset}
           matchedCount={filteredSites.length}
           projectOptions={personaProjectOptions}
           locationOptions={personaLocationOptions}
