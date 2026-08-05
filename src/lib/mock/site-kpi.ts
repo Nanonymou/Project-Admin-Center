@@ -17,6 +17,11 @@ export type SiteKpi = {
   cutOffDaysLeft: number;
   agingBuckets: { bucket: "0-30" | "31-60" | "61-90" | ">90"; amount: number }[];
   trend7d: { day: string; sales: number; cost: number }[];
+  prevPeriod?: {
+    sales: number;
+    marginPct: number;
+    slaPct: number;
+  };
 };
 
 const day = (offsetFromToday: number) => {
@@ -186,14 +191,20 @@ const RAW: Omit<SiteKpi, "projectName" | "invoicePeriod">[] = [
   },
 ];
 
-export const SITE_KPI: SiteKpi[] = RAW.map((row) => {
+export const SITE_KPI: SiteKpi[] = RAW.map((row, i) => {
   const ws = MOCK_WORKSPACES.find(
     (w) => w.projectCode === row.projectCode && w.locationId === row.locationId,
   );
+  const jitter = 0.88 + ((i * 37) % 24) / 100;
   return {
     ...row,
     projectName: ws?.projectName ?? row.projectCode,
     invoicePeriod: ws?.invoicePeriod ?? "-",
+    prevPeriod: {
+      sales: Math.round(row.sales * jitter),
+      marginPct: Math.max(30, row.marginPct - ((i * 7) % 8) + 3),
+      slaPct: Math.max(60, Math.min(100, row.slaPct - ((i * 3) % 6) + 2)),
+    },
   };
 });
 

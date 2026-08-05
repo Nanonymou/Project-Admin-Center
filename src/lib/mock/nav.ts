@@ -9,6 +9,7 @@ import {
   Users,
   Building2,
   BadgeCheck,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
+      { label: "Ranking Site", href: "/ranking", icon: Trophy },
     ],
   },
   {
