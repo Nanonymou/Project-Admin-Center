@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BadgeCheck, Clock3, Download, Info, Lock, RefreshCcw, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -15,8 +15,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
-import { SITE_KPI } from "@/lib/mock/site-kpi";
-import { SITE_DETAILS } from "@/lib/mock/site-detail";
+import { daysBetween, SITE_KPI } from "@/lib/mock/site-kpi";
+import { SITE_DETAILS, type SiteDetail } from "@/lib/mock/site-detail";
+import { APPROVAL_STAGES, type ApprovalStageName } from "@/lib/mock/approval-progress";
 import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
 import { buildStageProgress, summarizeApprovalProgress } from "@/lib/mock/approval-progress";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 export function ApprovalProgressClient() {
   const { persona } = usePersona();
   const { filters, setFilters, reset } = useGlobalFilters();
+  const [stageFilter, setStageFilter] = useState<ApprovalStageName | "all">("all");
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -65,32 +67,55 @@ export function ApprovalProgressClient() {
     });
   }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
-  const approvals = useMemo(
-    () => buildApprovalRemindersFor(filteredSites, SITE_DETAILS),
-    [filteredSites],
+  // Period-scoped detail map: scale each site's invoice list by the selected
+  // period so the funnel/queue respond to the time filter, not just the site.
+  const periodFactor = useMemo(() => {
+    const days = daysBetween(filters.from, filters.to);
+    return Math.max(0.05, Math.min(1, days / 30));
+  }, [filters.from, filters.to]);
+
+  const scopedDetailMap = useMemo(() => {
+    const map: Record<string, SiteDetail> = {};
+    for (const site of filteredSites) {
+      const detail = SITE_DETAILS[site.locationId];
+      if (!detail) continue;
+      const count = Math.max(1, Math.round(detail.invoices.length * periodFactor));
+      map[site.locationId] = { ...detail, invoices: detail.invoices.slice(0, count) };
+    }
+    return map;
+  }, [filteredSites, periodFactor]);
+
+  const allApprovals = useMemo(
+    () => buildApprovalRemindersFor(filteredSites, scopedDetailMap),
+    [filteredSites, scopedDetailMap],
   );
 
-  const stages = useMemo(() => buildStageProgress(approvals), [approvals]);
+  const approvals = useMemo(
+    () => (stageFilter === "all" ? allApprovals : allApprovals.filter((a) => a.stage === stageFilter)),
+    [allApprovals, stageFilter],
+  );
+
+  const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
 
   const settledCount = useMemo(
     () =>
       filteredSites.reduce((total, site) => {
-        const detail = SITE_DETAILS[site.locationId];
+        const detail = scopedDetailMap[site.locationId];
         if (!detail) return total;
         return total + detail.invoices.filter((i) => i.stage === "Payment" && i.status !== "overdue").length;
       }, 0),
-    [filteredSites],
+    [filteredSites, scopedDetailMap],
   );
 
   const summary = useMemo(
-    () => summarizeApprovalProgress(approvals, settledCount),
-    [approvals, settledCount],
+    () => summarizeApprovalProgress(allApprovals, settledCount),
+    [allApprovals, settledCount],
   );
 
   const siteProgress = useMemo<SiteProgressData[]>(
     () =>
       filteredSites.map((site) => {
-        const detail = SITE_DETAILS[site.locationId];
+        const detail = scopedDetailMap[site.locationId];
         const reminders = detail ? buildApprovalReminders(site, detail) : [];
         const settled = detail
           ? detail.invoices.filter((i) => i.stage === "Payment" && i.status !== "overdue").length
@@ -103,7 +128,7 @@ export function ApprovalProgressClient() {
           settledCount: settled,
         };
       }),
-    [filteredSites],
+    [filteredSites, scopedDetailMap],
   );
 
   const canExport = persona.capabilities.canExport;
@@ -225,13 +250,52 @@ export function ApprovalProgressClient() {
         </section>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Antrian Approval</CardTitle>
-            <CardDescription>
-              Seluruh invoice yang menunggu tindakan — filter status/prioritas, aksi inline.
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Antrian Approval</CardTitle>
+              <CardDescription>
+                Seluruh invoice menunggu tindakan
+                {stageFilter !== "all" && <> pada tahap <b>{stageFilter}</b></>} — filter
+                status/prioritas, aksi inline.
+              </CardDescription>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Fokus Tahap
+              </span>
+              <button
+                type="button"
+                onClick={() => setStageFilter("all")}
+                className={cn(
+                  "rounded-md border px-2.5 py-1 text-xs font-medium",
+                  stageFilter === "all"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background hover:bg-accent",
+                )}
+              >
+                Semua · {allApprovals.length}
+              </button>
+              {APPROVAL_STAGES.filter((s) => s !== "Payment").map((stage) => {
+                const count = allApprovals.filter((a) => a.stage === stage).length;
+                return (
+                  <button
+                    key={stage}
+                    type="button"
+                    onClick={() => setStageFilter(stage)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-xs font-medium",
+                      stageFilter === stage
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent",
+                    )}
+                  >
+                    {stage} · {count}
+                  </button>
+                );
+              })}
+            </div>
             <ApprovalReminderList items={approvals} />
           </CardContent>
         </Card>
