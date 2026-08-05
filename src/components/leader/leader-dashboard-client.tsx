@@ -24,6 +24,8 @@ import { buildDeadlines } from "@/lib/mock/deadlines";
 import { ApprovalReminderList } from "@/components/reminders/approval-reminder-list";
 import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
+import { OverdueInvoiceList } from "@/components/reminders/overdue-invoice-list";
+import { buildOverdueInvoicesFor } from "@/lib/mock/overdue-invoices";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +99,10 @@ export function LeaderDashboardClient() {
   const deadlines = useMemo(() => buildDeadlines(filteredSites), [filteredSites]);
   const approvals = useMemo(
     () => buildApprovalRemindersFor(filteredSites, SITE_DETAILS),
+    [filteredSites],
+  );
+  const overdueInvoices = useMemo(
+    () => buildOverdueInvoicesFor(filteredSites, SITE_DETAILS),
     [filteredSites],
   );
 
@@ -233,6 +239,20 @@ export function LeaderDashboardClient() {
             </CardHeader>
             <CardContent>
               <ApprovalReminderList items={approvals} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice Terlambat</CardTitle>
+              <CardDescription>
+                Semua invoice overdue portfolio — kelompok severity, follow-up ringkas, action inline.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OverdueInvoiceList items={overdueInvoices} />
             </CardContent>
           </Card>
         </section>

@@ -19,6 +19,8 @@ import { DeadlineList } from "@/components/reminders/deadline-list";
 import { buildDeadlines } from "@/lib/mock/deadlines";
 import { ApprovalReminderList } from "@/components/reminders/approval-reminder-list";
 import { buildApprovalReminders } from "@/lib/mock/approvals";
+import { OverdueInvoiceList } from "@/components/reminders/overdue-invoice-list";
+import { buildOverdueInvoicesFor } from "@/lib/mock/overdue-invoices";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
@@ -51,6 +53,10 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
   const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
   const deadlines = useMemo(() => buildDeadlines([detail.site]), [detail.site]);
   const approvals = useMemo(() => buildApprovalReminders(detail.site, detail), [detail]);
+  const overdueInvoices = useMemo(
+    () => buildOverdueInvoicesFor([detail.site], SITE_DETAILS),
+    [detail.site],
+  );
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -206,6 +212,20 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
                 showLocationColumn={false}
                 compact
               />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice Terlambat</CardTitle>
+              <CardDescription>
+                Invoice overdue site ini — kelompok severity + reminder cepat.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OverdueInvoiceList items={overdueInvoices} showLocationColumn={false} />
             </CardContent>
           </Card>
         </section>
