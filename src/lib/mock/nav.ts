@@ -32,6 +32,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
+      { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
     ],
   },
   {
