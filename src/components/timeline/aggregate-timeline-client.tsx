@@ -18,6 +18,11 @@ import { buildAggregateTimelines, type AggregateTimelineRow } from "@/lib/mock/a
 import { GanttChart } from "@/components/timeline/gantt-chart";
 import { Dialog } from "@/components/ui/dialog";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
+import {
+  buildTimelineActivity,
+  completedStageCount,
+  timelineHealth,
+} from "@/lib/mock/timeline-activity";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -253,6 +258,24 @@ export function AggregateTimelineClient() {
                 Status: {activeRow.status === "onTime" ? "On Time" : activeRow.status === "atRisk" ? "At Risk" : "Overdue"}
               </span>
             </div>
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-[11px]">
+              <span className="text-muted-foreground">Kesehatan:</span>
+              <Badge
+                variant={
+                  timelineHealth(activeRow) === "kritis"
+                    ? "danger"
+                    : timelineHealth(activeRow) === "pantau"
+                      ? "warning"
+                      : "success"
+                }
+              >
+                {timelineHealth(activeRow)}
+              </Badge>
+              <span className="text-muted-foreground">
+                · {completedStageCount(activeRow)}/{activeRow.stages.length} tahap selesai
+              </span>
+            </div>
+
             <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Aktivitas per Tahap
             </div>
@@ -288,6 +311,25 @@ export function AggregateTimelineClient() {
                 </li>
               ))}
             </ol>
+
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Log Aktivitas
+            </div>
+            <ul className="space-y-1.5">
+              {buildTimelineActivity(activeRow).map((ev) => (
+                <li key={ev.id} className="rounded-md border p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{ev.note}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {ev.dateLabel}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {ev.stage} · oleh {ev.actor}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </Dialog>
