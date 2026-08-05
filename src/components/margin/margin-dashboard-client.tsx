@@ -28,7 +28,7 @@ import {
   scaleSiteKpisByPeriod,
   SITE_KPI,
 } from "@/lib/mock/site-kpi";
-import { buildMarginBySite, buildProfitTrend } from "@/lib/mock/margin-data";
+import { buildMarginBySite, buildProfitTrendForRange } from "@/lib/mock/margin-data";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -77,9 +77,13 @@ export function MarginDashboardClient() {
   }, [scopedSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
 
   const totals = useMemo(() => aggregateTotals(filteredSites), [filteredSites]);
-  const trend = useMemo(() => buildProfitTrend(filteredSites), [filteredSites]);
+  const trend = useMemo(
+    () => buildProfitTrendForRange(filteredSites, filters.from, filters.to),
+    [filteredSites, filters.from, filters.to],
+  );
   const bySite = useMemo(() => buildMarginBySite(filteredSites), [filteredSites]);
   const periodDays = daysBetween(filters.from, filters.to);
+  const trendGranularity = periodDays <= 62 ? "harian" : "bulanan";
 
   const best = bySite[0];
   const worst = bySite[bySite.length - 1];
@@ -140,8 +144,11 @@ export function MarginDashboardClient() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Tren Profit & Margin (12 bulan)</CardTitle>
-            <CardDescription>Area = profit, garis = sales/cost, garis ungu = margin % (aksis kanan).</CardDescription>
+            <CardTitle>Tren Profit & Margin ({trendGranularity})</CardTitle>
+            <CardDescription>
+              Periode {filters.from} → {filters.to} · titik {trendGranularity} · area = profit,
+              garis = sales/cost, garis ungu = margin % (aksis kanan).
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {filteredSites.length > 0 ? (
