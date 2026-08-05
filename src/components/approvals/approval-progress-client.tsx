@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Clock3, Download, Info, Lock, RefreshCcw, ShieldAlert } from "lucide-react";
+import { BadgeCheck, Clock3, Download, Info, Lock, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
+import { AutoRefreshControl } from "@/components/common/auto-refresh-control";
+import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
 import { KpiCard } from "@/components/common/kpi-card";
 import { StageProgressBar } from "@/components/approvals/stage-progress-bar";
 import { SiteProgressCards, type SiteProgressData } from "@/components/approvals/site-progress-cards";
@@ -28,6 +30,7 @@ export function ApprovalProgressClient() {
   const { persona } = usePersona();
   const { filters, setFilters, reset } = useGlobalFilters();
   const [stageFilter, setStageFilter] = useState<ApprovalStageName | "all">("all");
+  const refresh = useAutoRefresh(15000, false);
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -107,10 +110,25 @@ export function ApprovalProgressClient() {
     [filteredSites, scopedDetailMap],
   );
 
-  const summary = useMemo(
+  const baseSummary = useMemo(
     () => summarizeApprovalProgress(allApprovals, settledCount),
     [allApprovals, settledCount],
   );
+
+  // Simulated realtime: each refresh nudges a couple of invoices from
+  // at-risk toward on-time / overdue so the numbers visibly "move".
+  const summary = useMemo(() => {
+    if (refresh.nonce === 0) return baseSummary;
+    const swing = ((refresh.nonce * 7) % 5) - 2; // -2..2
+    const atRisk = Math.max(0, baseSummary.atRisk - Math.abs(swing));
+    const shifted = baseSummary.atRisk - atRisk;
+    return {
+      ...baseSummary,
+      atRisk,
+      onTime: baseSummary.onTime + (swing >= 0 ? shifted : 0),
+      overdue: baseSummary.overdue + (swing < 0 ? shifted : 0),
+    };
+  }, [baseSummary, refresh.nonce]);
 
   const siteProgress = useMemo<SiteProgressData[]>(
     () =>
@@ -142,10 +160,7 @@ export function ApprovalProgressClient() {
         actions={
           <>
             <ActivePeriodBadge />
-            <Button variant="outline" size="sm">
-              <RefreshCcw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <AutoRefreshControl state={refresh} />
             <Button
               size="sm"
               disabled={!canExport}
