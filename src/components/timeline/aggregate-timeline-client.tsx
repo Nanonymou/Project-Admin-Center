@@ -24,6 +24,7 @@ export function AggregateTimelineClient() {
   const { persona } = usePersona();
   const { filters, setFilters, reset } = useGlobalFilters();
   const [sortKey, setSortKey] = useState<"elapsed" | "amount">("elapsed");
+  const [statusFilter, setStatusFilter] = useState<"all" | "onTime" | "atRisk" | "overdue">("all");
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -63,11 +64,27 @@ export function AggregateTimelineClient() {
     });
   }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
+  const allRows = useMemo(
+    () => buildAggregateTimelines(filteredSites, SITE_DETAILS),
+    [filteredSites],
+  );
+
+  const statusCounts = useMemo(
+    () => ({
+      all: allRows.length,
+      onTime: allRows.filter((r) => r.status === "onTime").length,
+      atRisk: allRows.filter((r) => r.status === "atRisk").length,
+      overdue: allRows.filter((r) => r.status === "overdue").length,
+    }),
+    [allRows],
+  );
+
   const rows = useMemo(() => {
-    const list = buildAggregateTimelines(filteredSites, SITE_DETAILS);
-    if (sortKey === "amount") return [...list].sort((a, b) => b.amount - a.amount);
+    let list =
+      statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
+    if (sortKey === "amount") list = [...list].sort((a, b) => b.amount - a.amount);
     return list;
-  }, [filteredSites, sortKey]);
+  }, [allRows, statusFilter, sortKey]);
 
   const maxSpan = useMemo(
     () =>
@@ -154,10 +171,37 @@ export function AggregateTimelineClient() {
               ))}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Status
+              </span>
+              {(
+                [
+                  { key: "all", label: "Semua", tone: "" },
+                  { key: "onTime", label: "On Time", tone: "border-emerald-500 bg-emerald-500 text-white" },
+                  { key: "atRisk", label: "At Risk", tone: "border-amber-500 bg-amber-500 text-white" },
+                  { key: "overdue", label: "Overdue", tone: "border-rose-500 bg-rose-500 text-white" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setStatusFilter(opt.key)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                    statusFilter === opt.key
+                      ? opt.tone || "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  {opt.label} · {statusCounts[opt.key]}
+                </button>
+              ))}
+            </div>
             {rows.length === 0 ? (
               <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-                Tidak ada invoice dalam alur approval untuk scope ini.
+                Tidak ada invoice cocok dengan filter aktif.
               </div>
             ) : (
               <GanttChart rows={rows} maxSpan={maxSpan} />
