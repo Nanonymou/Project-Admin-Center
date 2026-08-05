@@ -7,13 +7,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CategoryDonut } from "@/components/site/category-donut";
 import { MarginTrendChart } from "@/components/site/margin-trend-chart";
 import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { SitePeriodComparison } from "@/components/site/site-period-comparison";
+import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
@@ -37,7 +37,7 @@ import {
   type SiteMarginPoint,
 } from "@/lib/mock/site-detail";
 import { canAccessLocation } from "@/lib/personas";
-import { cn, formatCurrency, formatNumber } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 function withinRange(iso: string, from: string, to: string) {
   return iso >= from && iso <= to;
@@ -194,7 +194,11 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
           </div>
         )}
 
-        <SiteSummaryStrip detail={detail} />
+        <SiteKpiGrid
+          site={detail.site}
+          periodFactor={factor}
+          invoiceCount={scaledInvoices.length}
+        />
 
         <section>
           <ReminderWidget items={reminders} />
@@ -371,47 +375,4 @@ function computePeriodFactor(rangeDays: number, baseDays: number) {
 
 function monthStart(iso: string) {
   return `${iso.slice(0, 7)}-01`;
-}
-
-function SiteSummaryStrip({ detail }: { detail: ReturnType<typeof getSiteDetail> & object }) {
-  const s = detail.site;
-  const statusTone =
-    s.slaPct >= 90
-      ? "success"
-      : s.slaPct >= 80
-        ? "warning"
-        : "danger";
-  const items = [
-    { label: "Sales (MTD)", value: formatCurrency(s.sales) },
-    { label: "Cost (MTD)", value: formatCurrency(s.cost) },
-    { label: "Net Margin", value: formatCurrency(s.netMargin), hint: `${s.marginPct.toFixed(1)}%` },
-    { label: "SLA", value: `${s.slaPct}%` },
-    { label: "Pending Approvals", value: formatNumber(s.pendingApprovals) },
-    { label: "Invoice Overdue", value: formatNumber(s.overdueInvoices) },
-  ];
-  return (
-    <Card>
-      <CardContent className="grid grid-cols-2 divide-x divide-y p-0 sm:grid-cols-3 lg:grid-cols-6">
-        {items.map((item) => (
-          <div key={item.label} className="p-4">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {item.label}
-            </div>
-            <div className="mt-1.5 flex items-baseline gap-2">
-              <span className="text-base font-semibold tabular-nums">{item.value}</span>
-              {"hint" in item && item.hint && (
-                <span className="text-xs text-muted-foreground tabular-nums">{item.hint}</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </CardContent>
-      <div className="border-t px-4 py-2 text-xs">
-        <span className="text-muted-foreground">Status site:</span>{" "}
-        <Badge variant={statusTone}>
-          {s.slaPct >= 90 ? "Healthy" : s.slaPct >= 80 ? "Watch" : "Critical"}
-        </Badge>
-      </div>
-    </Card>
-  );
 }
