@@ -28,9 +28,11 @@ const GANTT_STATE_LABEL: Record<TimelineStageState, string> = {
 export function GanttChart({
   rows,
   maxSpan,
+  onSelect,
 }: {
   rows: AggregateTimelineRow[];
   maxSpan: number;
+  onSelect?: (row: AggregateTimelineRow) => void;
 }) {
   // Ruler ticks roughly every ~5 days (at least 4 ticks).
   const tickStep = Math.max(1, Math.ceil(maxSpan / 8));
@@ -72,7 +74,13 @@ export function GanttChart({
           {/* Rows */}
           <div className="divide-y">
             {rows.map((row) => (
-              <GanttRow key={`${row.locationId}-${row.invoiceNumber}`} row={row} maxSpan={maxSpan} ticks={ticks} />
+              <GanttRow
+                key={`${row.locationId}-${row.invoiceNumber}`}
+                row={row}
+                maxSpan={maxSpan}
+                ticks={ticks}
+                onSelect={onSelect}
+              />
             ))}
           </div>
         </div>
@@ -85,15 +93,26 @@ function GanttRow({
   row,
   maxSpan,
   ticks,
+  onSelect,
 }: {
   row: AggregateTimelineRow;
   maxSpan: number;
   ticks: number[];
+  onSelect?: (row: AggregateTimelineRow) => void;
 }) {
   const statusVariant =
     row.status === "overdue" ? "danger" : row.status === "atRisk" ? "warning" : "success";
   return (
-    <div className="grid grid-cols-[minmax(0,220px),1fr] items-center gap-2 py-1.5">
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,220px),1fr] items-center gap-2 py-1.5",
+        onSelect && "cursor-pointer rounded hover:bg-accent/50",
+      )}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a")) return;
+        onSelect?.(row);
+      }}
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <Link
