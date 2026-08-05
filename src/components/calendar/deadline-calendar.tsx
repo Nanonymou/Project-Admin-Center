@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { KIND_META, STATUS_META, type DeadlineItem } from "@/lib/mock/deadlines";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ export function DeadlineCalendar({ items }: { items: DeadlineItem[] }) {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedIso, setSelectedIso] = useState<string>(() => isoOf(new Date()));
+  const [activeItem, setActiveItem] = useState<DeadlineItem | null>(null);
 
   const byDate = useMemo(() => {
     const map = new Map<string, DeadlineItem[]>();
@@ -218,31 +220,110 @@ export function DeadlineCalendar({ items }: { items: DeadlineItem[] }) {
         ) : (
           <ul className="space-y-2">
             {selectedItems.map((item) => (
-              <li key={item.id} className="rounded-md border p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{item.title}</span>
-                  <Badge variant={STATUS_META[item.status].variant}>
-                    {STATUS_META[item.status].label}
-                  </Badge>
-                </div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
-                  {KIND_META[item.kind].label} · {item.projectCode} · {item.locationName}
-                </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {item.target} · owner {item.owner}
-                </div>
-                <Link
-                  href={`/site/${item.locationId}`}
-                  className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => setActiveItem(item)}
+                  className="w-full rounded-md border p-2.5 text-left transition-colors hover:bg-accent"
                 >
-                  Buka site
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{item.title}</span>
+                    <Badge variant={STATUS_META[item.status].variant}>
+                      {STATUS_META[item.status].label}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    {KIND_META[item.kind].label} · {item.projectCode} · {item.locationName}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-primary">Lihat detail →</div>
+                </button>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <Dialog
+        open={activeItem !== null}
+        onClose={() => setActiveItem(null)}
+        title={activeItem?.title}
+        description={
+          activeItem
+            ? `${KIND_META[activeItem.kind].label} · ${activeItem.projectCode} · ${activeItem.locationName}`
+            : undefined
+        }
+        footer={
+          activeItem && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                Due {activeItem.dueLabel}
+              </span>
+              <Link href={`/site/${activeItem.locationId}`}>
+                <Button size="sm">
+                  Buka Site Dashboard
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+          )
+        }
+      >
+        {activeItem && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={STATUS_META[activeItem.status].variant}>
+                {STATUS_META[activeItem.status].label}
+              </Badge>
+              <span className="text-xs text-muted-foreground">Due {activeItem.dueLabel}</span>
+            </div>
+            <DetailRow label="Target" value={activeItem.target} />
+            <DetailRow label="Owner" value={activeItem.owner} />
+            <DetailRow label="Kategori" value={KIND_META[activeItem.kind].label} />
+            <DetailRow label="Project" value={activeItem.projectCode} />
+            <DetailRow label="Location" value={activeItem.locationName} />
+            <DetailRow
+              label="Due date"
+              value={new Date(activeItem.dueDate).toLocaleDateString("id-ID", {
+                weekday: "long",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })}
+            />
+            <div>
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Progress
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 flex-1 overflow-hidden rounded bg-muted">
+                  <div
+                    className={
+                      activeItem.progressPct >= 80
+                        ? "h-full bg-emerald-500"
+                        : activeItem.progressPct >= 50
+                          ? "h-full bg-sky-500"
+                          : "h-full bg-amber-500"
+                    }
+                    style={{ width: `${activeItem.progressPct}%` }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {activeItem.progressPct}%
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b pb-2 last:border-0">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-right text-sm font-medium">{value}</span>
     </div>
   );
 }
