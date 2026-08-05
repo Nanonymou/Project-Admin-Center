@@ -42,6 +42,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Daily Cost", href: "/daily-cost", icon: Wallet },
       { label: "Invoice", href: "/invoice", icon: FileText },
       { label: "Outstanding Invoice", href: "/outstanding", icon: FileText },
+      { label: "Approval Progress", href: "/approvals", icon: BadgeCheck },
       { label: "Gantt Monitoring", href: "/gantt", icon: GanttChartSquare },
     ],
   },
