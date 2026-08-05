@@ -2,47 +2,103 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Bell, Check, ChevronsUpDown, Search, UserCog } from "lucide-react";
-import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useActiveSite } from "@/components/providers/active-site-provider";
+import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
 export function Topbar() {
   const { persona, personas, setPersonaId } = usePersona();
-  const activeWorkspace = MOCK_WORKSPACES[0];
+  const { activeWorkspace, workspaces, activeLocationId, setActiveLocationId } = useActiveSite();
   const [open, setOpen] = useState(false);
+  const [siteOpen, setSiteOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const siteRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+      if (siteRef.current && !siteRef.current.contains(e.target as Node)) setSiteOpen(false);
     }
-    if (open) window.addEventListener("mousedown", onClickOutside);
+    if (open || siteOpen) window.addEventListener("mousedown", onClickOutside);
     return () => window.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
+  }, [open, siteOpen]);
+
+  const accessibleWorkspaces = workspaces.filter((w) =>
+    canAccessLocation(persona, w.locationId, w.projectCode),
+  );
+  const canSwitch = persona.capabilities.canSwitchWorkspace && accessibleWorkspaces.length > 1;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-card px-4 md:px-6">
-      <button
-        type="button"
-        disabled={!persona.capabilities.canSwitchWorkspace}
-        className={cn(
-          "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm",
-          persona.capabilities.canSwitchWorkspace ? "hover:bg-accent" : "cursor-not-allowed opacity-60",
-        )}
-        aria-label="Site switcher"
-      >
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary">
-          {activeWorkspace.projectCode.slice(0, 2)}
-        </div>
-        <div className="text-left leading-tight">
-          <div className="text-xs text-muted-foreground">Workspace</div>
-          <div className="text-sm font-medium">
-            {activeWorkspace.projectName} · {activeWorkspace.locationName}
+      <div className="relative" ref={siteRef}>
+        <button
+          type="button"
+          onClick={() => canSwitch && setSiteOpen((s) => !s)}
+          disabled={!canSwitch}
+          aria-haspopup="menu"
+          aria-expanded={siteOpen}
+          className={cn(
+            "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm",
+            canSwitch ? "hover:bg-accent" : "cursor-not-allowed opacity-60",
+          )}
+          aria-label="Site switcher"
+        >
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary">
+            {activeWorkspace.projectCode.slice(0, 2)}
           </div>
-        </div>
-        <ChevronsUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
-      </button>
+          <div className="text-left leading-tight">
+            <div className="text-xs text-muted-foreground">Workspace</div>
+            <div className="text-sm font-medium">
+              {activeWorkspace.projectName} · {activeWorkspace.locationName}
+            </div>
+          </div>
+          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+
+        {siteOpen && (
+          <div
+            role="menu"
+            className="absolute left-0 top-full z-40 mt-2 w-72 rounded-lg border bg-card p-2 shadow-lg"
+          >
+            <div className="mb-1 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Pilih Workspace
+            </div>
+            <ul className="max-h-72 space-y-0.5 overflow-y-auto">
+              {accessibleWorkspaces.map((w) => {
+                const active = w.locationId === activeLocationId;
+                return (
+                  <li key={w.locationId}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveLocationId(w.locationId);
+                        setSiteOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
+                        active && "bg-accent",
+                      )}
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary">
+                        {w.projectCode.slice(0, 2)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{w.locationName}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {w.projectName} · {w.client}
+                        </div>
+                      </div>
+                      {active && <Check className="h-4 w-4 text-primary" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
 
       <div className="relative ml-2 hidden max-w-md flex-1 md:block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

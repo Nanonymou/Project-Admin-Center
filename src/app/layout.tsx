@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/app/sidebar";
 import { Topbar } from "@/components/app/topbar";
 import { PersonaProvider } from "@/components/providers/persona-provider";
 import { GlobalFilterProvider } from "@/components/providers/global-filter-provider";
+import { ActiveSiteProvider } from "@/components/providers/active-site-provider";
 
 export const metadata: Metadata = {
   title: "Project Admin Center",
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="id" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <PersonaProvider>
+          <ActiveSiteProvider>
           <GlobalFilterProvider>
             <div className="flex min-h-screen">
               <Sidebar />
@@ -24,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
           </GlobalFilterProvider>
+          </ActiveSiteProvider>
         </PersonaProvider>
       </body>
     </html>

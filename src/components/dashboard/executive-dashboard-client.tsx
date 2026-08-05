@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
+import { useActiveSite } from "@/components/providers/active-site-provider";
+import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
+import { computeSiteKpi } from "@/lib/mock/site-kpi-calc";
+import { getSiteDetail } from "@/lib/mock/site-detail";
 import {
   aggregateAging,
   aggregateTotals,
@@ -37,6 +41,7 @@ const SORT_LABEL: Record<SortKey, string> = {
 export function ExecutiveDashboardClient() {
   const { persona } = usePersona();
   const { filters, setFilters, reset } = useGlobalFilters();
+  const { activeLocationId, activeWorkspace } = useActiveSite();
   const [sortKey, setSortKey] = useState<SortKey>("sales");
 
   const accessibleSites = useMemo(
@@ -88,6 +93,26 @@ export function ExecutiveDashboardClient() {
 
   const totals = useMemo(() => aggregateTotals(scopedSites), [scopedSites]);
   const aging = useMemo(() => aggregateAging(scopedSites), [scopedSites]);
+
+  // Active-site KPI preview — driven by the workspace switcher selection,
+  // falling back to the first accessible site when the active one is out of
+  // the persona's scope.
+  const activeDetail = useMemo(() => {
+    const preferred = getSiteDetail(activeLocationId);
+    if (preferred && canAccessLocation(persona, preferred.site.locationId, preferred.site.projectCode)) {
+      return preferred;
+    }
+    const first = accessibleSites[0];
+    return first ? getSiteDetail(first.locationId) : undefined;
+  }, [activeLocationId, persona, accessibleSites]);
+
+  const activeComputed = useMemo(
+    () =>
+      activeDetail
+        ? computeSiteKpi(activeDetail, { from: filters.from, to: filters.to })
+        : undefined,
+    [activeDetail, filters.from, filters.to],
+  );
 
   const scopeSummary = useMemo(() => {
     if (persona.scope.projects.length === 0 && persona.scope.locations.length === 0)
@@ -153,6 +178,25 @@ export function ExecutiveDashboardClient() {
         />
 
         <PortfolioSummary totals={totals} />
+
+        {activeDetail && activeComputed && (
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold">
+                  KPI Site Aktif — {activeDetail.site.projectCode} · {activeDetail.site.locationName}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Ganti site aktif lewat Workspace switcher di kanan atas ·
+                  {activeDetail.site.locationId === activeWorkspace.locationId
+                    ? " sinkron dengan workspace terpilih."
+                    : " workspace di luar scope, menampilkan site pertama yang bisa diakses."}
+                </p>
+              </div>
+            </div>
+            <SiteKpiGrid site={activeDetail.site} computed={activeComputed} />
+          </section>
+        )}
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
