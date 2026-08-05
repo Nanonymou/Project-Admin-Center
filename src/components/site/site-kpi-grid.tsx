@@ -6,30 +6,26 @@ import {
   Clock3,
   FileClock,
   PiggyBank,
+  Receipt,
   ShieldCheck,
   ShoppingCart,
   Wallet,
 } from "lucide-react";
 import { KpiCard, type KpiCardProps } from "@/components/common/kpi-card";
 import type { SiteKpi } from "@/lib/mock/site-kpi";
+import type { ComputedSiteKpi } from "@/lib/mock/site-kpi-calc";
 
 /**
- * The 8 primary site KPIs. `periodFactor` lets volume metrics track the
- * global period; intensive metrics (margin %, SLA %) stay absolute.
+ * The 8 primary site KPIs, driven by KPI values computed from raw daily +
+ * invoice data (site-kpi-calc). Tax is config-driven per project.
  */
 export function SiteKpiGrid({
   site,
-  periodFactor = 1,
-  invoiceCount,
+  computed,
 }: {
   site: SiteKpi;
-  periodFactor?: number;
-  invoiceCount: number;
+  computed: ComputedSiteKpi;
 }) {
-  const scaledSales = Math.round(site.sales * periodFactor);
-  const scaledCost = Math.round(site.cost * periodFactor);
-  const scaledMargin = Math.round(site.netMargin * periodFactor);
-
   const salesDelta = site.prevPeriod
     ? ((site.sales - site.prevPeriod.sales) / Math.max(1, site.prevPeriod.sales)) * 100
     : undefined;
@@ -38,89 +34,102 @@ export function SiteKpiGrid({
 
   const tiles: KpiCardProps[] = [
     {
-      label: "Total Sales",
-      value: scaledSales,
+      label: "Gross Sales",
+      value: computed.grossSales,
       format: "currency",
       icon: ShoppingCart,
       tone: "primary",
       delta: salesDelta,
       deltaSuffix: "%",
       deltaLabel: "vs periode lalu",
+      sub: `Avg ${formatCompactSub(computed.avgDailySales)}/hari`,
     },
     {
       label: "Total Cost",
-      value: scaledCost,
+      value: computed.totalCost,
       format: "currency",
       icon: Wallet,
       tone: "warning",
     },
     {
       label: "Net Margin",
-      value: scaledMargin,
+      value: computed.netMargin,
       format: "currency",
-      sub: `${site.marginPct.toFixed(1)}% GP`,
+      sub: `${computed.marginPct.toFixed(1)}% GP`,
       icon: PiggyBank,
       tone: "success",
       delta: marginDelta,
       deltaLabel: "poin margin",
     },
     {
+      label: `${computed.taxLabel} + Net Invoice`,
+      value: computed.netInvoiceValue,
+      format: "currency",
+      sub: `Pajak ${formatCompactSub(computed.taxAmount)}`,
+      icon: Receipt,
+      tone: "info",
+    },
+    {
       label: "SLA Compliance",
-      value: site.slaPct,
+      value: computed.slaPct,
       format: "percent",
       icon: ShieldCheck,
-      tone: site.slaPct >= 90 ? "success" : site.slaPct >= 80 ? "warning" : "danger",
+      tone: computed.slaPct >= 90 ? "success" : computed.slaPct >= 80 ? "warning" : "danger",
       delta: slaDelta,
       deltaLabel: "poin SLA",
     },
     {
       label: "Approval Pending",
-      value: site.pendingApprovals,
+      value: computed.pendingApprovals,
       format: "number",
       sub: "menunggu review",
       icon: Clock3,
-      tone: site.pendingApprovals > 5 ? "warning" : "info",
+      tone: computed.pendingApprovals > 5 ? "warning" : "info",
     },
     {
       label: "Invoice Overdue",
-      value: site.overdueInvoices,
+      value: computed.overdueInvoices,
       format: "number",
-      sub: site.overdueInvoices > 0 ? "escalation aktif" : "tidak ada",
+      sub: computed.overdueInvoices > 0 ? "escalation aktif" : "tidak ada",
       icon: AlertTriangle,
-      tone: site.overdueInvoices > 0 ? "danger" : "muted",
+      tone: computed.overdueInvoices > 0 ? "danger" : "muted",
     },
     {
-      label: "Invoice Outstanding",
-      value: invoiceCount,
+      label: "Outstanding",
+      value: computed.outstandingCount,
       format: "number",
-      sub: "belum settled",
+      sub: formatCompactSub(computed.outstandingAmount),
       icon: FileClock,
       tone: "info",
-    },
-    {
-      label: "Cut-Off",
-      value: site.cutOffDaysLeft > 0 ? `H-${site.cutOffDaysLeft}` : "Hari ini",
-      format: "text",
-      sub: statusLabel(site.closingStatus),
-      icon: BadgeCheck,
-      tone:
-        site.closingStatus === "locked"
-          ? "success"
-          : site.cutOffDaysLeft <= 1
-            ? "danger"
-            : site.cutOffDaysLeft <= 3
-              ? "warning"
-              : "muted",
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      {tiles.map((tile) => (
-        <KpiCard key={tile.label} {...tile} />
-      ))}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {tiles.map((tile) => (
+          <KpiCard key={tile.label} {...tile} />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+        <BadgeCheck className="h-3.5 w-3.5" />
+        Cut-off{" "}
+        <b className="text-foreground">
+          {site.cutOffDaysLeft > 0 ? `H-${site.cutOffDaysLeft}` : "hari ini"}
+        </b>{" "}
+        · status {statusLabel(site.closingStatus)} · {computed.activeDays} hari data ·
+        pajak dihitung {computed.taxLabel} (config per project)
+      </div>
     </div>
   );
+}
+
+function formatCompactSub(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `Rp ${(value / 1_000_000_000).toFixed(1)} M`;
+  if (abs >= 1_000_000) return `Rp ${(value / 1_000_000).toFixed(0)} jt`;
+  if (abs >= 1_000) return `Rp ${(value / 1_000).toFixed(0)} rb`;
+  return `Rp ${value}`;
 }
 
 function statusLabel(status: SiteKpi["closingStatus"]) {

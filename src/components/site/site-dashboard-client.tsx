@@ -14,6 +14,7 @@ import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { SitePeriodComparison } from "@/components/site/site-period-comparison";
 import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
+import { computeSiteKpi } from "@/lib/mock/site-kpi-calc";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
@@ -55,6 +56,10 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
   const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
   const deadlines = useMemo(() => buildDeadlines([detail.site]), [detail.site]);
+  const computedKpi = useMemo(
+    () => computeSiteKpi(detail, { from: filters.from, to: filters.to }),
+    [detail, filters.from, filters.to],
+  );
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -194,11 +199,7 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
           </div>
         )}
 
-        <SiteKpiGrid
-          site={detail.site}
-          periodFactor={factor}
-          invoiceCount={scaledInvoices.length}
-        />
+        <SiteKpiGrid site={detail.site} computed={computedKpi} />
 
         <section>
           <ReminderWidget items={reminders} />
