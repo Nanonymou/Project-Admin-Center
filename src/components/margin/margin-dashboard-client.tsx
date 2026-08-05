@@ -2,22 +2,13 @@
 
 import { useEffect, useMemo } from "react";
 import { Download, Info, Lock, PiggyBank, RefreshCcw } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
+import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -168,46 +159,7 @@ export function MarginDashboardClient() {
               <CardDescription>Kontribusi profit bersih tiap lokasi.</CardDescription>
             </CardHeader>
             <CardContent>
-              {bySite.length > 0 ? (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={bySite} margin={{ top: 8, right: 12, left: 8, bottom: 0 }} barCategoryGap={16}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        stroke="hsl(215 16% 47%)"
-                        tickLine={false}
-                        axisLine={false}
-                        width={64}
-                        tickFormatter={(v) => `${(v / 1_000_000_000).toFixed(1)}M`}
-                      />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 8, border: "1px solid hsl(214 32% 91%)", fontSize: 12 }}
-                        formatter={(v: number) => formatCurrency(v)}
-                      />
-                      <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                        {bySite.map((s) => (
-                          <Cell
-                            key={s.locationId}
-                            fill={
-                              s.marginPct >= 55
-                                ? "hsl(142 71% 45%)"
-                                : s.marginPct >= 45
-                                  ? "hsl(38 92% 50%)"
-                                  : "hsl(0 84% 60%)"
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-                  Tidak ada data.
-                </div>
-              )}
+              <ProfitBySiteChart data={bySite} />
             </CardContent>
           </Card>
 
