@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
-import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
+import { OutstandingFilterBar } from "@/components/outstanding/outstanding-filter-bar";
 import { OutstandingInvoiceTable } from "@/components/outstanding/outstanding-invoice-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 export function OutstandingClient() {
   const { persona } = usePersona();
-  const { filters, setFilters, reset } = useGlobalFilters();
+  const { filters, setFilters } = useGlobalFilters();
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -102,13 +102,9 @@ export function OutstandingClient() {
           </span>
         </div>
 
-        <ActivityFilterBar
-          value={filters}
-          onChange={setFilters}
-          onReset={reset}
-          matchedCount={filteredSites.length}
-          projectOptions={personaProjectOptions}
-          locationOptions={personaLocationOptions}
+        <OutstandingFilterBar
+          locations={personaLocationOptions}
+          matchedCount={outstanding.length}
         />
 
         <Card>
