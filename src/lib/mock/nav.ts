@@ -10,6 +10,7 @@ import {
   Building2,
   BadgeCheck,
   Trophy,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Invoice", href: "/invoice", icon: FileText },
       { label: "Outstanding Invoice", href: "/outstanding", icon: FileText },
       { label: "Approval Progress", href: "/approvals", icon: BadgeCheck },
+      { label: "Kalender Deadline", href: "/calendar", icon: CalendarDays },
       { label: "Gantt Monitoring", href: "/gantt", icon: GanttChartSquare },
     ],
   },
