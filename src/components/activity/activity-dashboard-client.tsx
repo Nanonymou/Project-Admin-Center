@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
+import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { Download, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -145,6 +146,7 @@ export function ActivityDashboardClient() {
         ]}
         actions={
           <>
+            <ActivePeriodBadge />
             <Button variant="outline" size="sm">
               <RefreshCcw className="h-4 w-4" />
               Refresh

@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
+import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import {
   aggregateTotals,
   daysBetween,
@@ -127,6 +128,7 @@ export function LeaderDashboardClient() {
         breadcrumbs={[{ label: "Overview" }, { label: "Dashboard Leader" }]}
         actions={
           <>
+            <ActivePeriodBadge />
             <Button variant="outline" size="sm">
               <RefreshCcw className="h-4 w-4" />
               Refresh

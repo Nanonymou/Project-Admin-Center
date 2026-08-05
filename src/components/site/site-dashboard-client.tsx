@@ -14,6 +14,7 @@ import { MarginTrendChart } from "@/components/site/margin-trend-chart";
 import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { SitePeriodComparison } from "@/components/site/site-period-comparison";
+import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
 import { DeadlineList } from "@/components/reminders/deadline-list";
@@ -156,6 +157,7 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
         ]}
         actions={
           <>
+            <ActivePeriodBadge />
             <Button variant="outline" size="sm">
               <RefreshCcw className="h-4 w-4" />
               Refresh
