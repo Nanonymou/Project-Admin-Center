@@ -21,6 +21,7 @@ import { ApprovalReminderList } from "@/components/reminders/approval-reminder-l
 import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { OverdueInvoiceList } from "@/components/reminders/overdue-invoice-list";
 import { buildOverdueInvoicesFor } from "@/lib/mock/overdue-invoices";
+import { RecentActivityList } from "@/components/reminders/recent-activity-list";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
@@ -226,6 +227,23 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
             </CardHeader>
             <CardContent>
               <OverdueInvoiceList items={overdueInvoices} showLocationColumn={false} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Aktivitas Terbaru</CardTitle>
+              <CardDescription>
+                Kejadian terbaru untuk {detail.site.projectCode} · {detail.site.locationName}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentActivityList
+                locationName={detail.site.locationName}
+                showLocationChip={false}
+              />
             </CardContent>
           </Card>
         </section>

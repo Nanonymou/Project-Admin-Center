@@ -26,6 +26,7 @@ import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { OverdueInvoiceList } from "@/components/reminders/overdue-invoice-list";
 import { buildOverdueInvoicesFor } from "@/lib/mock/overdue-invoices";
+import { RecentActivityList } from "@/components/reminders/recent-activity-list";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -253,6 +254,23 @@ export function LeaderDashboardClient() {
             </CardHeader>
             <CardContent>
               <OverdueInvoiceList items={overdueInvoices} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Aktivitas Terbaru Portfolio</CardTitle>
+              <CardDescription>
+                Kejadian terbaru lintas site dalam scope Leader — filter status & tandai selesai.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentActivityList
+                projectCodes={filteredSites.map((s) => s.projectCode)}
+                limit={8}
+              />
             </CardContent>
           </Card>
         </section>
