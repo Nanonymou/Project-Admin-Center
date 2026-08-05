@@ -10,6 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
+import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
+import { buildSubmitStatus } from "@/lib/mock/closing-status";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { canAccessLocation } from "@/lib/personas";
 import {
   getCostCategories,
   sumCostEntry,
@@ -49,6 +53,11 @@ export function DailyCostClient() {
     return d.toISOString().slice(0, 10);
   }, []);
   const dateAllowed = date === today || date === yesterday;
+
+  const submitStatus = useMemo(() => {
+    const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
+    return buildSubmitStatus(accessible);
+  }, [persona]);
 
   const errors = useMemo(() => validateCostEntry(categories, values), [categories, values]);
   const total = useMemo(() => sumCostEntry(categories, values), [categories, values]);
@@ -238,6 +247,19 @@ export function DailyCostClient() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Status Submit per Site</CardTitle>
+            <CardDescription>
+              Progress Daily Closing (Draft → Submitted → Reviewed → Approved → Locked) untuk site
+              dalam scope Anda.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <SubmitStatusList rows={submitStatus} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
