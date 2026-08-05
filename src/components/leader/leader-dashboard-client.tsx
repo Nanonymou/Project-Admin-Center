@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ProfitContributionChart } from "@/components/leader/profit-contribution-chart";
+import { ProfitRankingTable } from "@/components/leader/profit-ranking-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +184,32 @@ export function LeaderDashboardClient() {
                   Tidak ada data.
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  Tabel Peringkat Profit
+                </CardTitle>
+                <CardDescription>
+                  Klik kolom header untuk sort. Kontribusi = share margin bersih terhadap total portfolio.
+                </CardDescription>
+              </div>
+              <Link
+                href="/ranking"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Ke halaman Ranking
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ProfitRankingTable sites={filteredSites} />
             </CardContent>
           </Card>
         </section>
