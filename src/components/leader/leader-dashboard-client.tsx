@@ -27,6 +27,8 @@ import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { OverdueInvoiceList } from "@/components/reminders/overdue-invoice-list";
 import { buildOverdueInvoicesFor } from "@/lib/mock/overdue-invoices";
 import { RecentActivityList } from "@/components/reminders/recent-activity-list";
+import { OutstandingInvoiceTable } from "@/components/outstanding/outstanding-invoice-table";
+import { buildOutstandingInvoicesFor } from "@/lib/mock/outstanding";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +106,10 @@ export function LeaderDashboardClient() {
   );
   const overdueInvoices = useMemo(
     () => buildOverdueInvoicesFor(filteredSites, SITE_DETAILS),
+    [filteredSites],
+  );
+  const outstandingInvoices = useMemo(
+    () => buildOutstandingInvoicesFor(filteredSites, SITE_DETAILS),
     [filteredSites],
   );
 
@@ -240,6 +246,29 @@ export function LeaderDashboardClient() {
             </CardHeader>
             <CardContent>
               <ApprovalReminderList items={approvals} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>Outstanding Invoice Seluruh Site</CardTitle>
+                <CardDescription>
+                  Semua invoice yang belum settled — aging bucket, filter project & pencarian invoice/PIC.
+                </CardDescription>
+              </div>
+              <Link
+                href="/outstanding"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Halaman Outstanding
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <OutstandingInvoiceTable items={outstandingInvoices} compact />
             </CardContent>
           </Card>
         </section>
