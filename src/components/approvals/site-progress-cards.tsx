@@ -110,10 +110,10 @@ export function SiteProgressCards({ sites }: { sites: SiteProgressData[] }) {
               <div className="flex items-center justify-between border-t pt-2 text-[11px] text-muted-foreground">
                 <span className="tabular-nums">{formatCurrencyCompact(row.amount)} in-flight</span>
                 <Link
-                  href={`/site/${row.locationId}`}
+                  href={`/approvals/${row.locationId}`}
                   className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                 >
-                  Detail
+                  Timeline
                   <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
