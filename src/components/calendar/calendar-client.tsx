@@ -5,6 +5,7 @@ import { CalendarDays, Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar } from "@/components/calendar/deadline-calendar";
+import { DeadlineNotificationList } from "@/components/calendar/deadline-notification-list";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/common/kpi-card";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -81,7 +82,10 @@ export function CalendarClient() {
           <KpiCard label="Settled" value={counts.settled} format="number" icon={CheckCircle2} tone="success" />
         </section>
 
-        <DeadlineCalendar items={deadlines} />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr),minmax(0,1fr)]">
+          <DeadlineCalendar items={deadlines} />
+          <DeadlineNotificationList items={deadlines} />
+        </div>
       </div>
     </div>
   );
