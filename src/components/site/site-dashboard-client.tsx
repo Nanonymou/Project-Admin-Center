@@ -17,6 +17,8 @@ import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
 import { DeadlineList } from "@/components/reminders/deadline-list";
 import { buildDeadlines } from "@/lib/mock/deadlines";
+import { ApprovalReminderList } from "@/components/reminders/approval-reminder-list";
+import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
@@ -48,6 +50,7 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
   const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
   const deadlines = useMemo(() => buildDeadlines([detail.site]), [detail.site]);
+  const approvals = useMemo(() => buildApprovalReminders(detail.site, detail), [detail]);
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -185,6 +188,24 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
             </CardHeader>
             <CardContent>
               <DeadlineList items={deadlines} showLocationColumn={false} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Approval Reminder</CardTitle>
+              <CardDescription>
+                Invoice yang menunggu tindakan approval — filter status, prioritas, dan approve inline.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ApprovalReminderList
+                items={approvals}
+                showLocationColumn={false}
+                compact
+              />
             </CardContent>
           </Card>
         </section>

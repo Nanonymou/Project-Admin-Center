@@ -21,6 +21,9 @@ import { ProfitContributionChart } from "@/components/leader/profit-contribution
 import { ProfitRankingTable } from "@/components/leader/profit-ranking-table";
 import { DeadlineList } from "@/components/reminders/deadline-list";
 import { buildDeadlines } from "@/lib/mock/deadlines";
+import { ApprovalReminderList } from "@/components/reminders/approval-reminder-list";
+import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
+import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +86,10 @@ export function LeaderDashboardClient() {
   const bottom = rankedByProfit.slice(-3).reverse();
 
   const deadlines = useMemo(() => buildDeadlines(filteredSites), [filteredSites]);
+  const approvals = useMemo(
+    () => buildApprovalRemindersFor(filteredSites, SITE_DETAILS),
+    [filteredSites],
+  );
 
   const pendingAll = filteredSites.reduce((s, x) => s + x.pendingApprovals, 0);
   const overdueAll = filteredSites.reduce((s, x) => s + x.overdueInvoices, 0);
@@ -202,6 +209,20 @@ export function LeaderDashboardClient() {
             </CardHeader>
             <CardContent>
               <DeadlineList items={deadlines} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Approval Reminder Portfolio</CardTitle>
+              <CardDescription>
+                Antrian approval seluruh site — filter status/prioritas, ambil tindakan langsung.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ApprovalReminderList items={approvals} />
             </CardContent>
           </Card>
         </section>
