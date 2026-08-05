@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, Lock, RefreshCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
+import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
+import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
 import { SiteCard, SiteCardEmpty } from "@/components/dashboard/site-card";
 import { SiteComparisonChart } from "@/components/dashboard/site-comparison-chart";
@@ -11,10 +13,17 @@ import { AgingDonut } from "@/components/dashboard/aging-donut";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePersona } from "@/components/providers/persona-provider";
-import { aggregateAging, aggregateTotals, SITE_KPI } from "@/lib/mock/site-kpi";
+import { useGlobalFilters } from "@/components/providers/global-filter-provider";
+import {
+  aggregateAging,
+  aggregateTotals,
+  daysBetween,
+  scaleSiteKpisByPeriod,
+  SITE_KPI,
+} from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
-import { PROJECT_OPTIONS } from "@/lib/mock/filters";
+import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 
 type SortKey = "sales" | "marginPct" | "slaPct" | "overdueInvoices";
 
@@ -27,12 +36,49 @@ const SORT_LABEL: Record<SortKey, string> = {
 
 export function ExecutiveDashboardClient() {
   const { persona } = usePersona();
+  const { filters, setFilters, reset } = useGlobalFilters();
   const [sortKey, setSortKey] = useState<SortKey>("sales");
 
-  const scopedSites = useMemo(
+  const accessibleSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
   );
+
+  const personaProjectOptions = useMemo(
+    () => PROJECT_OPTIONS.filter((p) => accessibleSites.some((s) => s.projectCode === p.code)),
+    [accessibleSites],
+  );
+  const personaLocationOptions = useMemo(
+    () => LOCATION_OPTIONS.filter((l) => accessibleSites.some((s) => s.locationId === l.id)),
+    [accessibleSites],
+  );
+
+  useEffect(() => {
+    const validProjects = new Set(personaProjectOptions.map((p) => p.code));
+    const validLocations = new Set(personaLocationOptions.map((l) => l.id));
+    const nextProjects = filters.projects.filter((p) => validProjects.has(p));
+    const nextLocations = filters.locations.filter((l) => validLocations.has(l));
+    if (
+      nextProjects.length !== filters.projects.length ||
+      nextLocations.length !== filters.locations.length
+    ) {
+      setFilters({ ...filters, projects: nextProjects, locations: nextLocations });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaProjectOptions, personaLocationOptions]);
+
+  const selectedLocationIds = useMemo(() => new Set(filters.locations), [filters.locations]);
+
+  const scopedSites = useMemo(() => {
+    const rows = accessibleSites.filter((s) => {
+      if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
+      if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
+      return true;
+    });
+    return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
+  }, [accessibleSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
+
+  const periodDays = daysBetween(filters.from, filters.to);
 
   const sortedSites = useMemo(() => {
     const rows = [...scopedSites];
@@ -67,6 +113,7 @@ export function ExecutiveDashboardClient() {
         breadcrumbs={[{ label: "Overview" }, { label: "Executive Dashboard" }]}
         actions={
           <>
+            <ActivePeriodBadge />
             <Button variant="outline" size="sm">
               <RefreshCcw className="h-4 w-4" />
               Refresh
@@ -86,6 +133,24 @@ export function ExecutiveDashboardClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={scopeSummary} />
+
+        <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Filter global aktif — pilihan project, location, dan periode sinkron dengan seluruh
+            halaman. Nilai finansial diskalakan terhadap periode{" "}
+            <b>{filters.from} → {filters.to}</b> ({periodDays} hari).
+          </span>
+        </div>
+
+        <ActivityFilterBar
+          value={filters}
+          onChange={setFilters}
+          onReset={reset}
+          matchedCount={scopedSites.length}
+          projectOptions={personaProjectOptions}
+          locationOptions={personaLocationOptions}
+        />
 
         <PortfolioSummary totals={totals} />
 
@@ -131,7 +196,7 @@ export function ExecutiveDashboardClient() {
             <CardHeader>
               <CardTitle>Perbandingan Sales / Cost / Margin per Site</CardTitle>
               <CardDescription>
-                Data akumulasi periode berjalan — nilai dalam miliar rupiah.
+                Diskalakan ke periode {filters.from} → {filters.to} — nilai dalam miliar rupiah.
               </CardDescription>
             </CardHeader>
             <CardContent>
