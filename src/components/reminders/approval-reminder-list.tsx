@@ -20,6 +20,7 @@ import {
   type ApprovalReminderPriority,
   type ApprovalReminderStatus,
 } from "@/lib/mock/approvals";
+import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type Props = {
@@ -164,7 +165,12 @@ export function ApprovalReminderList({ items, compact, showLocationColumn = true
                 >
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium tabular-nums">{item.invoiceNumber}</span>
+                      <Link
+                        href={invoiceHref(item.invoiceNumber)}
+                        className="text-sm font-medium tabular-nums text-primary hover:underline"
+                      >
+                        {item.invoiceNumber}
+                      </Link>
                       <span
                         className={cn(
                           "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
@@ -247,7 +253,7 @@ export function ApprovalReminderList({ items, compact, showLocationColumn = true
                         <X className="h-3.5 w-3.5" />
                       </Button>
                       <Link
-                        href={`/site/${item.locationId}`}
+                        href={invoiceHref(item.invoiceNumber)}
                         className="ml-1 inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
                       >
                         Detail

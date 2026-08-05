@@ -22,7 +22,9 @@ import type {
   SiteApprovalStage,
   SiteInvoiceAging,
 } from "@/lib/mock/site-detail";
+import Link from "next/link";
 import { useContainerSize } from "@/lib/hooks/use-container-size";
+import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { CheckCircle2, CircleAlert, CircleDashed, Filter, RotateCcw } from "lucide-react";
 
@@ -369,7 +371,11 @@ function InvoiceDrilldownTable({
                   inv.status === "onTime" ? CheckCircle2 : inv.status === "atRisk" ? CircleAlert : CircleDashed;
                 return (
                   <tr key={inv.number} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="px-3 py-2 font-medium tabular-nums">{inv.number}</td>
+                    <td className="px-3 py-2 font-medium tabular-nums">
+                      <Link href={invoiceHref(inv.number)} className="text-primary hover:underline">
+                        {inv.number}
+                      </Link>
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(inv.amount)}</td>
                     <td className="px-3 py-2 text-muted-foreground">{inv.stage}</td>
                     <td className="px-3 py-2">

@@ -20,6 +20,7 @@ import {
   type OverdueInvoiceItem,
   type OverdueSeverity,
 } from "@/lib/mock/overdue-invoices";
+import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
 type Props = {
@@ -144,7 +145,12 @@ export function OverdueInvoiceList({ items, showLocationColumn = true }: Props) 
                   )}
                 >
                   <td className="px-3 py-2">
-                    <div className="text-sm font-medium tabular-nums">{item.invoiceNumber}</div>
+                    <Link
+                      href={invoiceHref(item.invoiceNumber)}
+                      className="text-sm font-medium tabular-nums text-primary hover:underline"
+                    >
+                      {item.invoiceNumber}
+                    </Link>
                     <div className="text-[11px] text-muted-foreground">Stage: {item.stage}</div>
                   </td>
                   {showLocationColumn && (
@@ -199,7 +205,7 @@ export function OverdueInvoiceList({ items, showLocationColumn = true }: Props) 
                         <Flag className="h-3.5 w-3.5" />
                       </Button>
                       <Link
-                        href={`/site/${item.locationId}`}
+                        href={invoiceHref(item.invoiceNumber)}
                         className="ml-1 inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
                       >
                         Detail
