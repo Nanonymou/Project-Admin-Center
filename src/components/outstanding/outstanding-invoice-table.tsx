@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Filter, Search } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Filter, RotateCcw, Search, SearchX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   summarizeOutstanding,
   type OutstandingInvoice,
@@ -56,10 +57,28 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
 
   const shown = compact ? filtered.slice(0, 8) : filtered;
 
+  const hasActiveFilters =
+    bucketFilter !== "all" || projectFilter !== "all" || search.trim().length > 0;
+
+  function clearFilters() {
+    setBucketFilter("all");
+    setProjectFilter("all");
+    setSearch("");
+  }
+
   if (items.length === 0) {
     return (
-      <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
-        Tidak ada invoice outstanding dalam scope.
+      <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-dashed py-12 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+          <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+        </div>
+        <div>
+          <div className="text-sm font-semibold">Tidak ada invoice outstanding</div>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            Semua invoice pada scope & periode ini sudah settled. Coba ubah periode atau
+            pilih site lain untuk melihat outstanding yang lebih lama.
+          </p>
+        </div>
       </div>
     );
   }
@@ -137,8 +156,24 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={showLocationColumn ? 9 : 8} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Tidak ada invoice cocok dengan filter aktif.
+                <td colSpan={showLocationColumn ? 9 : 8} className="px-4 py-10">
+                  <div className="flex flex-col items-center justify-center gap-2 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                      <SearchX className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="text-sm font-medium">Tidak ada invoice cocok filter</div>
+                    <p className="max-w-xs text-xs text-muted-foreground">
+                      {search.trim()
+                        ? `Tidak ada hasil untuk "${search.trim()}".`
+                        : "Kombinasi bucket/project yang dipilih tidak memiliki invoice."}
+                    </p>
+                    {hasActiveFilters && (
+                      <Button size="sm" variant="outline" className="mt-1 h-7" onClick={clearFilters}>
+                        <RotateCcw className="h-3 w-3" />
+                        Reset filter
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             )}
