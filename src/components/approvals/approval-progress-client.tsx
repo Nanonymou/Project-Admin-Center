@@ -8,7 +8,9 @@ import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { StageProgressBar } from "@/components/approvals/stage-progress-bar";
+import { SiteProgressCards, type SiteProgressData } from "@/components/approvals/site-progress-cards";
 import { ApprovalReminderList } from "@/components/reminders/approval-reminder-list";
+import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -83,6 +85,25 @@ export function ApprovalProgressClient() {
   const summary = useMemo(
     () => summarizeApprovalProgress(approvals, settledCount),
     [approvals, settledCount],
+  );
+
+  const siteProgress = useMemo<SiteProgressData[]>(
+    () =>
+      filteredSites.map((site) => {
+        const detail = SITE_DETAILS[site.locationId];
+        const reminders = detail ? buildApprovalReminders(site, detail) : [];
+        const settled = detail
+          ? detail.invoices.filter((i) => i.stage === "Payment" && i.status !== "overdue").length
+          : 0;
+        return {
+          locationId: site.locationId,
+          locationName: site.locationName,
+          projectCode: site.projectCode,
+          reminders,
+          settledCount: settled,
+        };
+      }),
+    [filteredSites],
   );
 
   const canExport = persona.capabilities.canExport;
@@ -192,6 +213,16 @@ export function ApprovalProgressClient() {
             )}
           </CardContent>
         </Card>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-base font-semibold">Ringkasan Progress per Site</h2>
+            <p className="text-sm text-muted-foreground">
+              Diurutkan berdasarkan yang paling butuh perhatian (overdue &amp; completion terendah).
+            </p>
+          </div>
+          <SiteProgressCards sites={siteProgress} />
+        </section>
 
         <Card>
           <CardHeader>
