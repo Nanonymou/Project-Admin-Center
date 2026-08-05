@@ -50,7 +50,8 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
     router.push(invoiceHref(invoiceNumber));
   }
 
-  const summary = useMemo(() => summarizeOutstanding(items), [items]);
+  // Full-set summary drives the filter chip counts (what's available).
+  const totalSummary = useMemo(() => summarizeOutstanding(items), [items]);
   const projects = useMemo(() => Array.from(new Set(items.map((i) => i.projectCode))), [items]);
 
   const filtered = useMemo(() => {
@@ -63,6 +64,10 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
       return true;
     });
   }, [items, bucketFilter, projectFilter, search]);
+
+  // Summary tiles reflect the CURRENTLY FILTERED list so the KPI numbers
+  // always match the rows shown in the table below.
+  const summary = useMemo(() => summarizeOutstanding(filtered), [filtered]);
 
   const shown = compact ? filtered.slice(0, 8) : filtered;
 
@@ -95,7 +100,16 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <SummaryTile label="Total" value={formatCurrency(summary.totalAmount)} hint={`${summary.totalCount} invoice`} accent="bg-primary/10 text-primary" />
+        <SummaryTile
+          label="Total"
+          value={formatCurrency(summary.totalAmount)}
+          hint={
+            hasActiveFilters
+              ? `${summary.totalCount} dari ${totalSummary.totalCount} invoice`
+              : `${summary.totalCount} invoice`
+          }
+          accent="bg-primary/10 text-primary"
+        />
         {BUCKET_ORDER.map((b) => (
           <SummaryTile
             key={b}
@@ -107,6 +121,14 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
         ))}
       </div>
 
+      {hasActiveFilters && (
+        <div className="text-[11px] text-muted-foreground">
+          KPI di atas mengikuti filter aktif — menampilkan{" "}
+          <b className="text-foreground">{summary.totalCount}</b> dari{" "}
+          <b className="text-foreground">{totalSummary.totalCount}</b> invoice outstanding.
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
         <span className="inline-flex items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Filter className="h-3 w-3" />
@@ -116,7 +138,7 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
         {BUCKET_ORDER.map((b) => (
           <Chip
             key={b}
-            label={`${b} · ${summary.byBucket[b].count}`}
+            label={`${b} · ${totalSummary.byBucket[b].count}`}
             active={bucketFilter === b}
             color={BUCKET_COLOR[b]}
             onClick={() => setBucketFilter(b)}
