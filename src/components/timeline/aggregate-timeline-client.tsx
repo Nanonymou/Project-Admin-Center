@@ -14,18 +14,11 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
-import { buildAggregateTimelines, type AggregateTimelineRow } from "@/lib/mock/aggregate-timeline";
-import { invoiceHref } from "@/lib/mock/invoice-lookup";
+import { buildAggregateTimelines } from "@/lib/mock/aggregate-timeline";
+import { GanttChart } from "@/components/timeline/gantt-chart";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
-import { cn, formatCurrency } from "@/lib/utils";
-
-const STATE_COLOR: Record<string, string> = {
-  done: "bg-emerald-500",
-  current: "bg-primary",
-  overdue: "bg-rose-500",
-  upcoming: "bg-muted-foreground/25",
-};
+import { cn } from "@/lib/utils";
 
 export function AggregateTimelineClient() {
   const { persona } = usePersona();
@@ -167,58 +160,10 @@ export function AggregateTimelineClient() {
                 Tidak ada invoice dalam alur approval untuk scope ini.
               </div>
             ) : (
-              <div className="space-y-1.5">
-                {rows.map((row) => (
-                  <GanttRow key={`${row.locationId}-${row.invoiceNumber}`} row={row} maxSpan={maxSpan} />
-                ))}
-              </div>
+              <GanttChart rows={rows} maxSpan={maxSpan} />
             )}
           </CardContent>
         </Card>
-      </div>
-    </div>
-  );
-}
-
-function GanttRow({ row, maxSpan }: { row: AggregateTimelineRow; maxSpan: number }) {
-  const statusVariant =
-    row.status === "overdue" ? "danger" : row.status === "atRisk" ? "warning" : "success";
-  return (
-    <div className="grid grid-cols-1 items-center gap-2 rounded-md border p-2 sm:grid-cols-[minmax(0,220px),1fr]">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <Link
-            href={invoiceHref(row.invoiceNumber)}
-            className="truncate text-xs font-medium tabular-nums text-primary hover:underline"
-          >
-            {row.invoiceNumber}
-          </Link>
-          <Badge variant={statusVariant} className="h-4 shrink-0 px-1 text-[10px]">
-            {row.currentStage}
-          </Badge>
-        </div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <span>{row.projectCode} · {row.locationName}</span>
-          <span>·</span>
-          <span className="tabular-nums">{formatCurrency(row.amount)}</span>
-        </div>
-      </div>
-      <div className="flex h-6 w-full overflow-hidden rounded bg-muted/40">
-        {row.stages.map((s) => {
-          const widthPct = (s.durationDays / maxSpan) * 100;
-          return (
-            <div
-              key={s.stage}
-              className={cn(
-                "h-full border-r border-background/60",
-                STATE_COLOR[s.state],
-                s.breachedSla && "outline outline-1 outline-dashed outline-rose-900/40",
-              )}
-              style={{ width: `${widthPct}%` }}
-              title={`${s.stage}: ${s.state === "upcoming" ? `SLA ${s.slaDays}h` : `${s.durationDays}h`}${s.breachedSla ? " (SLA lewat)" : ""}`}
-            />
-          );
-        })}
       </div>
     </div>
   );
