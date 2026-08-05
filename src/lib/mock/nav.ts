@@ -11,6 +11,7 @@ import {
   BadgeCheck,
   Trophy,
   CalendarDays,
+  PiggyBank,
   type LucideIcon,
 } from "lucide-react";
 
@@ -34,6 +35,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
+      { label: "Dashboard Margin", href: "/margin", icon: PiggyBank },
     ],
   },
   {
