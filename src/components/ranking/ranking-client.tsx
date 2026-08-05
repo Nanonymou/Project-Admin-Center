@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
-import { SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
+import { daysBetween, scaleSiteKpisByPeriod, SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -96,12 +96,15 @@ export function RankingClient() {
   const selectedLocationIds = useMemo(() => new Set(filters.locations), [filters.locations]);
 
   const filteredSites = useMemo(() => {
-    return scopedSites.filter((s) => {
+    const rows = scopedSites.filter((s) => {
       if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
       if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
       return true;
     });
-  }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
+    return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
+  }, [scopedSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
+
+  const periodDays = daysBetween(filters.from, filters.to);
 
   const cfg = METRIC_MAP[metric];
 
@@ -181,6 +184,10 @@ export function RankingClient() {
             <div className="ml-auto text-xs text-muted-foreground">
               Ranking <b className="text-foreground">{rankedSites.length}</b> site ·
               periode <b className="text-foreground">{filters.from} → {filters.to}</b>
+              {" · "}
+              <span title="Skala nilai relatif terhadap baseline 30 hari">
+                {periodDays} hari
+              </span>
             </div>
           </CardContent>
         </Card>

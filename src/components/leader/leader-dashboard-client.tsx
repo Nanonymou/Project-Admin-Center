@@ -29,7 +29,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
-import { aggregateTotals, SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
+import {
+  aggregateTotals,
+  daysBetween,
+  scaleSiteKpisByPeriod,
+  SITE_KPI,
+  type SiteKpi,
+} from "@/lib/mock/site-kpi";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
@@ -69,12 +75,15 @@ export function LeaderDashboardClient() {
   const selectedLocationIds = useMemo(() => new Set(filters.locations), [filters.locations]);
 
   const filteredSites = useMemo(() => {
-    return scopedSites.filter((s) => {
+    const rows = scopedSites.filter((s) => {
       if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
       if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
       return true;
     });
-  }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
+    return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
+  }, [scopedSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
+
+  const periodDays = daysBetween(filters.from, filters.to);
 
   const totals = useMemo(() => aggregateTotals(filteredSites), [filteredSites]);
 
@@ -129,7 +138,8 @@ export function LeaderDashboardClient() {
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             Filter global aktif — pilihan tanggal, project, dan location sinkron dengan halaman
-            Activity, Ranking, dan Site Dashboard.
+            Activity, Ranking, dan Site Dashboard. Nilai profit & sales pada ranking diskalakan
+            terhadap periode <b>{filters.from} → {filters.to}</b> ({periodDays} hari).
           </span>
         </div>
 

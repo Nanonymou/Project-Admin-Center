@@ -245,6 +245,41 @@ export function aggregateTotals(sites: SiteKpi[]): PortfolioTotals {
   };
 }
 
+/**
+ * Scale SITE_KPI monthly-baseline values by the length of the selected
+ * global period, so period filters actually move ranking / profit /
+ * margin numbers. Margin % and SLA % are intensive and left untouched.
+ */
+export function scaleSiteKpisByPeriod(
+  sites: SiteKpi[],
+  from: string,
+  to: string,
+  baselineDays = 30,
+): SiteKpi[] {
+  const days = daysBetween(from, to);
+  if (days <= 0 || baselineDays <= 0) return sites;
+  const factor = Math.max(0.05, days / baselineDays);
+  return sites.map((s) => ({
+    ...s,
+    sales: Math.round(s.sales * factor),
+    cost: Math.round(s.cost * factor),
+    netMargin: Math.round(s.netMargin * factor),
+    prevPeriod: s.prevPeriod
+      ? {
+          ...s.prevPeriod,
+          sales: Math.round(s.prevPeriod.sales * factor),
+        }
+      : s.prevPeriod,
+  }));
+}
+
+export function daysBetween(fromIso: string, toIso: string): number {
+  const fromMs = Date.parse(`${fromIso}T00:00:00Z`);
+  const toMs = Date.parse(`${toIso}T00:00:00Z`);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return 0;
+  return Math.max(1, Math.round((toMs - fromMs) / (24 * 60 * 60 * 1000)) + 1);
+}
+
 export function aggregateAging(sites: SiteKpi[]) {
   const buckets: Record<"0-30" | "31-60" | "61-90" | ">90", number> = {
     "0-30": 0,
