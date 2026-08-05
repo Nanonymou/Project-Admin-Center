@@ -22,6 +22,14 @@ const STATUS_DOT: Record<DeadlineItem["status"], string> = {
   settled: "bg-emerald-500",
 };
 
+const STATUS_CHIP: Record<DeadlineItem["status"], string> = {
+  overdue: "bg-rose-100 text-rose-800 border-rose-200",
+  due_today: "bg-amber-100 text-amber-900 border-amber-200",
+  due_soon: "bg-amber-50 text-amber-800 border-amber-200",
+  on_track: "bg-sky-50 text-sky-800 border-sky-200",
+  settled: "bg-emerald-50 text-emerald-800 border-emerald-200",
+};
+
 type DayCell = {
   date: Date;
   iso: string;
@@ -127,7 +135,7 @@ export function DeadlineCalendar({ items }: { items: DeadlineItem[] }) {
                 type="button"
                 onClick={() => setSelectedIso(cell.iso)}
                 className={cn(
-                  "flex min-h-[64px] flex-col rounded-md border p-1 text-left transition-colors",
+                  "flex min-h-[64px] flex-col rounded-md border p-1 text-left transition-colors sm:min-h-[88px]",
                   cell.inMonth ? "bg-background" : "bg-muted/30 text-muted-foreground",
                   isSelected && "border-primary ring-1 ring-primary",
                   !isSelected && "border-input hover:bg-accent",
@@ -143,18 +151,41 @@ export function DeadlineCalendar({ items }: { items: DeadlineItem[] }) {
                   {cell.date.getDate()}
                 </span>
                 {cell.items.length > 0 && (
-                  <div className="mt-auto flex flex-wrap gap-0.5">
-                    {cell.items.slice(0, 4).map((it) => (
-                      <span
-                        key={it.id}
-                        className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[it.status])}
-                        title={it.title}
-                      />
-                    ))}
-                    {cell.items.length > 4 && (
-                      <span className="text-[9px] text-muted-foreground">+{cell.items.length - 4}</span>
-                    )}
-                  </div>
+                  <>
+                    {/* Labeled event chips on wider screens */}
+                    <div className="mt-1 hidden flex-col gap-0.5 sm:flex">
+                      {cell.items.slice(0, 2).map((it) => (
+                        <span
+                          key={it.id}
+                          className={cn(
+                            "truncate rounded border px-1 py-0.5 text-[9px] font-medium leading-tight",
+                            STATUS_CHIP[it.status],
+                          )}
+                          title={`${it.title} · ${it.projectCode} ${it.locationName}`}
+                        >
+                          {KIND_META[it.kind].label} · {it.projectCode}
+                        </span>
+                      ))}
+                      {cell.items.length > 2 && (
+                        <span className="text-[9px] text-muted-foreground">
+                          +{cell.items.length - 2} lagi
+                        </span>
+                      )}
+                    </div>
+                    {/* Compact dots on small screens */}
+                    <div className="mt-auto flex flex-wrap gap-0.5 sm:hidden">
+                      {cell.items.slice(0, 4).map((it) => (
+                        <span
+                          key={it.id}
+                          className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[it.status])}
+                          title={it.title}
+                        />
+                      ))}
+                      {cell.items.length > 4 && (
+                        <span className="text-[9px] text-muted-foreground">+{cell.items.length - 4}</span>
+                      )}
+                    </div>
+                  </>
                 )}
               </button>
             );
