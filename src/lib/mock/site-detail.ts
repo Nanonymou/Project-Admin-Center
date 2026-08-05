@@ -2,6 +2,7 @@ import { SITE_KPI, type SiteKpi } from "./site-kpi";
 
 export type SiteDaily = {
   date: string;
+  iso: string;
   sales: number;
   cost: number;
 };
@@ -13,6 +14,7 @@ export type SiteCategoryPoint = {
 
 export type SiteMarginPoint = {
   date: string;
+  iso: string;
   marginPct: number;
   target: number;
 };
@@ -75,6 +77,7 @@ function buildDaily(baseSales: number, seed: number): SiteDaily[] {
     const costDaily = Math.round(salesDaily * (0.38 + seededRandom(seed + i + 100) * 0.1));
     out.push({
       date: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
+      iso: d.toISOString().slice(0, 10),
       sales: salesDaily,
       cost: costDaily,
     });
@@ -86,10 +89,12 @@ function buildMarginTrend(baseMarginPct: number, seed: number): SiteMarginPoint[
   const out: SiteMarginPoint[] = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     const jitter = (seededRandom(seed + i) - 0.5) * 6;
     out.push({
       date: d.toLocaleDateString("id-ID", { month: "short", year: "2-digit" }),
+      iso: d.toISOString().slice(0, 10),
       marginPct: Math.max(30, Math.min(70, baseMarginPct + jitter)),
       target: 50,
     });

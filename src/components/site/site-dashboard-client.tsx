@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { notFound, useRouter } from "next/navigation";
-import { Building2, ChevronRight, Download, Lock, RefreshCcw } from "lucide-react";
+import { Building2, ChevronRight, Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Button } from "@/components/ui/button";
@@ -12,24 +12,79 @@ import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CategoryDonut } from "@/components/site/category-donut";
 import { MarginTrendChart } from "@/components/site/margin-trend-chart";
 import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
+import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { usePersona } from "@/components/providers/persona-provider";
-import { getSiteDetail, SITE_DETAILS } from "@/lib/mock/site-detail";
+import { useGlobalFilters } from "@/components/providers/global-filter-provider";
+import {
+  getSiteDetail,
+  SITE_DETAILS,
+  type MockInvoice,
+  type SiteApprovalStage,
+  type SiteCategoryPoint,
+  type SiteDaily,
+  type SiteInvoiceAging,
+  type SiteMarginPoint,
+} from "@/lib/mock/site-detail";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
+function withinRange(iso: string, from: string, to: string) {
+  return iso >= from && iso <= to;
+}
+
 export function SiteDashboardClient({ locationId }: { locationId: string }) {
   const { persona } = usePersona();
+  const { filters } = useGlobalFilters();
   const router = useRouter();
-  const [range, setRange] = useState<"7d" | "30d">("30d");
 
   const detail = getSiteDetail(locationId);
   if (!detail) notFound();
 
   const inScope = canAccessLocation(persona, detail.site.locationId, detail.site.projectCode);
 
-  const dailyView = useMemo(
-    () => (range === "7d" ? detail.daily30d.slice(-7) : detail.daily30d),
-    [range, detail.daily30d],
+  const scopedDaily: SiteDaily[] = useMemo(
+    () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
+    [detail.daily30d, filters.from, filters.to],
+  );
+
+  const scopedMargin: SiteMarginPoint[] = useMemo(
+    () => detail.marginTrend.filter((m) => withinRange(m.iso, monthStart(filters.from), filters.to)),
+    [detail.marginTrend, filters.from, filters.to],
+  );
+
+  // Categories, aging, invoices don't have per-day timestamps; scale them
+  // proportionally to the selected period vs the 30d baseline so charts
+  // still respond visually to the global period.
+  const factor = useMemo(() => computePeriodFactor(scopedDaily.length, detail.daily30d.length), [
+    scopedDaily.length,
+    detail.daily30d.length,
+  ]);
+  const scaledCategories: SiteCategoryPoint[] = useMemo(
+    () => detail.categories.map((c) => ({ ...c, amount: Math.round(c.amount * factor) })),
+    [detail.categories, factor],
+  );
+  const scaledStages: SiteApprovalStage[] = useMemo(
+    () =>
+      detail.approvalStages.map((s) => ({
+        ...s,
+        onTime: Math.round(s.onTime * factor),
+        atRisk: Math.round(s.atRisk * factor),
+        overdue: Math.round(s.overdue * factor),
+      })),
+    [detail.approvalStages, factor],
+  );
+  const scaledAging: SiteInvoiceAging[] = useMemo(
+    () =>
+      detail.invoiceAging.map((a) => ({
+        ...a,
+        count: Math.round(a.count * factor),
+        amount: Math.round(a.amount * factor),
+      })),
+    [detail.invoiceAging, factor],
+  );
+  const scaledInvoices: MockInvoice[] = useMemo(
+    () => detail.invoices.slice(0, Math.max(1, Math.round(detail.invoices.length * factor))),
+    [detail.invoices, factor],
   );
 
   const accessibleSites = Object.values(SITE_DETAILS)
@@ -37,6 +92,7 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
     .filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
 
   const canExport = persona.capabilities.canExport;
+  const periodOutside = scopedDaily.length === 0;
 
   if (!inScope) {
     return (
@@ -92,6 +148,20 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${accessibleSites.length} site accessible`} />
 
+        <SitePeriodBar
+          scopedInfo={`${scopedDaily.length} hari data · ${scaledInvoices.length} invoice`}
+        />
+
+        {periodOutside && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Rentang <b>{filters.from} → {filters.to}</b> di luar 30 hari data mock —
+              grafik ditampilkan kosong. Coba preset <b>7 hari</b> atau <b>30 hari</b>.
+            </span>
+          </div>
+        )}
+
         <SiteSummaryStrip detail={detail} />
 
         {accessibleSites.length > 1 && (
@@ -122,33 +192,18 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-start justify-between space-y-0">
-              <div>
-                <CardTitle>1. Sales · Cost · Profit</CardTitle>
-                <CardDescription>
-                  Toggle seri, focus mode, mode harian/kumulatif, & brush untuk zoom rentang tanggal.
-                </CardDescription>
-              </div>
-              <div className="flex gap-1.5">
-                {(["7d", "30d"] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRange(r)}
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-xs font-medium",
-                      range === r
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-input bg-background hover:bg-accent",
-                    )}
-                  >
-                    {r === "7d" ? "7 hari" : "30 hari"}
-                  </button>
-                ))}
-              </div>
+            <CardHeader>
+              <CardTitle>1. Sales · Cost · Profit</CardTitle>
+              <CardDescription>
+                Toggle seri, focus mode, harian/kumulatif, brush zoom. Data mengikuti periode global.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <SalesCostChart data={dailyView} />
+              {scopedDaily.length > 0 ? (
+                <SalesCostChart data={scopedDaily} />
+              ) : (
+                <EmptyRange />
+              )}
             </CardContent>
           </Card>
 
@@ -156,11 +211,15 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
             <CardHeader>
               <CardTitle>2. Komposisi Service Category</CardTitle>
               <CardDescription>
-                Hover slice / list untuk highlight · kategori aktif per site.
+                Nilai diskalakan proporsional dengan periode global.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <CategoryDonut data={detail.categories} />
+              {scopedDaily.length > 0 ? (
+                <CategoryDonut data={scaledCategories} />
+              ) : (
+                <EmptyRange />
+              )}
             </CardContent>
           </Card>
         </section>
@@ -168,27 +227,49 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
         <section>
           <Card>
             <CardHeader>
-              <CardTitle>3. Tren Margin 12 Bulan</CardTitle>
+              <CardTitle>3. Tren Margin</CardTitle>
               <CardDescription>
-                Bar = margin bulanan, garis = tren, target dashed = 50%.
+                Menampilkan bulan yang tercakup dalam periode global — bar bulanan, garis tren, target 50%.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <MarginTrendChart data={detail.marginTrend} />
+              {scopedMargin.length > 0 ? (
+                <MarginTrendChart data={scopedMargin} />
+              ) : (
+                <EmptyRange />
+              )}
             </CardContent>
           </Card>
         </section>
 
         <section>
           <InvoiceStatusPanel
-            stages={detail.approvalStages}
-            aging={detail.invoiceAging}
-            invoices={detail.invoices}
+            stages={scaledStages}
+            aging={scaledAging}
+            invoices={scaledInvoices}
           />
         </section>
       </div>
     </div>
   );
+}
+
+function EmptyRange() {
+  return (
+    <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+      Tidak ada data untuk periode terpilih.
+    </div>
+  );
+}
+
+function computePeriodFactor(rangeDays: number, baseDays: number) {
+  if (rangeDays === 0 || baseDays === 0) return 0;
+  const raw = rangeDays / baseDays;
+  return Math.max(0.05, Math.min(1, raw));
+}
+
+function monthStart(iso: string) {
+  return `${iso.slice(0, 7)}-01`;
 }
 
 function SiteSummaryStrip({ detail }: { detail: ReturnType<typeof getSiteDetail> & object }) {
