@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, CheckCircle2, Filter, RotateCcw, Search, SearchX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,9 +38,17 @@ const STATUS_META: Record<
 const BUCKET_ORDER: OutstandingInvoice["agingBucket"][] = ["0-30", "31-60", "61-90", ">90"];
 
 export function OutstandingInvoiceTable({ items, showLocationColumn = true, compact = false }: Props) {
+  const router = useRouter();
   const [bucketFilter, setBucketFilter] = useState<OutstandingInvoice["agingBucket"] | "all">("all");
   const [projectFilter, setProjectFilter] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
+
+  // Ignore row navigation when the click originated from an interactive
+  // element (link/button), so those keep their own behavior.
+  function navigateFromRow(e: React.MouseEvent, invoiceNumber: string) {
+    if ((e.target as HTMLElement).closest("a,button")) return;
+    router.push(invoiceHref(invoiceNumber));
+  }
 
   const summary = useMemo(() => summarizeOutstanding(items), [items]);
   const projects = useMemo(() => Array.from(new Set(items.map((i) => i.projectCode))), [items]);
@@ -180,7 +189,17 @@ export function OutstandingInvoiceTable({ items, showLocationColumn = true, comp
             {shown.map((item) => {
               const status = STATUS_META[item.status];
               return (
-                <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr
+                  key={item.id}
+                  onClick={(e) => navigateFromRow(e, item.invoiceNumber)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") router.push(invoiceHref(item.invoiceNumber));
+                  }}
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`Buka detail ${item.invoiceNumber}`}
+                  className="cursor-pointer border-b last:border-0 hover:bg-muted/30 focus:bg-muted/40 focus:outline-none"
+                >
                   <td className="px-3 py-2">
                     <Link
                       href={invoiceHref(item.invoiceNumber)}
