@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
+import { MissingSubmissionStrip } from "@/components/daily-cost/missing-submission-strip";
 import { buildSubmitStatus } from "@/lib/mock/closing-status";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
@@ -58,6 +59,22 @@ export function DailyCostClient() {
     const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     return buildSubmitStatus(accessible);
   }, [persona]);
+
+  // Seeded submission history for the active site (past ~14 days) merged
+  // with entries created this session, so the indicator has realistic data.
+  const submittedIsos = useMemo(() => {
+    const set = new Set<string>();
+    let seed = 0;
+    for (const ch of activeWorkspace.locationId) seed += ch.charCodeAt(0);
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      // deterministic ~75% submitted
+      if (Math.abs(Math.sin(seed + i)) > 0.28) set.add(d.toISOString().slice(0, 10));
+    }
+    for (const e of entries) if (e.status === "submitted") set.add(e.date);
+    return Array.from(set);
+  }, [activeWorkspace.locationId, entries]);
 
   const errors = useMemo(() => validateCostEntry(categories, values), [categories, values]);
   const total = useMemo(() => sumCostEntry(categories, values), [categories, values]);
@@ -109,6 +126,18 @@ export function DailyCostClient() {
             <b>{activeWorkspace.projectCode}</b>.
           </span>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Status Submit — {activeWorkspace.locationName}</CardTitle>
+            <CardDescription>
+              Tanggal yang belum di-submit ditandai merah agar tidak terlewat sebelum cut-off.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MissingSubmissionStrip submittedIsos={submittedIsos} />
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
