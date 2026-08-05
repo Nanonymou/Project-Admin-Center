@@ -15,6 +15,8 @@ import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
+import { DeadlineList } from "@/components/reminders/deadline-list";
+import { buildDeadlines } from "@/lib/mock/deadlines";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
@@ -45,6 +47,7 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
   const inScope = canAccessLocation(persona, detail.site.locationId, detail.site.projectCode);
 
   const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
+  const deadlines = useMemo(() => buildDeadlines([detail.site]), [detail.site]);
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -170,6 +173,20 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
         <section>
           <ReminderWidget items={reminders} />
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Deadline Reminder</CardTitle>
+              <CardDescription>
+                Semua tenggat aktif untuk site ini — dikelompokkan per status.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DeadlineList items={deadlines} showLocationColumn={false} />
+            </CardContent>
+          </Card>
         </section>
 
         {accessibleSites.length > 1 && (

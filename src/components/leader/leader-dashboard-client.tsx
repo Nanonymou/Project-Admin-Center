@@ -19,6 +19,8 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ProfitContributionChart } from "@/components/leader/profit-contribution-chart";
 import { ProfitRankingTable } from "@/components/leader/profit-ranking-table";
+import { DeadlineList } from "@/components/reminders/deadline-list";
+import { buildDeadlines } from "@/lib/mock/deadlines";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +81,8 @@ export function LeaderDashboardClient() {
   );
   const top = rankedByProfit.slice(0, 3);
   const bottom = rankedByProfit.slice(-3).reverse();
+
+  const deadlines = useMemo(() => buildDeadlines(filteredSites), [filteredSites]);
 
   const pendingAll = filteredSites.reduce((s, x) => s + x.pendingApprovals, 0);
   const overdueAll = filteredSites.reduce((s, x) => s + x.overdueInvoices, 0);
@@ -184,6 +188,20 @@ export function LeaderDashboardClient() {
                   Tidak ada data.
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Deadline Portfolio</CardTitle>
+              <CardDescription>
+                Semua tenggat lintas site dalam scope Leader — dikelompokkan per status.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DeadlineList items={deadlines} />
             </CardContent>
           </Card>
         </section>
