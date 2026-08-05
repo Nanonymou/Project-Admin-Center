@@ -13,6 +13,7 @@ import { CategoryDonut } from "@/components/site/category-donut";
 import { MarginTrendChart } from "@/components/site/margin-trend-chart";
 import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
+import { SitePeriodComparison } from "@/components/site/site-period-comparison";
 import { ReminderWidget } from "@/components/site/reminder-widget";
 import { buildReminders } from "@/lib/mock/reminders";
 import { DeadlineList } from "@/components/reminders/deadline-list";
@@ -168,6 +169,8 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
         <SitePeriodBar
           scopedInfo={`${scopedDaily.length} hari data · ${scaledInvoices.length} invoice`}
         />
+
+        <SitePeriodComparison daily30d={detail.daily30d} />
 
         {periodOutside && (
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
