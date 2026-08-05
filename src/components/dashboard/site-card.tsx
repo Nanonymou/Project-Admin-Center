@@ -73,7 +73,7 @@ export function SiteCard({ site }: { site: SiteKpi }) {
             </span>
           </div>
           <Link
-            href={`/activity?location=${site.locationId}`}
+            href={`/site/${site.locationId}`}
             className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
             Open Workspace
