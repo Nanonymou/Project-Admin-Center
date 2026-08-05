@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   DATE_PRESETS,
-  LOCATION_OPTIONS,
-  PROJECT_OPTIONS,
+  LOCATION_OPTIONS as ALL_LOCATION_OPTIONS,
+  PROJECT_OPTIONS as ALL_PROJECT_OPTIONS,
   rangeForPreset,
   type ActivityFilterState,
   type DatePresetKey,
+  type LocationOption,
+  type ProjectOption,
 } from "@/lib/mock/filters";
 
 type Props = {
@@ -18,13 +20,22 @@ type Props = {
   onChange: (next: ActivityFilterState) => void;
   onReset: () => void;
   matchedCount: number;
+  projectOptions?: ProjectOption[];
+  locationOptions?: LocationOption[];
 };
 
-export function ActivityFilterBar({ value, onChange, onReset, matchedCount }: Props) {
+export function ActivityFilterBar({
+  value,
+  onChange,
+  onReset,
+  matchedCount,
+  projectOptions = ALL_PROJECT_OPTIONS,
+  locationOptions = ALL_LOCATION_OPTIONS,
+}: Props) {
   const availableLocations = useMemo(() => {
-    if (value.projects.length === 0) return LOCATION_OPTIONS;
-    return LOCATION_OPTIONS.filter((l) => value.projects.includes(l.projectCode));
-  }, [value.projects]);
+    if (value.projects.length === 0) return locationOptions;
+    return locationOptions.filter((l) => value.projects.includes(l.projectCode));
+  }, [value.projects, locationOptions]);
 
   function handlePreset(preset: DatePresetKey) {
     if (preset === "custom") {
@@ -41,7 +52,7 @@ export function ActivityFilterBar({ value, onChange, onReset, matchedCount }: Pr
       ? value.projects.filter((p) => p !== code)
       : [...value.projects, code];
     const stillValidLocations = value.locations.filter((locId) =>
-      LOCATION_OPTIONS.some(
+      locationOptions.some(
         (l) => l.id === locId && (nextProjects.length === 0 || nextProjects.includes(l.projectCode)),
       ),
     );
@@ -129,7 +140,7 @@ export function ActivityFilterBar({ value, onChange, onReset, matchedCount }: Pr
         <FilterChipGroup
           label="Project"
           hint={value.projects.length === 0 ? "Semua project" : `${value.projects.length} dipilih`}
-          items={PROJECT_OPTIONS.map((p) => ({
+          items={projectOptions.map((p) => ({
             id: p.code,
             label: p.code,
             sublabel: p.name,

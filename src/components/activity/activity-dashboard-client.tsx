@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, RefreshCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { ActivityFeed } from "@/components/activity/activity-feed";
 import { SiteActivityTable } from "@/components/activity/site-activity-table";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ComparisonPanel } from "@/components/activity/comparison-panel";
+import { PersonaBanner } from "@/components/activity/persona-banner";
+import { usePersona } from "@/components/providers/persona-provider";
 import {
   ACTIVITY_FEED,
   ACTIVITY_KPIS,
@@ -23,12 +25,40 @@ import {
 import {
   DEFAULT_FILTER_STATE,
   LOCATION_OPTIONS,
+  PROJECT_OPTIONS,
   type ActivityFilterState,
 } from "@/lib/mock/filters";
+import { canAccessLocation, canAccessProject } from "@/lib/personas";
+import { cn } from "@/lib/utils";
 
 export function ActivityDashboardClient() {
+  const { persona } = usePersona();
   const [filters, setFilters] = useState<ActivityFilterState>(DEFAULT_FILTER_STATE);
   const [showComparison, setShowComparison] = useState(true);
+
+  // Persona-scoped option lists (drives what shows in the filter bar).
+  const personaProjectOptions = useMemo(
+    () => PROJECT_OPTIONS.filter((p) => canAccessProject(persona, p.code)),
+    [persona],
+  );
+  const personaLocationOptions = useMemo(
+    () => LOCATION_OPTIONS.filter((l) => canAccessLocation(persona, l.id, l.projectCode)),
+    [persona],
+  );
+
+  // Reset user-selected filters whose values are no longer in persona scope.
+  useEffect(() => {
+    const validProjectCodes = new Set(personaProjectOptions.map((p) => p.code));
+    const validLocationIds = new Set(personaLocationOptions.map((l) => l.id));
+    setFilters((prev) => {
+      const nextProjects = prev.projects.filter((p) => validProjectCodes.has(p));
+      const nextLocations = prev.locations.filter((l) => validLocationIds.has(l));
+      if (nextProjects.length === prev.projects.length && nextLocations.length === prev.locations.length) {
+        return prev;
+      }
+      return { ...prev, projects: nextProjects, locations: nextLocations };
+    });
+  }, [personaProjectOptions, personaLocationOptions]);
 
   const selectedLocationNames = useMemo(
     () =>
@@ -38,27 +68,71 @@ export function ActivityDashboardClient() {
     [filters.locations],
   );
 
+  // Persona-visible location names — used for scoping when the user hasn't
+  // narrowed the filter further.
+  const personaLocationNames = useMemo(
+    () => new Set(personaLocationOptions.map((l) => l.name)),
+    [personaLocationOptions],
+  );
+  const personaProjectCodes = useMemo(
+    () => new Set(personaProjectOptions.map((p) => p.code)),
+    [personaProjectOptions],
+  );
+
+  function rowInPersonaScope(project: string, location: string) {
+    if (!personaProjectCodes.has(project)) return false;
+    // If persona has explicit locations, enforce them; otherwise allow.
+    if (persona.scope.locations.length === 0) return true;
+    return personaLocationNames.has(location);
+  }
+
+  const scopedSites = useMemo(
+    () => SITE_ACTIVITY.filter((row) => rowInPersonaScope(row.project, row.location)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [persona],
+  );
+
   const filteredSites = useMemo(() => {
-    return SITE_ACTIVITY.filter((row) => {
+    return scopedSites.filter((row) => {
       if (filters.projects.length > 0 && !filters.projects.includes(row.project)) return false;
       if (filters.locations.length > 0 && !selectedLocationNames.has(row.location)) return false;
       return true;
     });
-  }, [filters.projects, filters.locations, selectedLocationNames]);
+  }, [scopedSites, filters.projects, filters.locations, selectedLocationNames]);
+
+  const scopedFeed = useMemo(
+    () => ACTIVITY_FEED.filter((item) => rowInPersonaScope(item.project, item.location)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [persona],
+  );
 
   const filteredFeed = useMemo(() => {
-    return ACTIVITY_FEED.filter((item) => {
+    return scopedFeed.filter((item) => {
       if (filters.projects.length > 0 && !filters.projects.includes(item.project)) return false;
       if (filters.locations.length > 0 && !selectedLocationNames.has(item.location)) return false;
       return true;
     });
-  }, [filters.projects, filters.locations, selectedLocationNames]);
+  }, [scopedFeed, filters.projects, filters.locations, selectedLocationNames]);
+
+  const scopeSummary = useMemo(() => {
+    if (personaProjectOptions.length === PROJECT_OPTIONS.length && persona.scope.locations.length === 0) {
+      return "Semua project & location";
+    }
+    const proj = personaProjectOptions.map((p) => p.code).join(", ") || "—";
+    if (persona.scope.locations.length > 0) {
+      const locs = personaLocationOptions.map((l) => l.name).join(", ");
+      return `${proj} · ${locs}`;
+    }
+    return `${proj} · semua location`;
+  }, [persona, personaProjectOptions, personaLocationOptions]);
 
   const scopeLabel = useMemo(() => {
     const p = filters.projects.length === 0 ? "Semua project" : filters.projects.join(", ");
     const l = filters.locations.length === 0 ? "semua location" : `${filters.locations.length} location`;
     return `${p} · ${l}`;
   }, [filters.projects, filters.locations]);
+
+  const canExport = persona.capabilities.canExport;
 
   return (
     <div>
@@ -75,8 +149,13 @@ export function ActivityDashboardClient() {
               <RefreshCcw className="h-4 w-4" />
               Refresh
             </Button>
-            <Button size="sm">
-              <Download className="h-4 w-4" />
+            <Button
+              size="sm"
+              disabled={!canExport}
+              className={cn(!canExport && "cursor-not-allowed opacity-60")}
+              title={canExport ? undefined : "Peran Anda tidak memiliki izin export"}
+            >
+              {canExport ? <Download className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
               Export
             </Button>
           </>
@@ -84,11 +163,15 @@ export function ActivityDashboardClient() {
       />
 
       <div className="space-y-6 p-4 md:p-6">
+        <PersonaBanner persona={persona} scopeSummary={scopeSummary} />
+
         <ActivityFilterBar
           value={filters}
           onChange={setFilters}
-          onReset={() => setFilters(DEFAULT_FILTER_STATE)}
+          onReset={() => setFilters({ ...DEFAULT_FILTER_STATE })}
           matchedCount={filteredSites.length}
+          projectOptions={personaProjectOptions}
+          locationOptions={personaLocationOptions}
         />
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -150,9 +233,9 @@ export function ActivityDashboardClient() {
               <div>
                 <CardTitle>Aktivitas per Site</CardTitle>
                 <CardDescription>
-                  {filteredSites.length === SITE_ACTIVITY.length
-                    ? "Ringkasan volume & kesehatan operasional per lokasi."
-                    : `Menampilkan ${filteredSites.length} dari ${SITE_ACTIVITY.length} site sesuai filter.`}
+                  {filteredSites.length === scopedSites.length
+                    ? `Menampilkan ${scopedSites.length} site dalam scope Anda.`
+                    : `Menampilkan ${filteredSites.length} dari ${scopedSites.length} site scope.`}
                 </CardDescription>
               </div>
               <Button variant="ghost" size="sm">Lihat semua</Button>
@@ -171,9 +254,9 @@ export function ActivityDashboardClient() {
               <div>
                 <CardTitle>Live Activity</CardTitle>
                 <CardDescription>
-                  {filteredFeed.length === ACTIVITY_FEED.length
-                    ? "Kejadian terbaru lintas project."
-                    : `${filteredFeed.length} kejadian sesuai filter.`}
+                  {filteredFeed.length === scopedFeed.length
+                    ? `${scopedFeed.length} kejadian dalam scope.`
+                    : `${filteredFeed.length} dari ${scopedFeed.length} kejadian scope.`}
                 </CardDescription>
               </div>
               <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
