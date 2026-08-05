@@ -13,6 +13,8 @@ import { CategoryDonut } from "@/components/site/category-donut";
 import { MarginTrendChart } from "@/components/site/margin-trend-chart";
 import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
+import { ReminderWidget } from "@/components/site/reminder-widget";
+import { buildReminders } from "@/lib/mock/reminders";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
@@ -41,6 +43,8 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
   if (!detail) notFound();
 
   const inScope = canAccessLocation(persona, detail.site.locationId, detail.site.projectCode);
+
+  const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -163,6 +167,10 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
         )}
 
         <SiteSummaryStrip detail={detail} />
+
+        <section>
+          <ReminderWidget items={reminders} />
+        </section>
 
         {accessibleSites.length > 1 && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
