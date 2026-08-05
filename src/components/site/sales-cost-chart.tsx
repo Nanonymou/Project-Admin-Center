@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { Eye, EyeOff, Focus } from "lucide-react";
 import type { SiteDaily } from "@/lib/mock/site-detail";
+import { useContainerSize } from "@/lib/hooks/use-container-size";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type Series = "sales" | "cost" | "profit";
@@ -39,6 +40,7 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
   const [hidden, setHidden] = useState<Set<Series>>(new Set());
   const [focused, setFocused] = useState<Series | null>(null);
   const [mode, setMode] = useState<ViewMode>("daily");
+  const { ref, width, isSmall } = useContainerSize<HTMLDivElement>();
 
   const enriched: Enriched[] = useMemo(() => {
     let sc = 0,
@@ -78,8 +80,12 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
 
   const total = enriched.at(-1);
 
+  const tickInterval = tickIntervalFor(enriched.length, width);
+  const yAxisWidth = isSmall ? 44 : 60;
+  const fontSize = isSmall ? 9 : 10;
+
   return (
-    <div className="space-y-3">
+    <div ref={ref} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {(Object.keys(SERIES_META) as Series[]).map((s) => {
@@ -149,7 +155,7 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
         </div>
       </div>
 
-      <div className="h-72 w-full">
+      <div className={cn("w-full", isSmall ? "h-56" : "h-72")}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={enriched} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
             <defs>
@@ -163,23 +169,29 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-            <YAxis
-              tick={{ fontSize: 10 }}
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize }}
               stroke="hsl(215 16% 47%)"
               tickLine={false}
               axisLine={false}
-              width={60}
-              tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}jt`}
+              interval={tickInterval}
+              minTickGap={isSmall ? 12 : 8}
+            />
+            <YAxis
+              tick={{ fontSize }}
+              stroke="hsl(215 16% 47%)"
+              tickLine={false}
+              axisLine={false}
+              width={yAxisWidth}
+              tickFormatter={compactCurrency}
             />
             <Tooltip
               content={(p) => <RichTooltip {...(p as RichTooltipProps)} mode={mode} />}
               cursor={{ stroke: "hsl(215 16% 47%)", strokeDasharray: "2 3" }}
             />
             <ReferenceLine y={0} stroke="hsl(215 16% 47%)" strokeDasharray="3 3" />
-            <Legend
-              wrapperStyle={{ display: "none" }}
-            />
+            <Legend wrapperStyle={{ display: "none" }} />
             {!hidden.has("sales") && (
               <Area
                 type="monotone"
@@ -222,7 +234,7 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
             )}
             <Brush
               dataKey="date"
-              height={22}
+              height={isSmall ? 18 : 22}
               travellerWidth={8}
               stroke="hsl(221 83% 45%)"
               fill="hsl(221 83% 95%)"
@@ -232,7 +244,7 @@ export function SalesCostChart({ data }: { data: SiteDaily[] }) {
       </div>
 
       {total && (
-        <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/30 p-3 text-xs">
+        <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/30 p-3 text-xs sm:grid-cols-3">
           <MiniTotal label="Total Sales" value={formatCurrency(total.salesCum)} color={SERIES_META.sales.color} />
           <MiniTotal label="Total Cost" value={formatCurrency(total.costCum)} color={SERIES_META.cost.color} />
           <MiniTotal
@@ -306,4 +318,19 @@ function TooltipRow({ color, label, value }: { color: string; label: string; val
       <span className="tabular-nums font-medium">{formatCurrency(value)}</span>
     </div>
   );
+}
+
+function tickIntervalFor(pointCount: number, width: number): number | "preserveStartEnd" {
+  if (pointCount === 0 || width === 0) return "preserveStartEnd";
+  const maxLabels = Math.max(3, Math.floor(width / 60));
+  if (pointCount <= maxLabels) return 0;
+  return Math.floor(pointCount / maxLabels);
+}
+
+function compactCurrency(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(0)}jt`;
+  if (abs >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
+  return `${v}`;
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SiteCategoryPoint } from "@/lib/mock/site-detail";
+import { useContainerSize } from "@/lib/hooks/use-container-size";
 import { cn, formatCurrency } from "@/lib/utils";
 
 const PALETTE = [
@@ -19,10 +20,14 @@ export function CategoryDonut({ data }: { data: SiteCategoryPoint[] }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const total = useMemo(() => data.reduce((s, d) => s + d.amount, 0), [data]);
   const active = activeIndex === null ? null : data[activeIndex];
+  const { ref, isSmall } = useContainerSize<HTMLDivElement>();
 
   return (
-    <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[1fr,1.1fr]">
-      <div className="relative h-56">
+    <div
+      ref={ref}
+      className="grid grid-cols-1 items-center gap-3 sm:grid-cols-[minmax(0,1fr),minmax(0,1.1fr)]"
+    >
+      <div className={cn("relative", isSmall ? "h-44" : "h-56")}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Tooltip

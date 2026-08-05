@@ -12,20 +12,34 @@ import {
   YAxis,
 } from "recharts";
 import type { SiteMarginPoint } from "@/lib/mock/site-detail";
+import { useContainerSize } from "@/lib/hooks/use-container-size";
+import { cn } from "@/lib/utils";
 
 export function MarginTrendChart({ data }: { data: SiteMarginPoint[] }) {
+  const { ref, width, isSmall } = useContainerSize<HTMLDivElement>();
+  const maxLabels = Math.max(3, Math.floor(width / 55));
+  const interval = data.length > maxLabels ? Math.floor(data.length / maxLabels) : 0;
+
   return (
-    <div className="h-64 w-full">
+    <div ref={ref} className={cn("w-full", isSmall ? "h-56" : "h-64")}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-          <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-          <YAxis
-            tick={{ fontSize: 10 }}
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: isSmall ? 9 : 10 }}
             stroke="hsl(215 16% 47%)"
             tickLine={false}
             axisLine={false}
-            width={40}
+            interval={interval}
+            minTickGap={12}
+          />
+          <YAxis
+            tick={{ fontSize: isSmall ? 9 : 10 }}
+            stroke="hsl(215 16% 47%)"
+            tickLine={false}
+            axisLine={false}
+            width={isSmall ? 34 : 40}
             domain={[30, 70]}
             tickFormatter={(v) => `${v}%`}
           />
@@ -39,7 +53,11 @@ export function MarginTrendChart({ data }: { data: SiteMarginPoint[] }) {
             y={50}
             stroke="hsl(215 16% 47%)"
             strokeDasharray="4 4"
-            label={{ value: "Target 50%", position: "right", fill: "hsl(215 16% 47%)", fontSize: 10 }}
+            label={
+              isSmall
+                ? undefined
+                : { value: "Target 50%", position: "right", fill: "hsl(215 16% 47%)", fontSize: 10 }
+            }
           />
           <Bar dataKey="marginPct" name="Margin %" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} />
           <Line type="monotone" dataKey="marginPct" stroke="hsl(142 71% 30%)" strokeWidth={2} dot={{ r: 3 }} />

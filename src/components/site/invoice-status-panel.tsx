@@ -22,6 +22,7 @@ import type {
   SiteApprovalStage,
   SiteInvoiceAging,
 } from "@/lib/mock/site-detail";
+import { useContainerSize } from "@/lib/hooks/use-container-size";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { CheckCircle2, CircleAlert, CircleDashed, Filter, RotateCcw } from "lucide-react";
 
@@ -52,6 +53,8 @@ export function InvoiceStatusPanel({ stages, aging, invoices }: Props) {
   });
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<SiteInvoiceAging["bucket"] | null>(null);
+  const funnelSize = useContainerSize<HTMLDivElement>();
+  const agingSize = useContainerSize<HTMLDivElement>();
 
   const totalInvoices = invoices.length;
   const settled = invoices.filter((i) => i.stage === "Payment").length;
@@ -150,11 +153,11 @@ export function InvoiceStatusPanel({ stages, aging, invoices }: Props) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div>
+          <div ref={funnelSize.ref}>
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Approval Funnel · klik stage
             </div>
-            <div className="h-64">
+            <div className={cn(funnelSize.isSmall ? "h-56" : "h-64")}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={stages}
@@ -169,18 +172,30 @@ export function InvoiceStatusPanel({ stages, aging, invoices }: Props) {
                   }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="stage"
-                    tick={{ fontSize: 11 }}
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: funnelSize.isSmall ? 9 : 10 }}
                     stroke="hsl(215 16% 47%)"
                     tickLine={false}
                     axisLine={false}
-                    width={130}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="stage"
+                    tick={{ fontSize: funnelSize.isSmall ? 10 : 11 }}
+                    stroke="hsl(215 16% 47%)"
+                    tickLine={false}
+                    axisLine={false}
+                    width={funnelSize.isSmall ? 96 : 130}
+                    interval={0}
                   />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid hsl(214 32% 91%)", fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
+                    iconType="circle"
+                    verticalAlign="bottom"
+                  />
                   {statusVisible.onTime && (
                     <Bar dataKey="onTime" stackId="a" fill={STATUS_META.onTime.color} name="On Time" />
                   )}
@@ -210,29 +225,36 @@ export function InvoiceStatusPanel({ stages, aging, invoices }: Props) {
             )}
           </div>
 
-          <div>
+          <div ref={agingSize.ref}>
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Invoice Aging · klik bucket
             </div>
-            <div className="h-64">
+            <div className={cn(agingSize.isSmall ? "h-56" : "h-64")}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={aging}
                   margin={{ top: 16, right: 12, left: 8, bottom: 0 }}
-                  barCategoryGap={20}
+                  barCategoryGap={agingSize.isSmall ? 12 : 20}
                   onClick={(e) => {
                     const label = e?.activeLabel as SiteInvoiceAging["bucket"] | undefined;
                     if (label) setSelectedBucket((prev) => (prev === label ? null : label));
                   }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 11 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 10 }}
+                  <XAxis
+                    dataKey="bucket"
+                    tick={{ fontSize: agingSize.isSmall ? 10 : 11 }}
                     stroke="hsl(215 16% 47%)"
                     tickLine={false}
                     axisLine={false}
-                    width={60}
+                    interval={0}
+                  />
+                  <YAxis
+                    tick={{ fontSize: agingSize.isSmall ? 9 : 10 }}
+                    stroke="hsl(215 16% 47%)"
+                    tickLine={false}
+                    axisLine={false}
+                    width={agingSize.isSmall ? 46 : 60}
                     tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}jt`}
                   />
                   <Tooltip
