@@ -125,9 +125,9 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between space-y-0">
               <div>
-                <CardTitle>1. Tren Sales, Cost & Margin</CardTitle>
+                <CardTitle>1. Sales · Cost · Profit</CardTitle>
                 <CardDescription>
-                  Klik legenda untuk sembunyikan seri · {range === "7d" ? "7 hari" : "30 hari"} terakhir
+                  Toggle seri, focus mode, mode harian/kumulatif, & brush untuk zoom rentang tanggal.
                 </CardDescription>
               </div>
               <div className="flex gap-1.5">
