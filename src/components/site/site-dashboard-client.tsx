@@ -54,11 +54,6 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
   const reminders = useMemo(() => buildReminders(detail.site), [detail.site]);
   const deadlines = useMemo(() => buildDeadlines([detail.site]), [detail.site]);
-  const approvals = useMemo(() => buildApprovalReminders(detail.site, detail), [detail]);
-  const overdueInvoices = useMemo(
-    () => buildOverdueInvoicesFor([detail.site], SITE_DETAILS),
-    [detail.site],
-  );
 
   const scopedDaily: SiteDaily[] = useMemo(
     () => detail.daily30d.filter((d) => withinRange(d.iso, filters.from, filters.to)),
@@ -103,6 +98,21 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
   const scaledInvoices: MockInvoice[] = useMemo(
     () => detail.invoices.slice(0, Math.max(1, Math.round(detail.invoices.length * factor))),
     [detail.invoices, factor],
+  );
+
+  // Period-scoped detail: reuse the same period-scaled invoice slice so the
+  // approval and overdue widgets track the selected period like the charts.
+  const scopedDetail = useMemo(
+    () => ({ ...detail, invoices: scaledInvoices }),
+    [detail, scaledInvoices],
+  );
+  const approvals = useMemo(
+    () => buildApprovalReminders(detail.site, scopedDetail),
+    [detail.site, scopedDetail],
+  );
+  const overdueInvoices = useMemo(
+    () => buildOverdueInvoicesFor([detail.site], { [detail.site.locationId]: scopedDetail }),
+    [detail.site, scopedDetail],
   );
 
   const accessibleSites = Object.values(SITE_DETAILS)
@@ -207,7 +217,8 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
             <CardHeader>
               <CardTitle>Approval Reminder</CardTitle>
               <CardDescription>
-                Invoice yang menunggu tindakan approval — filter status, prioritas, dan approve inline.
+                Invoice menunggu approval dalam periode{" "}
+                <b>{filters.from} → {filters.to}</b> — filter status, prioritas, approve inline.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -225,7 +236,8 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
             <CardHeader>
               <CardTitle>Invoice Terlambat</CardTitle>
               <CardDescription>
-                Invoice overdue site ini — kelompok severity + reminder cepat.
+                Invoice overdue site ini pada periode{" "}
+                <b>{filters.from} → {filters.to}</b> — kelompok severity + reminder cepat.
               </CardDescription>
             </CardHeader>
             <CardContent>
