@@ -1,13 +1,28 @@
 "use client";
 
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type { HourlyPoint } from "@/lib/mock/activity";
 
-export function HourlyTrendChart({ data }: { data: HourlyPoint[] }) {
+export function HourlyTrendChart({
+  data,
+  showComparison = false,
+}: {
+  data: HourlyPoint[];
+  showComparison?: boolean;
+}) {
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
           <defs>
             <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="hsl(221 83% 45%)" stopOpacity={0.35} />
@@ -30,9 +45,31 @@ export function HourlyTrendChart({ data }: { data: HourlyPoint[] }) {
             }}
             labelStyle={{ fontWeight: 600, marginBottom: 4 }}
           />
-          <Area type="monotone" dataKey="sales" stroke="hsl(221 83% 45%)" strokeWidth={2} fill="url(#salesFill)" name="Sales" />
-          <Area type="monotone" dataKey="cost" stroke="hsl(38 92% 50%)" strokeWidth={2} fill="url(#costFill)" name="Cost" />
-        </AreaChart>
+          <Area type="monotone" dataKey="sales" stroke="hsl(221 83% 45%)" strokeWidth={2} fill="url(#salesFill)" name="Sales (Hari ini)" />
+          <Area type="monotone" dataKey="cost" stroke="hsl(38 92% 50%)" strokeWidth={2} fill="url(#costFill)" name="Cost (Hari ini)" />
+          {showComparison && (
+            <>
+              <Line
+                type="monotone"
+                dataKey="salesPrev"
+                stroke="hsl(221 83% 45%)"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                dot={false}
+                name="Sales (Kemarin)"
+              />
+              <Line
+                type="monotone"
+                dataKey="costPrev"
+                stroke="hsl(38 92% 50%)"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                dot={false}
+                name="Cost (Kemarin)"
+              />
+            </>
+          )}
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

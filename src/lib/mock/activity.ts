@@ -160,22 +160,44 @@ export const SITE_ACTIVITY: SiteActivity[] = [
   { project: "PHKT", location: "Attaka NIB", transactions: 70, pending: 0, slaPct: 100, status: "healthy" },
 ];
 
-export type HourlyPoint = { hour: string; sales: number; cost: number };
+export type HourlyPoint = {
+  hour: string;
+  sales: number;
+  cost: number;
+  salesPrev: number;
+  costPrev: number;
+};
 
 export const HOURLY_TREND: HourlyPoint[] = [
-  { hour: "06:00", sales: 12, cost: 8 },
-  { hour: "07:00", sales: 34, cost: 18 },
-  { hour: "08:00", sales: 68, cost: 32 },
-  { hour: "09:00", sales: 94, cost: 44 },
-  { hour: "10:00", sales: 112, cost: 51 },
-  { hour: "11:00", sales: 148, cost: 62 },
-  { hour: "12:00", sales: 187, cost: 78 },
-  { hour: "13:00", sales: 165, cost: 71 },
-  { hour: "14:00", sales: 132, cost: 58 },
-  { hour: "15:00", sales: 118, cost: 49 },
-  { hour: "16:00", sales: 96, cost: 41 },
-  { hour: "17:00", sales: 74, cost: 33 },
-  { hour: "18:00", sales: 55, cost: 26 },
+  { hour: "06:00", sales: 12, cost: 8, salesPrev: 10, costPrev: 7 },
+  { hour: "07:00", sales: 34, cost: 18, salesPrev: 28, costPrev: 15 },
+  { hour: "08:00", sales: 68, cost: 32, salesPrev: 60, costPrev: 30 },
+  { hour: "09:00", sales: 94, cost: 44, salesPrev: 85, costPrev: 42 },
+  { hour: "10:00", sales: 112, cost: 51, salesPrev: 100, costPrev: 48 },
+  { hour: "11:00", sales: 148, cost: 62, salesPrev: 130, costPrev: 60 },
+  { hour: "12:00", sales: 187, cost: 78, salesPrev: 170, costPrev: 74 },
+  { hour: "13:00", sales: 165, cost: 71, salesPrev: 155, costPrev: 68 },
+  { hour: "14:00", sales: 132, cost: 58, salesPrev: 120, costPrev: 54 },
+  { hour: "15:00", sales: 118, cost: 49, salesPrev: 105, costPrev: 47 },
+  { hour: "16:00", sales: 96, cost: 41, salesPrev: 88, costPrev: 39 },
+  { hour: "17:00", sales: 74, cost: 33, salesPrev: 70, costPrev: 32 },
+  { hour: "18:00", sales: 55, cost: 26, salesPrev: 52, costPrev: 24 },
+];
+
+export type ComparisonStat = {
+  key: string;
+  label: string;
+  today: number;
+  yesterday: number;
+  unit: "count" | "idr" | "pct";
+};
+
+export const COMPARISON_STATS: ComparisonStat[] = [
+  { key: "sales", label: "Total Sales", today: 1284000000, yesterday: 1142000000, unit: "idr" },
+  { key: "cost", label: "Total Cost", today: 542000000, yesterday: 511000000, unit: "idr" },
+  { key: "transactions", label: "Jumlah Transaksi", today: 1284, yesterday: 1142, unit: "count" },
+  { key: "approvedInv", label: "Invoice Disetujui", today: 48, yesterday: 41, unit: "count" },
+  { key: "slaCompliance", label: "SLA Compliance", today: 94.2, yesterday: 92.6, unit: "pct" },
 ];
 
 export type SlaStageBar = {

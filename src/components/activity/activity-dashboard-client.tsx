@@ -11,9 +11,11 @@ import { SlaStageChart } from "@/components/activity/sla-stage-chart";
 import { ActivityFeed } from "@/components/activity/activity-feed";
 import { SiteActivityTable } from "@/components/activity/site-activity-table";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
+import { ComparisonPanel } from "@/components/activity/comparison-panel";
 import {
   ACTIVITY_FEED,
   ACTIVITY_KPIS,
+  COMPARISON_STATS,
   HOURLY_TREND,
   SITE_ACTIVITY,
   SLA_STAGE_BARS,
@@ -26,6 +28,7 @@ import {
 
 export function ActivityDashboardClient() {
   const [filters, setFilters] = useState<ActivityFilterState>(DEFAULT_FILTER_STATE);
+  const [showComparison, setShowComparison] = useState(true);
 
   const selectedLocationNames = useMemo(
     () =>
@@ -94,6 +97,10 @@ export function ActivityDashboardClient() {
           ))}
         </section>
 
+        <section>
+          <ComparisonPanel stats={COMPARISON_STATS} />
+        </section>
+
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -110,10 +117,19 @@ export function ActivityDashboardClient() {
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500" /> Cost
                 </span>
+                <label className="ml-1 inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent">
+                  <input
+                    type="checkbox"
+                    checked={showComparison}
+                    onChange={(e) => setShowComparison(e.target.checked)}
+                    className="h-3 w-3 accent-primary"
+                  />
+                  <span>Bandingkan kemarin</span>
+                </label>
               </div>
             </CardHeader>
             <CardContent>
-              <HourlyTrendChart data={HOURLY_TREND} />
+              <HourlyTrendChart data={HOURLY_TREND} showComparison={showComparison} />
             </CardContent>
           </Card>
 
