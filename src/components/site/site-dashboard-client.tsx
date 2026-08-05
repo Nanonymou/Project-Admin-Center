@@ -11,8 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CategoryDonut } from "@/components/site/category-donut";
 import { MarginTrendChart } from "@/components/site/margin-trend-chart";
-import { ApprovalFunnelChart } from "@/components/site/approval-funnel-chart";
-import { AgingBarChart } from "@/components/site/aging-bar-chart";
+import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { usePersona } from "@/components/providers/persona-provider";
 import { getSiteDetail, SITE_DETAILS } from "@/lib/mock/site-detail";
 import { canAccessLocation } from "@/lib/personas";
@@ -166,8 +165,8 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
           </Card>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
+        <section>
+          <Card>
             <CardHeader>
               <CardTitle>3. Tren Margin 12 Bulan</CardTitle>
               <CardDescription>
@@ -178,28 +177,14 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
               <MarginTrendChart data={detail.marginTrend} />
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>4. Approval Funnel</CardTitle>
-              <CardDescription>Status tiap tahap approval invoice.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ApprovalFunnelChart data={detail.approvalStages} />
-            </CardContent>
-          </Card>
         </section>
 
         <section>
-          <Card>
-            <CardHeader>
-              <CardTitle>5. Invoice Aging</CardTitle>
-              <CardDescription>Total outstanding & jumlah invoice per bucket umur.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AgingBarChart data={detail.invoiceAging} />
-            </CardContent>
-          </Card>
+          <InvoiceStatusPanel
+            stages={detail.approvalStages}
+            aging={detail.invoiceAging}
+            invoices={detail.invoices}
+          />
         </section>
       </div>
     </div>

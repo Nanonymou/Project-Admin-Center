@@ -30,6 +30,18 @@ export type SiteInvoiceAging = {
   amount: number;
 };
 
+export type InvoiceStatus = "onTime" | "atRisk" | "overdue";
+
+export type MockInvoice = {
+  number: string;
+  amount: number;
+  stage: string;
+  status: InvoiceStatus;
+  agingBucket: "0-30" | "31-60" | "61-90" | ">90";
+  dueDate: string;
+  pic: string;
+};
+
 export type SiteDetail = {
   site: SiteKpi;
   daily30d: SiteDaily[];
@@ -37,6 +49,7 @@ export type SiteDetail = {
   marginTrend: SiteMarginPoint[];
   approvalStages: SiteApprovalStage[];
   invoiceAging: SiteInvoiceAging[];
+  invoices: MockInvoice[];
 };
 
 const CATEGORY_TEMPLATES: Record<string, string[]> = {
@@ -116,9 +129,55 @@ function buildAging(site: SiteKpi): SiteInvoiceAging[] {
   }));
 }
 
+const STAGES_ORDER = ["Verifikasi Site", "Approval Leader", "Verifikasi Finance", "Kirim Client", "Payment"];
+const PICS = ["Bagas", "Ika", "Fajar", "Randi", "Dinda"];
+
+function buildInvoices(site: SiteKpi, aging: SiteInvoiceAging[], seed: number): MockInvoice[] {
+  const out: MockInvoice[] = [];
+  let counter = 1;
+  for (const bucket of aging) {
+    for (let i = 0; i < bucket.count; i++) {
+      const status: InvoiceStatus =
+        bucket.bucket === ">90"
+          ? "overdue"
+          : bucket.bucket === "61-90"
+            ? "atRisk"
+            : seededRandom(seed + counter) > 0.85
+              ? "atRisk"
+              : "onTime";
+      const stageIdx = Math.floor(seededRandom(seed + counter + 3) * STAGES_ORDER.length);
+      const dueOffset =
+        bucket.bucket === "0-30"
+          ? 10
+          : bucket.bucket === "31-60"
+            ? -15
+            : bucket.bucket === "61-90"
+              ? -45
+              : -80;
+      const due = new Date();
+      due.setDate(due.getDate() + dueOffset + Math.floor(seededRandom(seed + counter + 5) * 12));
+      const amount = Math.round(bucket.amount / Math.max(1, bucket.count));
+      out.push({
+        number: `INV/${new Date().getFullYear()}/${(new Date().getMonth() + 1)
+          .toString()
+          .padStart(2, "0")}/${site.projectCode}/${String(counter).padStart(4, "0")}`,
+        amount,
+        stage: STAGES_ORDER[stageIdx],
+        status,
+        agingBucket: bucket.bucket,
+        dueDate: due.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }),
+        pic: PICS[Math.floor(seededRandom(seed + counter + 7) * PICS.length)],
+      });
+      counter++;
+    }
+  }
+  return out;
+}
+
 export const SITE_DETAILS: Record<string, SiteDetail> = Object.fromEntries(
   SITE_KPI.map((site, i) => {
     const seed = i * 17 + site.locationName.length;
+    const aging = buildAging(site);
     return [
       site.locationId,
       {
@@ -127,7 +186,8 @@ export const SITE_DETAILS: Record<string, SiteDetail> = Object.fromEntries(
         categories: buildCategories(site.projectCode, site.sales, seed + 5),
         marginTrend: buildMarginTrend(site.marginPct, seed + 11),
         approvalStages: buildApprovalStages(seed + 23),
-        invoiceAging: buildAging(site),
+        invoiceAging: aging,
+        invoices: buildInvoices(site, aging, seed + 41),
       } satisfies SiteDetail,
     ];
   }),
