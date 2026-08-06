@@ -11,6 +11,7 @@ import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
 import { LocationComparison } from "@/components/margin/location-comparison";
+import { MarginCalculator } from "@/components/margin/margin-calculator";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -275,6 +276,8 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
                 </CardContent>
               </Card>
             )}
+
+            <MarginCalculator projectCode={project.code} />
 
             {sites.length >= 2 && <LocationComparison sites={sites} />}
 
