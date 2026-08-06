@@ -105,6 +105,36 @@ export type MarginBySite = {
   marginPct: number;
 };
 
+export type ProjectSalesRow = {
+  projectCode: string;
+  sales: number;
+  cost: number;
+  profit: number;
+  marginPct: number;
+  siteCount: number;
+};
+
+/**
+ * Group sites by project and total their sales/cost/profit. Generic — every
+ * project in the scoped set gets a row (no per-project hardcoding).
+ */
+export function buildSalesByProject(sites: SiteKpi[]): ProjectSalesRow[] {
+  const map = new Map<string, ProjectSalesRow>();
+  for (const s of sites) {
+    const row =
+      map.get(s.projectCode) ??
+      { projectCode: s.projectCode, sales: 0, cost: 0, profit: 0, marginPct: 0, siteCount: 0 };
+    row.sales += s.sales;
+    row.cost += s.cost;
+    row.profit += s.netMargin;
+    row.siteCount += 1;
+    map.set(s.projectCode, row);
+  }
+  const rows = Array.from(map.values());
+  for (const r of rows) r.marginPct = computeMarginPct(r.sales, r.cost);
+  return rows.sort((a, b) => b.sales - a.sales);
+}
+
 export function buildMarginBySite(sites: SiteKpi[]): MarginBySite[] {
   return sites
     .map((s) => ({

@@ -20,7 +20,7 @@ import {
   scaleSiteKpisByPeriod,
   SITE_KPI,
 } from "@/lib/mock/site-kpi";
-import { buildMarginBySite, buildProfitTrendForRange } from "@/lib/mock/margin-data";
+import { buildMarginBySite, buildProfitTrendForRange, buildSalesByProject } from "@/lib/mock/margin-data";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -75,7 +75,9 @@ export function MarginDashboardClient() {
     [filteredSites, filters.from, filters.to],
   );
   const bySite = useMemo(() => buildMarginBySite(filteredSites), [filteredSites]);
+  const byProject = useMemo(() => buildSalesByProject(filteredSites), [filteredSites]);
   const periodDays = daysBetween(filters.from, filters.to);
+  const grandSales = byProject.reduce((s, p) => s + p.sales, 0) || 1;
   const trendGranularity = periodDays <= 62 ? "harian" : "bulanan";
 
   const best = bySite[0];
@@ -175,6 +177,48 @@ export function MarginDashboardClient() {
               <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
                 Tidak ada site dalam scope.
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Sales per Project</CardTitle>
+            <CardDescription>
+              Kontribusi sales tiap project pada periode aktif — termasuk PHSS, BUMA, POMALA, PHKT
+              (sesuai scope).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {byProject.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Tidak ada data.</div>
+            ) : (
+              <ul className="divide-y">
+                {byProject.map((p) => {
+                  const pct = (p.sales / grandSales) * 100;
+                  return (
+                    <li key={p.projectCode} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary">
+                        {p.projectCode}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium tabular-nums">{formatCurrency(p.sales)}</span>
+                          <span className="text-[11px] text-muted-foreground tabular-nums">
+                            {p.siteCount} site · margin {p.marginPct.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-muted">
+                          <div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">
+                        {pct.toFixed(0)}%
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </CardContent>
         </Card>
