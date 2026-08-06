@@ -166,14 +166,15 @@ export function ApprovalProgressClient() {
     if (queueLocation !== "all" && !queueLocations.some((l) => l.id === queueLocation)) setQueueLocation("all");
   }, [queueLocations, queueLocation]);
 
+  // Location focus applied to the analytical panels and the queue.
+  const scopedApprovals = useMemo(
+    () => (queueLocation === "all" ? allApprovals : allApprovals.filter((a) => a.locationId === queueLocation)),
+    [allApprovals, queueLocation],
+  );
+
   const approvals = useMemo(
-    () =>
-      allApprovals.filter(
-        (a) =>
-          (stageFilter === "all" || a.stage === stageFilter) &&
-          (queueLocation === "all" || a.locationId === queueLocation),
-      ),
-    [allApprovals, stageFilter, queueLocation],
+    () => scopedApprovals.filter((a) => stageFilter === "all" || a.stage === stageFilter),
+    [scopedApprovals, stageFilter],
   );
 
   const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
@@ -182,28 +183,28 @@ export function ApprovalProgressClient() {
   const stageTimeline = useMemo(
     () =>
       APPROVAL_STAGES.map((stage) => {
-        const items = allApprovals.filter((a) => a.stage === stage);
+        const items = scopedApprovals.filter((a) => a.stage === stage);
         const avg = items.length ? items.reduce((s, a) => s + a.timeInStageDays, 0) / items.length : 0;
         const sla = items.length ? items[0].slaTargetDays : 0;
         return { stage, count: items.length, avg, sla, breaching: avg > sla && sla > 0 };
       }),
-    [allApprovals],
+    [scopedApprovals],
   );
 
   // Invoice due cards: remaining days before the stage SLA is breached.
   const dueCards = useMemo(
     () =>
-      allApprovals
+      scopedApprovals
         .map((a) => ({ ...a, remaining: a.slaTargetDays - a.timeInStageDays }))
         .sort((a, b) => a.remaining - b.remaining)
         .slice(0, 6),
-    [allApprovals],
+    [scopedApprovals],
   );
 
   // Activities that are overdue or not finished on time — sorted most urgent first.
   const attentionItems = useMemo(() => {
     const rank: Record<string, number> = { escalation: 0, overdue: 1, at_risk: 2 };
-    return allApprovals
+    return scopedApprovals
       .filter((a) => a.status === "overdue" || a.status === "escalation" || a.status === "at_risk")
       .sort((a, b) => {
         const ra = rank[a.status] ?? 9;
@@ -211,7 +212,7 @@ export function ApprovalProgressClient() {
         if (ra !== rb) return ra - rb;
         return b.timeInStageDays - b.slaTargetDays - (a.timeInStageDays - a.slaTargetDays);
       });
-  }, [allApprovals]);
+  }, [scopedApprovals]);
 
   // Age distribution — how long invoices have sat in their current stage.
   const ageBuckets = useMemo(() => {
@@ -223,14 +224,14 @@ export function ApprovalProgressClient() {
     ];
     return defs.map((d) => ({
       label: d.label,
-      count: allApprovals.filter((a) => a.timeInStageDays >= d.min && a.timeInStageDays <= d.max).length,
+      count: scopedApprovals.filter((a) => a.timeInStageDays >= d.min && a.timeInStageDays <= d.max).length,
     }));
-  }, [allApprovals]);
+  }, [scopedApprovals]);
 
   // Workload per assignee across the pending queue.
   const assigneeWorkload = useMemo(() => {
     const map = new Map<string, { count: number; amount: number; overdue: number }>();
-    for (const a of allApprovals) {
+    for (const a of scopedApprovals) {
       const e = map.get(a.assignee) ?? { count: 0, amount: 0, overdue: 0 };
       e.count += 1;
       e.amount += a.amount;
@@ -241,19 +242,19 @@ export function ApprovalProgressClient() {
       .map(([assignee, v]) => ({ assignee, ...v }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
-  }, [allApprovals]);
+  }, [scopedApprovals]);
 
   // SLA summary across the pending approval queue.
   const slaSummary = useMemo(() => {
-    if (allApprovals.length === 0) return null;
-    const withinSla = allApprovals.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
-    const avgTime = allApprovals.reduce((s, a) => s + a.timeInStageDays, 0) / allApprovals.length;
+    if (scopedApprovals.length === 0) return null;
+    const withinSla = scopedApprovals.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
+    const avgTime = scopedApprovals.reduce((s, a) => s + a.timeInStageDays, 0) / scopedApprovals.length;
     return {
-      compliancePct: (withinSla / allApprovals.length) * 100,
+      compliancePct: (withinSla / scopedApprovals.length) * 100,
       avgTime,
-      breaching: allApprovals.length - withinSla,
+      breaching: scopedApprovals.length - withinSla,
     };
-  }, [allApprovals]);
+  }, [scopedApprovals]);
 
   const settledCount = useMemo(
     () =>
@@ -349,6 +350,46 @@ export function ApprovalProgressClient() {
           locationOptions={personaLocationOptions}
         />
 
+        {queueLocations.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Fokus Lokasi
+            </span>
+            <button
+              type="button"
+              onClick={() => setQueueLocation("all")}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs font-medium",
+                queueLocation === "all"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background hover:bg-accent",
+              )}
+            >
+              Semua lokasi
+            </button>
+            {queueLocations.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setQueueLocation(l.id)}
+                className={cn(
+                  "rounded-md border px-2.5 py-1 text-xs font-medium",
+                  queueLocation === l.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background hover:bg-accent",
+                )}
+              >
+                {l.project} · {l.name}
+              </button>
+            ))}
+            {queueLocation !== "all" && (
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                Panel analitik & antrian difokuskan ke lokasi terpilih.
+              </span>
+            )}
+          </div>
+        )}
+
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard
             label="Total Invoice Approval"
@@ -409,7 +450,7 @@ export function ApprovalProgressClient() {
           </CardContent>
         </Card>
 
-        {allApprovals.length > 0 && (
+        {scopedApprovals.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Timeline Tahapan Approval</CardTitle>
@@ -536,7 +577,7 @@ export function ApprovalProgressClient() {
           </Card>
         )}
 
-        {allApprovals.length > 0 && (
+        {scopedApprovals.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Distribusi Umur Approval</CardTitle>
@@ -763,40 +804,6 @@ export function ApprovalProgressClient() {
               })}
             </div>
 
-            {queueLocations.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Lokasi
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQueueLocation("all")}
-                  className={cn(
-                    "rounded-md border px-2.5 py-1 text-xs font-medium",
-                    queueLocation === "all"
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-input bg-background hover:bg-accent",
-                  )}
-                >
-                  Semua
-                </button>
-                {queueLocations.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => setQueueLocation(l.id)}
-                    className={cn(
-                      "rounded-md border px-2.5 py-1 text-xs font-medium",
-                      queueLocation === l.id
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-input bg-background hover:bg-accent",
-                    )}
-                  >
-                    {l.project} · {l.name}
-                  </button>
-                ))}
-              </div>
-            )}
             <ApprovalReminderList items={approvals} />
           </CardContent>
         </Card>
