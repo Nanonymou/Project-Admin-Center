@@ -81,6 +81,28 @@ export function ComplianceMonitoringClient() {
     [filteredSites],
   );
 
+  // Daily submission pattern per location (last 14 days) — deterministic mock.
+  const dailyCompliance = useMemo(() => {
+    return filteredSites.map((s) => {
+      let seed = 0;
+      for (const ch of s.locationId) seed += ch.charCodeAt(0);
+      const days: { label: string; submitted: boolean }[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const submitted = Math.abs(Math.sin(seed + i * 1.7)) > 0.24;
+        days.push({ label: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }), submitted });
+      }
+      const submittedCount = days.filter((d) => d.submitted).length;
+      return {
+        locationId: s.locationId,
+        label: `${s.projectCode} · ${s.locationName}`,
+        days,
+        pct: (submittedCount / days.length) * 100,
+      };
+    });
+  }, [filteredSites]);
+
   const summary = useMemo(() => {
     const compliant = rows.filter((r) => r.compliance === "compliant").length;
     const atRisk = rows.filter((r) => r.compliance === "at_risk").length;
@@ -128,6 +150,36 @@ export function ComplianceMonitoringClient() {
           <KpiCard label="Berisiko" value={summary.atRisk} format="number" icon={Clock} tone="warning" />
           <KpiCard label="Melanggar" value={summary.breach} format="number" icon={ShieldX} tone="danger" />
         </section>
+
+        {dailyCompliance.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ringkasan Kepatuhan Harian (14 Hari)</CardTitle>
+              <CardDescription>Hijau = submit tepat waktu · merah = terlewat, per lokasi.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {dailyCompliance.map((row) => (
+                  <div key={row.locationId} className="flex items-center gap-3">
+                    <div className="w-40 shrink-0 truncate text-xs font-medium">{row.label}</div>
+                    <div className="flex flex-1 flex-wrap gap-1">
+                      {row.days.map((d, i) => (
+                        <span
+                          key={i}
+                          title={`${d.label} · ${d.submitted ? "Submit" : "Terlewat"}`}
+                          className={cn("h-4 w-4 rounded-sm", d.submitted ? "bg-emerald-500" : "bg-rose-400")}
+                        />
+                      ))}
+                    </div>
+                    <div className={cn("w-12 shrink-0 text-right text-xs font-semibold tabular-nums", row.pct >= 80 ? "text-emerald-700" : row.pct >= 60 ? "text-amber-700" : "text-rose-700")}>
+                      {row.pct.toFixed(0)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
