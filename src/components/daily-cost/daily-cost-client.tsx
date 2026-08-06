@@ -144,6 +144,17 @@ export function DailyCostClient() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
+  // Aggregate cost per category across all session entries.
+  const categoryTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of entries) for (const b of e.breakdown) map.set(b.label, (map.get(b.label) || 0) + b.amount);
+    const arr = Array.from(map.entries())
+      .map(([label, amount]) => ({ label, amount }))
+      .sort((a, b) => b.amount - a.amount);
+    const grand = arr.reduce((s, x) => s + x.amount, 0);
+    return { arr, grand };
+  }, [entries]);
+
   function setValue(key: string, raw: string) {
     const num = raw === "" ? NaN : Number(raw);
     setValues((prev) => ({ ...prev, [key]: num }));
@@ -466,6 +477,38 @@ export function DailyCostClient() {
             </CardContent>
           </Card>
         </div>
+
+        {categoryTotals.arr.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ringkasan Cost per Kategori</CardTitle>
+              <CardDescription>
+                Agregat pengeluaran sesi ini per kategori · total {formatCurrency(categoryTotals.grand)}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {categoryTotals.arr.map((c) => {
+                  const pct = categoryTotals.grand > 0 ? (c.amount / categoryTotals.grand) * 100 : 0;
+                  return (
+                    <div key={c.label} className="flex items-center gap-3">
+                      <div className="w-40 shrink-0 truncate text-xs font-medium">{c.label}</div>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                        {pct.toFixed(0)}%
+                      </div>
+                      <div className="w-28 shrink-0 text-right text-xs tabular-nums font-medium">
+                        {formatCurrency(c.amount)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
