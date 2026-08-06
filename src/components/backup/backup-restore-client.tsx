@@ -30,6 +30,22 @@ export function BackupRestoreClient() {
   const [added, setAdded] = useState<BackupSnapshot[]>([]);
   const backups = useMemo(() => [...added, ...seeded], [added, seeded]);
 
+  type LogEntry = { id: string; time: string; text: string };
+  const [activityLog, setActivityLog] = useState<LogEntry[]>(() =>
+    seeded.slice(0, 6).map((b) => ({
+      id: `log-${b.id}`,
+      time: b.createdAt,
+      text: `Backup ${b.type === "manual" ? "manual" : "otomatis"} "${b.scope}" oleh ${b.createdBy}`,
+    })),
+  );
+
+  function logActivity(text: string) {
+    setActivityLog((prev) => [
+      { id: `log-${Date.now()}`, time: new Date().toLocaleTimeString("id-ID"), text },
+      ...prev,
+    ]);
+  }
+
   type RestoreEvent = { id: string; backupId: string; scope: string; at: string; by: string };
   const [restoreHistory, setRestoreHistory] = useState<RestoreEvent[]>([]);
   const [restoreTarget, setRestoreTarget] = useState<BackupSnapshot | null>(null);
@@ -59,6 +75,7 @@ export function BackupRestoreClient() {
       },
       ...prev,
     ]);
+    logActivity(`Restore data dari ${b.id} (${b.scope})`);
   }
 
   const stats = useMemo(() => {
@@ -104,6 +121,7 @@ export function BackupRestoreClient() {
   function exportMasterJson() {
     downloadTextFile("master-data.json", JSON.stringify(masterData, null, 2), "application/json;charset=utf-8");
     setIoMessage(`Master data ${masterData.length} project diekspor (JSON).`);
+    logActivity("Ekspor master data (JSON)");
   }
 
   function exportMasterCsv() {
@@ -111,6 +129,7 @@ export function BackupRestoreClient() {
     const rows = masterData.map((m) => [m.code, m.name, m.invoicePeriod, m.tax.code, m.tax.rate, m.marginModel]);
     downloadTextFile("master-data.csv", toCsv([header, ...rows]));
     setIoMessage(`Master data ${masterData.length} project diekspor (CSV).`);
+    logActivity("Ekspor master data (CSV)");
   }
 
   async function importMaster(file: File) {
@@ -128,6 +147,7 @@ export function BackupRestoreClient() {
       count = Math.max(0, parseCsv(text).length - 1);
     }
     setIoMessage(`${count} entri master data terbaca dari ${file.name} (mock — tidak diterapkan).`);
+    logActivity(`Impor master data dari ${file.name}`);
   }
 
   function createBackup() {
@@ -145,6 +165,7 @@ export function BackupRestoreClient() {
       },
       ...prev,
     ]);
+    logActivity(`Backup manual "Seluruh Project" oleh ${persona.roleLabel}`);
   }
 
   return (
@@ -335,6 +356,22 @@ export function BackupRestoreClient() {
                 </table>
               </div>
             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Log Aktivitas</CardTitle>
+            <CardDescription>Jejak backup, restore & ekspor/impor master data.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-1.5">
+              {activityLog.map((a) => (
+                <li key={a.id} className="flex items-center gap-3 text-sm">
+                  <span className="w-28 shrink-0 text-[11px] tabular-nums text-muted-foreground">{a.time}</span>
+                  <span className="text-muted-foreground">{a.text}</span>
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
       </div>
