@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { ClipboardList } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, ClipboardList } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,6 +102,29 @@ export function DailyClosingClient() {
             <SubmitStatusList rows={rows} />
           </CardContent>
         </Card>
+
+        {rows.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Detail Periode per Site</CardTitle>
+              <CardDescription>Buka detail closing untuk melihat/mengedit status penutupan.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {rows.map((r) => (
+                  <Link
+                    key={r.locationId}
+                    href={`/daily-closing/${r.locationId}`}
+                    className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
+                  >
+                    {r.projectCode} · {r.locationName}
+                    <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
