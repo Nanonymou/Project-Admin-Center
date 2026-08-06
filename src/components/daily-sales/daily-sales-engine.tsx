@@ -509,6 +509,7 @@ export function DailySalesEngine() {
                 touched={touched}
                 onToggleCategory={toggleCategory}
                 onChangeLine={setLine}
+                readOnly={isPeriodLocked}
               />
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

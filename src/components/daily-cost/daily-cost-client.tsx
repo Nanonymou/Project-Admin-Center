@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, MapPin, Paperclip, Save, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Info, Lock, MapPin, Paperclip, Save, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import { MissingSubmissionStrip } from "@/components/daily-cost/missing-submissi
 import { buildSubmitStatus } from "@/lib/mock/closing-status";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
+import { buildPeriodLocks } from "@/lib/mock/lock-period";
 import { canAccessLocation } from "@/lib/personas";
 import {
   getCostCategories,
@@ -82,6 +83,17 @@ export function DailyCostClient() {
   }, []);
   const dateAllowed = date === today || date === yesterday;
 
+  // Read-only when the entry date's period is locked for this location.
+  const lockRows = useMemo(
+    () => buildPeriodLocks(SITE_KPI.filter((s) => s.locationId === workspace.locationId)),
+    [workspace.locationId],
+  );
+  const isPeriodLocked = useMemo(
+    () => lockRows.some((r) => r.periodKey === date.slice(0, 7) && r.state === "locked"),
+    [lockRows, date],
+  );
+  const readOnly = !canCreate || isPeriodLocked;
+
   const submitStatus = useMemo(() => {
     const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     return buildSubmitStatus(accessible);
@@ -143,7 +155,7 @@ export function DailyCostClient() {
 
   function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
-    if (!dateAllowed || errors.length > 0) return;
+    if (!dateAllowed || errors.length > 0 || isPeriodLocked) return;
     // Drafts may miss proofs; a final submit cannot.
     if (status === "submitted" && missingProofKeys.length > 0) return;
     setEntries((prev) => [
@@ -241,6 +253,16 @@ export function DailyCostClient() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {isPeriodLocked && (
+                <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Periode <b>{date.slice(0, 7)}</b> terkunci — form dalam mode hanya-baca. Input
+                    ditutup setelah cut-off.
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">Tanggal</label>
@@ -277,9 +299,10 @@ export function DailyCostClient() {
                         inputMode="numeric"
                         min={0}
                         placeholder="0"
+                        disabled={readOnly}
                         value={Number.isNaN(values[cat.key]) || values[cat.key] === undefined ? "" : values[cat.key]}
                         onChange={(e) => setValue(cat.key, e.target.value)}
-                        className={cn(touched && err && "border-rose-400 focus:ring-rose-400")}
+                        className={cn(touched && err && "border-rose-400 focus:ring-rose-400", readOnly && "opacity-60")}
                       />
                       {cat.hint && <p className="mt-0.5 text-[10px] text-muted-foreground">{cat.hint}</p>}
                       {touched && err && <p className="mt-0.5 text-[11px] text-rose-600">{err.message}</p>}
@@ -340,14 +363,14 @@ export function DailyCostClient() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={!canCreate}
+                    disabled={readOnly}
                     onClick={() => handleSubmit("draft")}
                   >
                     Simpan Draft
                   </Button>
                   <Button
                     size="sm"
-                    disabled={!canCreate || missingProofKeys.length > 0}
+                    disabled={readOnly || missingProofKeys.length > 0}
                     onClick={() => handleSubmit("submitted")}
                   >
                     <Save className="h-4 w-4" />

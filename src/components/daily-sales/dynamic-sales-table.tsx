@@ -25,6 +25,7 @@ export function DynamicSalesTable({
   touched,
   onToggleCategory,
   onChangeLine,
+  readOnly = false,
 }: {
   categories: ServiceCategory[];
   activeKeys: string[];
@@ -33,6 +34,7 @@ export function DynamicSalesTable({
   touched: boolean;
   onToggleCategory: (key: string) => void;
   onChangeLine: (key: string, field: "qty" | "price", raw: string) => void;
+  readOnly?: boolean;
 }) {
   const activeSet = new Set(activeKeys);
   const activeCategories = categories.filter((c) => activeSet.has(c.key));
@@ -52,8 +54,9 @@ export function DynamicSalesTable({
             <button
               key={cat.key}
               type="button"
+              disabled={readOnly}
               onClick={() => onToggleCategory(cat.key)}
-              className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+              className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary disabled:opacity-50"
             >
               {cat.label}
               <X className="h-3 w-3" />
@@ -75,8 +78,9 @@ export function DynamicSalesTable({
                 <button
                   key={cat.key}
                   type="button"
+                  disabled={readOnly}
                   onClick={() => onToggleCategory(cat.key)}
-                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent"
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
                 >
                   <Plus className="h-3 w-3" />
                   {cat.label}
@@ -121,9 +125,10 @@ export function DynamicSalesTable({
                         <Input
                           type="number"
                           min={0}
+                          disabled={readOnly}
                           value={line?.qty ?? 0}
                           onChange={(e) => onChangeLine(cat.key, "qty", e.target.value)}
-                          className={cn("h-8 w-20 text-right tabular-nums", touched && err && "border-rose-400")}
+                          className={cn("h-8 w-20 text-right tabular-nums", touched && err && "border-rose-400", readOnly && "opacity-60")}
                         />
                         <span className="w-10 text-left text-[10px] text-muted-foreground">{cat.unit}</span>
                       </div>
@@ -132,9 +137,10 @@ export function DynamicSalesTable({
                       <Input
                         type="number"
                         min={0}
+                        disabled={readOnly}
                         value={line?.price ?? 0}
                         onChange={(e) => onChangeLine(cat.key, "price", e.target.value)}
-                        className="h-8 w-28 text-right"
+                        className={cn("h-8 w-28 text-right", readOnly && "opacity-60")}
                       />
                     </td>
                     <td className={cn("px-3 py-2 text-right tabular-nums font-medium", cat.deduction && "text-rose-600")}>
@@ -144,8 +150,9 @@ export function DynamicSalesTable({
                     <td className="px-3 py-2 text-right">
                       <button
                         type="button"
+                        disabled={readOnly}
                         onClick={() => onToggleCategory(cat.key)}
-                        className="rounded p-1 text-muted-foreground hover:bg-accent"
+                        className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-40"
                         aria-label={`Hapus ${cat.label}`}
                       >
                         <X className="h-3.5 w-3.5" />
