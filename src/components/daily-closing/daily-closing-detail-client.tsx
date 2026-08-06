@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { ClosingStatusBadge } from "@/components/daily-closing/closing-status-badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -38,6 +39,27 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
   const [closingState, setClosingState] = useState<ClosingState>(overall);
   const [notes, setNotes] = useState("");
   const [editing, setEditing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const nextState = useMemo<ClosingState | null>(() => {
+    const idx = CLOSING_STATES.indexOf(closingState);
+    return idx < CLOSING_STATES.length - 1 ? CLOSING_STATES[idx + 1] : null;
+  }, [closingState]);
+
+  const actionVerb = useMemo(() => {
+    switch (nextState) {
+      case "submitted":
+        return "Submit";
+      case "reviewed":
+        return "Review";
+      case "approved":
+        return "Approve";
+      case "locked":
+        return "Kunci";
+      default:
+        return "";
+    }
+  }, [nextState]);
 
   const canEdit =
     (persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin") &&
@@ -46,9 +68,9 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
 
   const currentStep = CLOSING_STATE_META[closingState].step;
 
-  function advance() {
-    const idx = CLOSING_STATES.indexOf(closingState);
-    if (idx < CLOSING_STATES.length - 1) setClosingState(CLOSING_STATES[idx + 1]);
+  function confirmAdvance() {
+    if (nextState) setClosingState(nextState);
+    setConfirmOpen(false);
   }
 
   if (!inScope) {
@@ -181,17 +203,45 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
                 <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
                   Selesai
                 </Button>
-                <Button size="sm" onClick={advance}>
-                  {closingState === "approved" ? <Lock className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
-                  {closingState === "approved"
-                    ? "Kunci Periode"
-                    : `Majukan ke ${CLOSING_STATE_META[CLOSING_STATES[Math.min(CLOSING_STATES.length - 1, currentStep)]].label}`}
-                </Button>
+                {nextState && (
+                  <Button size="sm" onClick={() => setConfirmOpen(true)}>
+                    {nextState === "locked" ? <Lock className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                    {actionVerb} → {CLOSING_STATE_META[nextState].label}
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={confirmOpen && nextState !== null}
+        onClose={() => setConfirmOpen(false)}
+        title={`${actionVerb} Closing`}
+        description={nextState ? `Ubah status ke "${CLOSING_STATE_META[nextState].label}"?` : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              variant={nextState === "locked" ? "destructive" : "default"}
+              onClick={confirmAdvance}
+            >
+              {nextState === "locked" ? <Lock className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+              {actionVerb}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          {nextState === "locked"
+            ? "Periode akan dikunci dan tidak dapat diedit lagi. Pastikan seluruh entri sudah benar."
+            : `Tindakan ini memajukan status closing ${site.projectCode} · ${site.locationName}. Tercatat pada audit trail.`}
+        </p>
+      </Dialog>
     </div>
   );
 }
