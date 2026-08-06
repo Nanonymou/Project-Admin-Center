@@ -13,6 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks, type PeriodLockState } from "@/lib/mock/lock-period";
+import { CutOffCalculator } from "@/components/period-status/cutoff-calculator";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -23,6 +24,11 @@ export function PeriodStatusClient() {
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
+  );
+
+  const projectCodes = useMemo(
+    () => Array.from(new Set(scopedSites.map((s) => s.projectCode))).sort(),
+    [scopedSites],
   );
 
   const baseRows = useMemo(() => buildPeriodLocks(scopedSites), [scopedSites]);
@@ -123,6 +129,8 @@ export function PeriodStatusClient() {
           <KpiCard label="Sebagian" value={counts.inProgress} format="number" icon={LockOpen} tone="warning" />
           <KpiCard label="Masih Terbuka" value={counts.open} format="number" icon={LockOpen} tone="info" />
         </section>
+
+        {projectCodes.length > 0 && <CutOffCalculator projectCodes={projectCodes} />}
 
         {periods.length === 0 ? (
           <Card>
