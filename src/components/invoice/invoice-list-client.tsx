@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, MapPin, Pencil, Plus, Wallet } from "lucide-react";
+import { ArrowUpRight, Building2, CheckCircle2, Clock, FileText, Info, MapPin, Pencil, Plus, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
@@ -108,18 +108,39 @@ export function InvoiceListClient() {
     [addedItems, baseInvoices, edits],
   );
 
+  // On-page project filter — chips derived from the invoices in scope.
+  const [activeProject, setActiveProject] = useState<string | "all">("all");
+  const projectChips = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const inv of allInvoices) map.set(inv.projectCode, (map.get(inv.projectCode) ?? 0) + 1);
+    return Array.from(map.entries())
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [allInvoices]);
+
+  useEffect(() => {
+    if (activeProject !== "all" && !projectChips.some((p) => p.code === activeProject)) {
+      setActiveProject("all");
+    }
+  }, [projectChips, activeProject]);
+
+  const projectFiltered = useMemo(
+    () => (activeProject === "all" ? allInvoices : allInvoices.filter((i) => i.projectCode === activeProject)),
+    [allInvoices, activeProject],
+  );
+
   // On-page location filter — chips derived from whatever locations are in
   // scope, so it adapts to any project's sites (no hard-coded locations).
   const [activeLocation, setActiveLocation] = useState<string | "all">("all");
   const locationChips = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number }>();
-    for (const inv of allInvoices) {
+    for (const inv of projectFiltered) {
       const entry = map.get(inv.locationId) ?? { id: inv.locationId, name: inv.locationName, count: 0 };
       entry.count += 1;
       map.set(inv.locationId, entry);
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [allInvoices]);
+  }, [projectFiltered]);
 
   // Reset the chip when the active location leaves scope (persona/filter change).
   useEffect(() => {
@@ -129,8 +150,8 @@ export function InvoiceListClient() {
   }, [locationChips, activeLocation]);
 
   const locationFiltered = useMemo(
-    () => (activeLocation === "all" ? allInvoices : allInvoices.filter((i) => i.locationId === activeLocation)),
-    [allInvoices, activeLocation],
+    () => (activeLocation === "all" ? projectFiltered : projectFiltered.filter((i) => i.locationId === activeLocation)),
+    [projectFiltered, activeLocation],
   );
 
   // Status filter driven by the clickable status cards.
@@ -266,6 +287,42 @@ export function InvoiceListClient() {
           </span>
         </div>
 
+        {projectChips.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
+            <span className="inline-flex items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Building2 className="h-3 w-3" />
+              Project
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveProject("all")}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                activeProject === "all"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background hover:bg-accent",
+              )}
+            >
+              Semua · {allInvoices.length}
+            </button>
+            {projectChips.map((p) => (
+              <button
+                key={p.code}
+                type="button"
+                onClick={() => setActiveProject(p.code)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                  activeProject === p.code
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background hover:bg-accent",
+                )}
+              >
+                {p.code} · {p.count}
+              </button>
+            ))}
+          </div>
+        )}
+
         {locationChips.length > 1 && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
             <span className="inline-flex items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -282,7 +339,7 @@ export function InvoiceListClient() {
                   : "border-input bg-background hover:bg-accent",
               )}
             >
-              Semua · {allInvoices.length}
+              Semua · {projectFiltered.length}
             </button>
             {locationChips.map((c) => (
               <button
