@@ -11,6 +11,7 @@ export type Attachment = {
   name: string;
   sizeLabel: string;
   isImage: boolean;
+  isPdf: boolean;
   url: string;
 };
 
@@ -52,12 +53,14 @@ export function AttachmentCenter({
     const next = [...items];
     for (const f of Array.from(files)) {
       const isImage = f.type.startsWith("image/");
+      const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
       next.push({
         id: `att-${Date.now()}-${next.length}`,
         name: f.name,
         sizeLabel: fileSizeLabel(f.size),
         isImage,
-        url: isImage ? URL.createObjectURL(f) : "",
+        isPdf,
+        url: isImage || isPdf ? URL.createObjectURL(f) : "",
       });
     }
     setItems(next);
@@ -177,10 +180,16 @@ export function AttachmentCenter({
             alt={previewItem.name}
             className="mx-auto max-h-[60vh] w-auto rounded-md border"
           />
+        ) : previewItem?.isPdf && previewItem.url ? (
+          <iframe
+            src={previewItem.url}
+            title={previewItem.name}
+            className="h-[60vh] w-full rounded-md border"
+          />
         ) : (
           <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
             <FileText className="h-10 w-10" />
-            <div>Pratinjau hanya tersedia untuk gambar (JPG/PNG).</div>
+            <div>Pratinjau tersedia untuk gambar (JPG/PNG) dan PDF.</div>
             <div className="text-xs">{previewItem?.name}</div>
           </div>
         )}
