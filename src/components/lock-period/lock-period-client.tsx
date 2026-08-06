@@ -7,9 +7,9 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { LockPeriodForm } from "@/components/lock-period/lock-period-form";
+import { LockIndicator } from "@/components/lock-period/lock-indicator";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks, type PeriodLockRow, type PeriodLockState } from "@/lib/mock/lock-period";
 import { canAccessLocation } from "@/lib/personas";
@@ -122,60 +122,74 @@ export function LockPeriodClient() {
                     <th className="px-3 py-2 text-right font-medium">Sales</th>
                     <th className="px-3 py-2 text-right font-medium">Cost</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Locked</th>
                     <th className="px-3 py-2 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Tidak ada periode untuk filter ini.
                       </td>
                     </tr>
                   )}
-                  {filtered.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
+                  {filtered.map((r) => {
+                    const locked = r.state === "locked";
+                    return (
+                    <tr
+                      key={r.id}
+                      className={cn(
+                        "border-b last:border-0 hover:bg-muted/30",
+                        locked && "bg-muted/20 text-muted-foreground",
+                      )}
+                    >
                       <td className="px-3 py-2 font-medium">{r.periodLabel}</td>
                       <td className="px-3 py-2 text-muted-foreground">
                         {r.projectCode} · {r.locationName}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.salesTotal)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <span className={cn(locked && "inline-flex items-center gap-1")}>
+                          {locked && <Lock className="h-3 w-3 opacity-60" />}
+                          {formatCurrency(r.salesTotal)}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                         {formatCurrency(r.costTotal)}
                       </td>
                       <td className="px-3 py-2">
-                        <Badge variant={r.state === "locked" ? "success" : "warning"} className="inline-flex items-center gap-1">
-                          {r.state === "locked" ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
-                          {r.state === "locked" ? "Locked" : "Open"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                        {r.state === "locked" && r.lockedBy ? `${r.lockedBy} · ${r.lockedAt}` : "—"}
+                        <LockIndicator row={r} />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant={r.state === "locked" ? "outline" : "default"}
-                          className="h-7"
-                          disabled={!canUnlock}
-                          onClick={() => toggle(r)}
-                        >
-                          {r.state === "locked" ? (
-                            <>
-                              <LockOpen className="h-3.5 w-3.5" />
-                              Unlock
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="h-3.5 w-3.5" />
-                              Lock
-                            </>
-                          )}
-                        </Button>
+                        {locked && !canUnlock ? (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground">
+                            <Lock className="h-3.5 w-3.5" />
+                            Aksi terkunci
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant={locked ? "outline" : "default"}
+                            className="h-7"
+                            disabled={!canUnlock}
+                            onClick={() => toggle(r)}
+                          >
+                            {locked ? (
+                              <>
+                                <LockOpen className="h-3.5 w-3.5" />
+                                Unlock
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="h-3.5 w-3.5" />
+                                Lock
+                              </>
+                            )}
+                          </Button>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
