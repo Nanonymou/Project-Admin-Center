@@ -10,6 +10,8 @@ export type ServiceCategory = {
   unit: string;
   /** Default unit price used to prefill the price column (Rupiah). */
   defaultPrice: number;
+  /** When true this line reduces the daily total (e.g. Backcharge). */
+  deduction?: boolean;
 };
 
 const ALL_SERVICES: Record<string, ServiceCategory> = {
@@ -25,7 +27,7 @@ const ALL_SERVICES: Record<string, ServiceCategory> = {
   camp_cleaning: { key: "camp_cleaning", label: "Camp Cleaning", unit: "area", defaultPrice: 90000 },
   ground_maintenance: { key: "ground_maintenance", label: "Ground Maintenance", unit: "area", defaultPrice: 85000 },
   accommodation: { key: "accommodation", label: "Accommodation", unit: "pax", defaultPrice: 120000 },
-  backcharge: { key: "backcharge", label: "Backcharge", unit: "item", defaultPrice: 30000 },
+  backcharge: { key: "backcharge", label: "Backcharge", unit: "item", defaultPrice: 30000, deduction: true },
 };
 
 const PROJECT_SERVICE_KEYS: Record<string, string[]> = {
@@ -77,6 +79,34 @@ export function lineTotal(line?: SalesLineInput): number {
   return (line.qty || 0) * (line.price || 0);
 }
 
+/** Line total with sign applied — deduction categories are negative. */
+export function signedLineTotal(cat: ServiceCategory, line?: SalesLineInput): number {
+  const raw = lineTotal(line);
+  return cat.deduction ? -raw : raw;
+}
+
+export type SalesBreakdown = {
+  gross: number; // sum of non-deduction lines
+  backcharge: number; // sum of deduction lines (positive magnitude)
+  net: number; // gross - backcharge
+};
+
+/** Split the entry into gross sales, backcharge (deductions), and net total. */
+export function sumSalesBreakdown(
+  categories: ServiceCategory[],
+  values: SalesEntryInput,
+): SalesBreakdown {
+  let gross = 0;
+  let backcharge = 0;
+  for (const cat of categories) {
+    const raw = lineTotal(values[cat.key]);
+    if (cat.deduction) backcharge += raw;
+    else gross += raw;
+  }
+  return { gross, backcharge, net: gross - backcharge };
+}
+
+/** Net daily total (gross sales minus deductions). */
 export function sumSalesEntry(categories: ServiceCategory[], values: SalesEntryInput): number {
-  return categories.reduce((sum, cat) => sum + lineTotal(values[cat.key]), 0);
+  return sumSalesBreakdown(categories, values).net;
 }

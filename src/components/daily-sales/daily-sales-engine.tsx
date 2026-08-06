@@ -13,7 +13,7 @@ import { useActiveSite } from "@/components/providers/active-site-provider";
 import {
   getServiceCategories,
   lineTotal,
-  sumSalesEntry,
+  sumSalesBreakdown,
   validateSalesEntry,
   type SalesEntryInput,
 } from "@/lib/mock/service-config";
@@ -138,7 +138,9 @@ export function DailySalesEngine() {
   const dateAllowed = date === today || date === yesterday;
 
   const errors = useMemo(() => validateSalesEntry(activeCategories, values), [activeCategories, values]);
-  const subtotal = useMemo(() => sumSalesEntry(activeCategories, values), [activeCategories, values]);
+  const breakdown = useMemo(() => sumSalesBreakdown(activeCategories, values), [activeCategories, values]);
+  // Net daily total (gross sales minus backcharge) is the taxable base.
+  const subtotal = breakdown.net;
   const tax = useMemo(
     () => computeTax(subtotal, workspace.projectCode),
     [subtotal, workspace.projectCode],
@@ -307,9 +309,12 @@ export function DailySalesEngine() {
               />
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <TotalTile label="Item" value={`${activeCategories.filter((c) => (values[c.key]?.qty || 0) > 0).length} kategori`} />
-                <TotalTile label="Subtotal" value={formatCurrency(subtotal)} />
-                <TotalTile label={`Pajak ${workspace.projectCode}`} value={formatCurrency(tax)} />
+                <TotalTile label="Gross Sales" value={formatCurrency(breakdown.gross)} />
+                <TotalTile
+                  label="Backcharge"
+                  value={`${breakdown.backcharge > 0 ? "−" : ""}${formatCurrency(breakdown.backcharge)}`}
+                />
+                <TotalTile label="Total Harian (net)" value={formatCurrency(subtotal)} />
                 <TotalTile label="Net Invoice" value={formatCurrency(subtotal + tax)} highlight />
               </div>
 
@@ -323,12 +328,12 @@ export function DailySalesEngine() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
                 <div className="space-y-0.5">
                   <div>
-                    <span className="text-muted-foreground">Subtotal: </span>
+                    <span className="text-muted-foreground">Total Harian (net): </span>
                     <span className="font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    Pajak ({workspace.projectCode}): {formatCurrency(tax)} · Net Invoice{" "}
-                    {formatCurrency(subtotal + tax)}
+                    Gross {formatCurrency(breakdown.gross)} − Backcharge {formatCurrency(breakdown.backcharge)} · Pajak
+                    ({workspace.projectCode}) {formatCurrency(tax)} · Net Invoice {formatCurrency(subtotal + tax)}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

@@ -4,6 +4,7 @@ import { Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   lineTotal,
+  signedLineTotal,
   type SalesEntryInput,
   type SalesLineInput,
   type SalesValidationError,
@@ -38,7 +39,7 @@ export function DynamicSalesTable({
   const inactiveCategories = categories.filter((c) => !activeSet.has(c.key));
 
   const totalQty = activeCategories.reduce((sum, c) => sum + Math.max(0, values[c.key]?.qty || 0), 0);
-  const totalAmount = activeCategories.reduce((sum, c) => sum + lineTotal(values[c.key]), 0);
+  const totalAmount = activeCategories.reduce((sum, c) => sum + signedLineTotal(c, values[c.key]), 0);
 
   return (
     <div className="space-y-3">
@@ -105,7 +106,14 @@ export function DynamicSalesTable({
                 return (
                   <tr key={cat.key} className="border-b last:border-0">
                     <td className="px-3 py-2">
-                      <div className="text-sm font-medium">{cat.label}</div>
+                      <div className="flex items-center gap-1.5 text-sm font-medium">
+                        {cat.label}
+                        {cat.deduction && (
+                          <span className="rounded bg-rose-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-rose-700">
+                            Potongan
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-muted-foreground">per {cat.unit}</div>
                     </td>
                     <td className="px-3 py-2">
@@ -129,7 +137,8 @@ export function DynamicSalesTable({
                         className="h-8 w-28 text-right"
                       />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">
+                    <td className={cn("px-3 py-2 text-right tabular-nums font-medium", cat.deduction && "text-rose-600")}>
+                      {cat.deduction && lineTotal(line) > 0 ? "−" : ""}
                       {formatCurrency(lineTotal(line))}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -148,7 +157,7 @@ export function DynamicSalesTable({
             </tbody>
             <tfoot>
               <tr className="border-t bg-muted/30 text-xs font-medium">
-                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2">Total Harian (net)</td>
                 <td className="px-3 py-2 text-right tabular-nums">{totalQty}</td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(totalAmount)}</td>
