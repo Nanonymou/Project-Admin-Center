@@ -22,6 +22,7 @@ import { SalesEntryTable } from "@/components/daily-sales/sales-entry-table";
 import { ChangeHistory } from "@/components/daily-sales/change-history";
 import { buildAuditTrail } from "@/lib/mock/audit-trail";
 import { getPriceListFor } from "@/lib/mock/pricing-config";
+import { getAreasFor } from "@/lib/mock/area-config";
 import { buildSalesHistory } from "@/lib/mock/sales-history";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
@@ -31,6 +32,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 type SubmittedEntry = {
   id: string;
   date: string;
+  area: string;
   total: number;
   tax: number;
   lines: { label: string; qty: number; price: number; total: number }[];
@@ -57,6 +59,12 @@ export function DailySalesEngine() {
     [activeWorkspace.projectCode, activeWorkspace.locationId],
   );
 
+  const areas = useMemo(
+    () => getAreasFor(activeWorkspace.locationId, activeWorkspace.locationName),
+    [activeWorkspace.locationId, activeWorkspace.locationName],
+  );
+
+  const [area, setArea] = useState("");
   const [date, setDate] = useState(today);
   const [values, setValues] = useState<SalesEntryInput>(() =>
     Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])),
@@ -110,11 +118,12 @@ export function DailySalesEngine() {
 
   function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
-    if (!dateAllowed || errors.length > 0) return;
+    if (!dateAllowed || !area || errors.length > 0) return;
     setEntries((prev) => [
       {
         id: `${date}-${Date.now()}`,
         date,
+        area: areas.find((a) => a.id === area)?.name ?? area,
         total: subtotal,
         tax,
         status,
@@ -130,6 +139,7 @@ export function DailySalesEngine() {
       ...prev,
     ]);
     setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
+    setArea("");
     setTouched(false);
   }
 
@@ -166,12 +176,37 @@ export function DailySalesEngine() {
               <CardDescription>Isi Qty & Harga per kategori layanan.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="max-w-xs">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Tanggal</label>
-                <Input type="date" value={date} max={today} min={yesterday} onChange={(e) => setDate(e.target.value)} />
-                {touched && !dateAllowed && (
-                  <p className="mt-1 text-[11px] text-rose-600">Tanggal di luar aturan H+1.</p>
-                )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Tanggal</label>
+                  <Input type="date" value={date} max={today} min={yesterday} onChange={(e) => setDate(e.target.value)} />
+                  {touched && !dateAllowed && (
+                    <p className="mt-1 text-[11px] text-rose-600">Tanggal di luar aturan H+1.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Area <span className="text-rose-600">*</span>
+                  </label>
+                  <select
+                    value={area}
+                    onChange={(e) => setArea(e.target.value)}
+                    className={cn(
+                      "h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring",
+                      touched && !area && "border-rose-400 focus:ring-rose-400",
+                    )}
+                  >
+                    <option value="">— Pilih area —</option>
+                    {areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  {touched && !area && (
+                    <p className="mt-1 text-[11px] text-rose-600">Area wajib dipilih.</p>
+                  )}
+                </div>
               </div>
 
               <p className="text-[11px] text-muted-foreground">
@@ -252,6 +287,7 @@ export function DailySalesEngine() {
                           {entry.status === "submitted" ? "Submitted" : "Draft"}
                         </Badge>
                       </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">{entry.area}</div>
                       <div className="mt-1 text-sm font-semibold tabular-nums">
                         {formatCurrency(entry.total)}
                       </div>
