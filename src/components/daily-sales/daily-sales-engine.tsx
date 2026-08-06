@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, History, Info, Save, ShoppingCart } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, History, Info, MapPin, Save, ShoppingCart } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import { getPriceListFor } from "@/lib/mock/pricing-config";
 import { getAreasFor } from "@/lib/mock/area-config";
 import { buildSalesHistory } from "@/lib/mock/sales-history";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { canAccessLocation } from "@/lib/personas";
 import { computeTax } from "@/lib/finance";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -42,9 +43,26 @@ type SubmittedEntry = {
 export function DailySalesEngine() {
   const { persona } = usePersona();
   const { activeWorkspace } = useActiveSite();
+
+  // Location selector — input can target any location the persona can access,
+  // not only the globally active workspace. The selected site's project config
+  // (categories, pricing, tax) drives the whole form generically.
+  const accessibleWorkspaces = useMemo(
+    () => MOCK_WORKSPACES.filter((w) => canAccessLocation(persona, w.locationId, w.projectCode)),
+    [persona],
+  );
+  const [selectedLocationId, setSelectedLocationId] = useState(activeWorkspace.locationId);
+  useEffect(() => {
+    setSelectedLocationId(activeWorkspace.locationId);
+  }, [activeWorkspace.locationId]);
+  const workspace = useMemo(
+    () => accessibleWorkspaces.find((w) => w.locationId === selectedLocationId) ?? activeWorkspace,
+    [accessibleWorkspaces, selectedLocationId, activeWorkspace],
+  );
+
   const categories = useMemo(
-    () => getServiceCategories(activeWorkspace.projectCode),
-    [activeWorkspace.projectCode],
+    () => getServiceCategories(workspace.projectCode),
+    [workspace.projectCode],
   );
 
   const today = new Date().toISOString().slice(0, 10);
@@ -55,13 +73,13 @@ export function DailySalesEngine() {
   }, []);
 
   const priceList = useMemo(
-    () => getPriceListFor(activeWorkspace.projectCode, activeWorkspace.locationId),
-    [activeWorkspace.projectCode, activeWorkspace.locationId],
+    () => getPriceListFor(workspace.projectCode, workspace.locationId),
+    [workspace.projectCode, workspace.locationId],
   );
 
   const areas = useMemo(
-    () => getAreasFor(activeWorkspace.locationId, activeWorkspace.locationName),
-    [activeWorkspace.locationId, activeWorkspace.locationName],
+    () => getAreasFor(workspace.locationId, workspace.locationName),
+    [workspace.locationId, workspace.locationName],
   );
 
   const [area, setArea] = useState("");
@@ -72,6 +90,16 @@ export function DailySalesEngine() {
   const [activeKeys, setActiveKeys] = useState<string[]>(() => categories.map((c) => c.key));
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+
+  // When the target location/project changes, reset the form to that project's
+  // categories & default prices so stale keys never leak across projects.
+  useEffect(() => {
+    setArea("");
+    setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
+    setActiveKeys(categories.map((c) => c.key));
+    setTouched(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace.locationId, workspace.projectCode]);
 
   const activeCategories = useMemo(
     () => categories.filter((c) => activeKeys.includes(c.key)),
@@ -106,8 +134,8 @@ export function DailySalesEngine() {
   const errors = useMemo(() => validateSalesEntry(activeCategories, values), [activeCategories, values]);
   const subtotal = useMemo(() => sumSalesEntry(activeCategories, values), [activeCategories, values]);
   const tax = useMemo(
-    () => computeTax(subtotal, activeWorkspace.projectCode),
-    [subtotal, activeWorkspace.projectCode],
+    () => computeTax(subtotal, workspace.projectCode),
+    [subtotal, workspace.projectCode],
   );
   const formError = errors.find((e) => e.key === "_form");
 
@@ -147,21 +175,44 @@ export function DailySalesEngine() {
     <div>
       <PageHeader
         title="Submit Daily Sales"
-        description={`Input penjualan harian untuk ${activeWorkspace.projectName} · ${activeWorkspace.locationName}.`}
+        description={`Input penjualan harian untuk ${workspace.projectName} · ${workspace.locationName}.`}
         breadcrumbs={[{ label: "Operasional" }, { label: "Daily Sales" }]}
       />
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner
           persona={persona}
-          scopeSummary={`${activeWorkspace.projectCode} · ${activeWorkspace.locationName}`}
+          scopeSummary={`${workspace.projectCode} · ${workspace.locationName}`}
         />
+
+        {accessibleWorkspaces.length > 1 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              Lokasi Input
+            </span>
+            <select
+              value={selectedLocationId}
+              onChange={(e) => setSelectedLocationId(e.target.value)}
+              className="h-9 min-w-[220px] rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {accessibleWorkspaces.map((w) => (
+                <option key={w.locationId} value={w.locationId}>
+                  {w.projectCode} · {w.locationName}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-muted-foreground">
+              Kategori & pajak menyesuaikan konfigurasi project lokasi terpilih.
+            </span>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             Kategori & harga default mengikuti konfigurasi project{" "}
-            <b>{activeWorkspace.projectCode}</b>. Aturan Cut-Off <b>H+1</b> — input hanya untuk hari
+            <b>{workspace.projectCode}</b>. Aturan Cut-Off <b>H+1</b> — input hanya untuk hari
             ini atau kemarin. Sales = Qty × Harga.
           </span>
         </div>
@@ -211,7 +262,7 @@ export function DailySalesEngine() {
 
               <p className="text-[11px] text-muted-foreground">
                 Harga terisi otomatis dari Master Pricing lokasi{" "}
-                <b>{activeWorkspace.locationName}</b> — dapat diubah manual bila perlu.
+                <b>{workspace.locationName}</b> — dapat diubah manual bila perlu.
               </p>
 
               <DynamicSalesTable
@@ -227,7 +278,7 @@ export function DailySalesEngine() {
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <TotalTile label="Item" value={`${activeCategories.filter((c) => (values[c.key]?.qty || 0) > 0).length} kategori`} />
                 <TotalTile label="Subtotal" value={formatCurrency(subtotal)} />
-                <TotalTile label={`Pajak ${activeWorkspace.projectCode}`} value={formatCurrency(tax)} />
+                <TotalTile label={`Pajak ${workspace.projectCode}`} value={formatCurrency(tax)} />
                 <TotalTile label="Net Invoice" value={formatCurrency(subtotal + tax)} highlight />
               </div>
 
@@ -245,7 +296,7 @@ export function DailySalesEngine() {
                     <span className="font-semibold tabular-nums">{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    Pajak ({activeWorkspace.projectCode}): {formatCurrency(tax)} · Net Invoice{" "}
+                    Pajak ({workspace.projectCode}): {formatCurrency(tax)} · Net Invoice{" "}
                     {formatCurrency(subtotal + tax)}
                   </div>
                 </div>
