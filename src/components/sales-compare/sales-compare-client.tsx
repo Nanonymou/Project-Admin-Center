@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
@@ -22,6 +19,7 @@ import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SalesCompareBar } from "@/components/sales-compare/sales-compare-bar";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { daysBetween, scaleSiteKpisByPeriod, SITE_KPI } from "@/lib/mock/site-kpi";
@@ -29,16 +27,6 @@ import { buildProfitTrendForRange, buildSalesByProject } from "@/lib/mock/margin
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
-
-const PALETTE = [
-  "hsl(221 83% 45%)",
-  "hsl(199 89% 48%)",
-  "hsl(142 71% 45%)",
-  "hsl(38 92% 50%)",
-  "hsl(0 84% 60%)",
-  "hsl(272 68% 55%)",
-  "hsl(178 70% 40%)",
-];
 
 export function SalesCompareClient() {
   const { persona } = usePersona();
@@ -85,7 +73,12 @@ export function SalesCompareClient() {
     () =>
       [...filteredSites]
         .sort((a, b) => b.sales - a.sales)
-        .map((s) => ({ label: `${s.projectCode} · ${s.locationName}`, sales: s.sales, key: s.locationId })),
+        .map((s) => ({
+          label: `${s.projectCode} · ${s.locationName}`,
+          sales: s.sales,
+          prevSales: s.prevPeriod?.sales,
+          key: s.locationId,
+        })),
     [filteredSites],
   );
   const byProject = useMemo(() => buildSalesByProject(filteredSites), [filteredSites]);
@@ -179,37 +172,7 @@ export function SalesCompareClient() {
             </div>
           </CardHeader>
           <CardContent>
-            {barData.length === 0 ? (
-              <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-                Tidak ada data.
-              </div>
-            ) : (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barData} margin={{ top: 8, right: 12, left: 8, bottom: 0 }} barCategoryGap={16}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      stroke="hsl(215 16% 47%)"
-                      tickLine={false}
-                      axisLine={false}
-                      width={64}
-                      tickFormatter={(v) => `${(v / 1_000_000_000).toFixed(1)}M`}
-                    />
-                    <Tooltip
-                      contentStyle={{ borderRadius: 8, border: "1px solid hsl(214 32% 91%)", fontSize: 12 }}
-                      formatter={(v: number) => [formatCurrency(v), "Sales"]}
-                    />
-                    <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
-                      {barData.map((_, i) => (
-                        <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <SalesCompareBar data={barData} />
           </CardContent>
         </Card>
 
