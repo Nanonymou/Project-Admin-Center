@@ -213,6 +213,20 @@ export function ApprovalProgressClient() {
       });
   }, [allApprovals]);
 
+  // Age distribution — how long invoices have sat in their current stage.
+  const ageBuckets = useMemo(() => {
+    const defs = [
+      { label: "0–2 hari", min: 0, max: 2 },
+      { label: "3–5 hari", min: 3, max: 5 },
+      { label: "6–10 hari", min: 6, max: 10 },
+      { label: ">10 hari", min: 11, max: Infinity },
+    ];
+    return defs.map((d) => ({
+      label: d.label,
+      count: allApprovals.filter((a) => a.timeInStageDays >= d.min && a.timeInStageDays <= d.max).length,
+    }));
+  }, [allApprovals]);
+
   // Workload per assignee across the pending queue.
   const assigneeWorkload = useMemo(() => {
     const map = new Map<string, { count: number; amount: number; overdue: number }>();
@@ -513,6 +527,33 @@ export function ApprovalProgressClient() {
                       <div className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{w.count}</div>
                       <div className="w-16 shrink-0 text-right text-[11px] tabular-nums text-rose-600">
                         {w.overdue > 0 ? `${w.overdue} od` : "—"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {allApprovals.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribusi Umur Approval</CardTitle>
+              <CardDescription>Lama invoice berada di tahap saat ini — semakin tua semakin berisiko.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {ageBuckets.map((b, i) => {
+                  const max = Math.max(1, ...ageBuckets.map((x) => x.count));
+                  const tone = ["text-emerald-700", "text-sky-700", "text-amber-700", "text-rose-700"][i];
+                  const bar = ["bg-emerald-500", "bg-sky-500", "bg-amber-500", "bg-rose-500"][i];
+                  return (
+                    <div key={b.label} className="rounded-md border p-3">
+                      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{b.label}</div>
+                      <div className={cn("mt-1 text-2xl font-bold tabular-nums", tone)}>{b.count}</div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className={cn("h-full rounded-full", bar)} style={{ width: `${(b.count / max) * 100}%` }} />
                       </div>
                     </div>
                   );
