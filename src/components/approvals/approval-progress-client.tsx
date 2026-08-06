@@ -177,6 +177,19 @@ export function ApprovalProgressClient() {
     [scopedApprovals, stageFilter],
   );
 
+  // Colored status split of the currently shown queue.
+  const queueStatus = useMemo(() => {
+    let onTime = 0;
+    let atRisk = 0;
+    let overdue = 0;
+    for (const a of approvals) {
+      if (a.status === "on_time" || a.status === "approved") onTime += 1;
+      else if (a.status === "at_risk") atRisk += 1;
+      else overdue += 1;
+    }
+    return { onTime, atRisk, overdue, total: approvals.length };
+  }, [approvals]);
+
   const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
 
   // Per-stage timeline: count + average time-in-stage for each approval stage.
@@ -803,6 +816,27 @@ export function ApprovalProgressClient() {
                 );
               })}
             </div>
+
+            {queueStatus.total > 0 && (
+              <div className="space-y-1">
+                <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div className="bg-emerald-500" style={{ width: `${(queueStatus.onTime / queueStatus.total) * 100}%` }} />
+                  <div className="bg-amber-500" style={{ width: `${(queueStatus.atRisk / queueStatus.total) * 100}%` }} />
+                  <div className="bg-rose-500" style={{ width: `${(queueStatus.overdue / queueStatus.total) * 100}%` }} />
+                </div>
+                <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-sm bg-emerald-500" /> On Time · {queueStatus.onTime}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-sm bg-amber-500" /> At Risk · {queueStatus.atRisk}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-sm bg-rose-500" /> Overdue · {queueStatus.overdue}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <ApprovalReminderList items={approvals} />
           </CardContent>
