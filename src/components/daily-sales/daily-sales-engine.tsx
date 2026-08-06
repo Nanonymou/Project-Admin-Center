@@ -17,6 +17,7 @@ import {
   validateSalesEntry,
   type SalesEntryInput,
 } from "@/lib/mock/service-config";
+import { DynamicSalesTable } from "@/components/daily-sales/dynamic-sales-table";
 import { computeTax } from "@/lib/finance";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -48,15 +49,32 @@ export function DailySalesEngine() {
   const [values, setValues] = useState<SalesEntryInput>(() =>
     Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: c.defaultPrice }])),
   );
+  const [activeKeys, setActiveKeys] = useState<string[]>(() => categories.map((c) => c.key));
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+
+  const activeCategories = useMemo(
+    () => categories.filter((c) => activeKeys.includes(c.key)),
+    [categories, activeKeys],
+  );
+
+  function toggleCategory(key: string) {
+    setActiveKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+    setValues((prev) =>
+      prev[key]
+        ? prev
+        : { ...prev, [key]: { qty: 0, price: categories.find((c) => c.key === key)?.defaultPrice ?? 0 } },
+    );
+  }
 
   const canCreate =
     persona.role === "site_admin" || persona.role === "super_admin" || persona.role === "leader_admin";
   const dateAllowed = date === today || date === yesterday;
 
-  const errors = useMemo(() => validateSalesEntry(categories, values), [categories, values]);
-  const subtotal = useMemo(() => sumSalesEntry(categories, values), [categories, values]);
+  const errors = useMemo(() => validateSalesEntry(activeCategories, values), [activeCategories, values]);
+  const subtotal = useMemo(() => sumSalesEntry(activeCategories, values), [activeCategories, values]);
   const tax = useMemo(
     () => computeTax(subtotal, activeWorkspace.projectCode),
     [subtotal, activeWorkspace.projectCode],
@@ -78,7 +96,7 @@ export function DailySalesEngine() {
         total: subtotal,
         tax,
         status,
-        lines: categories
+        lines: activeCategories
           .filter((c) => (values[c.key]?.qty || 0) > 0)
           .map((c) => ({
             label: c.label,
@@ -134,53 +152,15 @@ export function DailySalesEngine() {
                 )}
               </div>
 
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2 text-left font-medium">Kategori</th>
-                      <th className="px-3 py-2 text-right font-medium">Qty</th>
-                      <th className="px-3 py-2 text-right font-medium">Harga</th>
-                      <th className="px-3 py-2 text-right font-medium">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categories.map((cat) => {
-                      const line = values[cat.key];
-                      const err = errors.find((e) => e.key === cat.key);
-                      return (
-                        <tr key={cat.key} className="border-b last:border-0">
-                          <td className="px-3 py-2">
-                            <div className="text-sm font-medium">{cat.label}</div>
-                            <div className="text-[10px] text-muted-foreground">per {cat.unit}</div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={line?.qty ?? 0}
-                              onChange={(e) => setLine(cat.key, "qty", e.target.value)}
-                              className={cn("h-8 w-24 text-right", touched && err && "border-rose-400")}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={line?.price ?? 0}
-                              onChange={(e) => setLine(cat.key, "price", e.target.value)}
-                              className="h-8 w-28 text-right"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-medium">
-                            {formatCurrency(lineTotal(line))}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <DynamicSalesTable
+                categories={categories}
+                activeKeys={activeKeys}
+                values={values}
+                errors={errors}
+                touched={touched}
+                onToggleCategory={toggleCategory}
+                onChangeLine={setLine}
+              />
 
               {touched && formError && (
                 <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
