@@ -15,6 +15,7 @@ import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { buildApprovalReminders } from "@/lib/mock/approvals";
+import { buildPeriodLocks } from "@/lib/mock/lock-period";
 import { buildCutOffRows, DELIVERY_STATUS_META } from "@/lib/mock/cutoff-config";
 import { cn } from "@/lib/utils";
 
@@ -120,6 +121,22 @@ export function ComplianceMonitoringClient() {
     });
   }, [filteredSites]);
 
+  // Period lock status per location (recent months).
+  const periodStatus = useMemo(() => {
+    const locks = buildPeriodLocks(filteredSites);
+    const map = new Map<string, { label: string; periods: { key: string; label: string; state: string }[] }>();
+    for (const r of locks) {
+      const e = map.get(r.locationId) ?? { label: `${r.projectCode} · ${r.locationName}`, periods: [] };
+      e.periods.push({ key: r.periodKey, label: r.periodLabel, state: r.state });
+      map.set(r.locationId, e);
+    }
+    return Array.from(map.entries()).map(([id, v]) => ({
+      id,
+      label: v.label,
+      periods: v.periods.sort((a, b) => (a.key < b.key ? -1 : 1)),
+    }));
+  }, [filteredSites]);
+
   const summary = useMemo(() => {
     const compliant = rows.filter((r) => r.compliance === "compliant").length;
     const atRisk = rows.filter((r) => r.compliance === "at_risk").length;
@@ -221,6 +238,40 @@ export function ComplianceMonitoringClient() {
                       />
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">{a.count} invoice dalam alur approval</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {periodStatus.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Periode per Lokasi</CardTitle>
+              <CardDescription>Status kunci periode transaksi tiap bulan per lokasi.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {periodStatus.map((row) => (
+                  <div key={row.id} className="flex flex-wrap items-center gap-2">
+                    <div className="w-40 shrink-0 truncate text-xs font-medium">{row.label}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {row.periods.map((p) => (
+                        <span
+                          key={p.key}
+                          title={`${p.label} · ${p.state === "locked" ? "Terkunci" : "Terbuka"}`}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                            p.state === "locked"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700",
+                          )}
+                        >
+                          {p.label} · {p.state === "locked" ? "Terkunci" : "Terbuka"}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
