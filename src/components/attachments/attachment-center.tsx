@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, ImageIcon, Paperclip, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileText, ImageIcon, Paperclip, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -79,7 +79,7 @@ export function AttachmentCenter({
         sizeLabel: fileSizeLabel(f.size),
         isImage,
         isPdf,
-        url: isImage || isPdf ? URL.createObjectURL(f) : "",
+        url: URL.createObjectURL(f),
       });
     }
     setItems(next);
@@ -90,6 +90,16 @@ export function AttachmentCenter({
     const next = items.filter((i) => i.id !== id);
     setItems(next);
     onChange?.(next);
+  }
+
+  function download(it: Attachment) {
+    if (!it.url) return;
+    const a = document.createElement("a");
+    a.href = it.url;
+    a.download = it.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   return (
@@ -211,26 +221,39 @@ export function AttachmentCenter({
           )
         }
       >
-        {previewItem?.isImage && previewItem.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewItem.url}
-            alt={previewItem.name}
-            className="mx-auto max-h-[60vh] w-auto rounded-md border"
-          />
-        ) : previewItem?.isPdf && previewItem.url ? (
-          <iframe
-            src={previewItem.url}
-            title={previewItem.name}
-            className="h-[60vh] w-full rounded-md border"
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
-            <FileText className="h-10 w-10" />
-            <div>Pratinjau tersedia untuk gambar (JPG/PNG) dan PDF.</div>
-            <div className="text-xs">{previewItem?.name}</div>
-          </div>
-        )}
+        <div className="space-y-3">
+          {previewItem?.isImage && previewItem.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewItem.url}
+              alt={previewItem.name}
+              className="mx-auto max-h-[55vh] w-auto rounded-md border"
+            />
+          ) : previewItem?.isPdf && previewItem.url ? (
+            <iframe
+              src={previewItem.url}
+              title={previewItem.name}
+              className="h-[55vh] w-full rounded-md border"
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 rounded-md border border-amber-200 bg-amber-50 py-8 text-center text-sm text-amber-900">
+              <FileText className="h-10 w-10 text-amber-500" />
+              <div className="font-medium">Pratinjau tidak tersedia</div>
+              <p className="max-w-xs text-xs">
+                Tipe file ini tidak dapat ditampilkan langsung. Unduh untuk membukanya di aplikasi lain.
+              </p>
+              <div className="text-xs text-muted-foreground">{previewItem?.name}</div>
+            </div>
+          )}
+          {previewItem && (
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => download(previewItem)} disabled={!previewItem.url}>
+                <Download className="h-4 w-4" />
+                Unduh
+              </Button>
+            </div>
+          )}
+        </div>
       </Dialog>
     </div>
   );
