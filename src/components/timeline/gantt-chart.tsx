@@ -23,6 +23,24 @@ const GANTT_STATE_LABEL: Record<TimelineStageState, string> = {
 };
 
 /**
+ * Status → colour logic for a Gantt bar. A running stage that is within 20% of
+ * its SLA (but not yet breached) is highlighted amber as "at risk"; a breached
+ * SLA always reads as overdue red regardless of the raw state.
+ */
+export function ganttStageColor(s: {
+  state: TimelineStageState;
+  slaDays: number;
+  durationDays: number;
+  breachedSla: boolean;
+}): { className: string; atRisk: boolean } {
+  if (s.breachedSla) return { className: "bg-rose-500", atRisk: false };
+  if (s.state === "current" && s.slaDays > 0 && s.durationDays >= s.slaDays * 0.8) {
+    return { className: "bg-amber-500", atRisk: true };
+  }
+  return { className: GANTT_STATE_COLOR[s.state], atRisk: false };
+}
+
+/**
  * Reusable, color-coded Gantt chart with a day-scale ruler. Rows are
  * pre-computed timeline entries; the chart handles the axis + scaling.
  */
@@ -52,6 +70,10 @@ export function GanttChart({
             {GANTT_STATE_LABEL[state]}
           </span>
         ))}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" />
+          At Risk (mendekati SLA)
+        </span>
         <span className="ml-auto">Skala: hari sejak invoice dibuat · outline putus-putus = SLA lewat</span>
       </div>
 
@@ -152,6 +174,7 @@ function GanttRow({
         {row.stages.map((s) => {
           const leftPct = (s.startOffset / maxSpan) * 100;
           const widthPct = (s.durationDays / maxSpan) * 100;
+          const color = ganttStageColor(s);
           return (
             <div
               key={s.stage}
@@ -159,13 +182,13 @@ function GanttRow({
               onMouseLeave={() => onHoverStage(null)}
               className={cn(
                 "absolute top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-sm transition-all",
-                GANTT_STATE_COLOR[s.state],
+                color.className,
                 s.breachedSla && "outline outline-1 outline-dashed outline-rose-900/50",
                 hoveredStage === s.stage && "z-10 ring-2 ring-foreground/60",
                 hoveredStage && hoveredStage !== s.stage && "opacity-40",
               )}
               style={{ left: `${leftPct}%`, width: `${Math.max(1.5, widthPct)}%` }}
-              title={`${s.stage}: ${s.state === "upcoming" ? `SLA ${s.slaDays}h` : `${s.durationDays}h`}${s.breachedSla ? " (SLA lewat)" : ""} · ${s.actor}`}
+              title={`${s.stage}: ${s.state === "upcoming" ? `SLA ${s.slaDays}h` : `${s.durationDays}h`}${s.breachedSla ? " (SLA lewat)" : color.atRisk ? " (mendekati SLA)" : ""} · ${s.actor}`}
             />
           );
         })}
