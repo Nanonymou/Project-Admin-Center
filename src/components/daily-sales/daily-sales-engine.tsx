@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Info, Save, ShoppingCart } from "lucide-react";
+import { AlertTriangle, History, Info, Save, ShoppingCart } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,8 @@ import {
 } from "@/lib/mock/service-config";
 import { DynamicSalesTable } from "@/components/daily-sales/dynamic-sales-table";
 import { SalesEntryTable } from "@/components/daily-sales/sales-entry-table";
+import { ChangeHistory } from "@/components/daily-sales/change-history";
+import { buildAuditTrail } from "@/lib/mock/audit-trail";
 import { getPriceListFor } from "@/lib/mock/pricing-config";
 import { buildSalesHistory } from "@/lib/mock/sales-history";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -71,6 +73,11 @@ export function DailySalesEngine() {
   const salesHistory = useMemo(() => {
     const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     return buildSalesHistory(accessible);
+  }, [persona]);
+
+  const auditTrail = useMemo(() => {
+    const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
+    return buildAuditTrail(accessible);
   }, [persona]);
 
   function toggleCategory(key: string) {
@@ -273,6 +280,21 @@ export function DailySalesEngine() {
           </CardHeader>
           <CardContent>
             <SalesEntryTable entries={salesHistory} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Entri
+            </CardTitle>
+            <CardDescription>
+              Audit trail perubahan Daily Sales — siapa mengubah apa dan kapan.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChangeHistory entries={auditTrail} />
           </CardContent>
         </Card>
       </div>
