@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Crown, Medal, Trophy } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Crown, ExternalLink, Medal, Trophy } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useActiveSite } from "@/components/providers/active-site-provider";
 import type { SiteKpi } from "@/lib/mock/site-kpi";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -43,6 +44,13 @@ export function TopSitesModule({
 }) {
   const [metric, setMetric] = useState<PerfMetric>(defaultMetric);
   const cfg = METRIC_META[metric];
+  const router = useRouter();
+  const { setActiveLocationId } = useActiveSite();
+
+  function openWorkspace(locationId: string) {
+    setActiveLocationId(locationId);
+    router.push(`/site/${locationId}`);
+  }
 
   const ranked = useMemo(() => {
     const dir = order === "asc" ? 1 : -1;
@@ -91,7 +99,16 @@ export function TopSitesModule({
               const Icon = RANK_ICON[i];
               const pct = max === 0 ? 0 : (cfg.raw(site) / max) * 100;
               return (
-                <li key={site.locationId} className="flex items-center gap-3 px-4 py-3">
+                <li
+                  key={site.locationId}
+                  onClick={() => openWorkspace(site.locationId)}
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") openWorkspace(site.locationId);
+                  }}
+                >
                   <div
                     className={cn(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold tabular-nums",
@@ -117,13 +134,10 @@ export function TopSitesModule({
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold tabular-nums">{cfg.format(site)}</div>
-                    <Link
-                      href={`/site/${site.locationId}`}
-                      className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary hover:underline"
-                    >
-                      Detail
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
+                    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary">
+                      <ExternalLink className="h-3 w-3" />
+                      Open Workspace
+                    </span>
                   </div>
                 </li>
               );
