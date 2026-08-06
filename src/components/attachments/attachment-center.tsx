@@ -143,8 +143,17 @@ export function AttachmentCenter({
             if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
           }}
           onClick={() => inputRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Unggah lampiran — seret & lepas file atau tekan Enter untuk memilih"
           className={cn(
-            "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed p-6 text-center text-xs transition-colors",
+            "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed p-6 text-center text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             dragOver ? "border-primary bg-primary/5 text-primary" : "border-input text-muted-foreground hover:bg-accent/40",
           )}
         >
@@ -165,8 +174,9 @@ export function AttachmentCenter({
               <button
                 type="button"
                 onClick={() => preview(it)}
-                className="block w-full text-left"
+                className="block w-full rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title="Pratinjau"
+                aria-label={`Pratinjau ${it.name}`}
               >
                 <div className="flex h-20 items-center justify-center overflow-hidden rounded bg-muted">
                   {it.isImage && it.url ? (
@@ -207,14 +217,14 @@ export function AttachmentCenter({
         }
         footer={
           items.length > 1 && (
-            <div className="flex items-center justify-between">
-              <Button variant="outline" size="sm" onClick={() => step(-1)}>
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="outline" size="sm" onClick={() => step(-1)} aria-label="Lampiran sebelumnya">
                 <ChevronLeft className="h-4 w-4" />
-                Sebelumnya
+                <span className="hidden sm:inline">Sebelumnya</span>
               </Button>
-              <span className="text-[11px] text-muted-foreground">Gunakan ← / → untuk navigasi</span>
-              <Button variant="outline" size="sm" onClick={() => step(1)}>
-                Berikutnya
+              <span className="hidden text-[11px] text-muted-foreground sm:inline">Gunakan ← / → untuk navigasi</span>
+              <Button variant="outline" size="sm" onClick={() => step(1)} aria-label="Lampiran berikutnya">
+                <span className="hidden sm:inline">Berikutnya</span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
