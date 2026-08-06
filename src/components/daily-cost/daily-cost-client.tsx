@@ -103,7 +103,9 @@ export function DailyCostClient() {
     () => lockRows.some((r) => r.periodKey === date.slice(0, 7) && r.state === "locked"),
     [lockRows, date],
   );
-  const readOnly = !canCreate || isPeriodLocked;
+  // Input window is H+1: any date older than yesterday is past its input period.
+  const inputWindowPassed = date < yesterday;
+  const readOnly = !canCreate || isPeriodLocked || inputWindowPassed;
 
   const submitStatus = useMemo(() => {
     const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
@@ -312,6 +314,16 @@ export function DailyCostClient() {
                 </div>
               )}
 
+              {!isPeriodLocked && inputWindowPassed && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Periode input untuk <b>{date}</b> sudah terlewat (aturan H+1). Form hanya-baca —
+                    pilih tanggal hari ini atau kemarin untuk input.
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">Tanggal</label>
@@ -319,7 +331,6 @@ export function DailyCostClient() {
                     type="date"
                     value={date}
                     max={today}
-                    min={yesterday}
                     onChange={(e) => setDate(e.target.value)}
                   />
                   {touched && !dateAllowed && (
