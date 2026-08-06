@@ -8,6 +8,7 @@ import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   buildBackups,
@@ -27,6 +28,20 @@ export function BackupRestoreClient() {
 
   type RestoreEvent = { id: string; backupId: string; scope: string; at: string; by: string };
   const [restoreHistory, setRestoreHistory] = useState<RestoreEvent[]>([]);
+  const [restoreTarget, setRestoreTarget] = useState<BackupSnapshot | null>(null);
+  const [ack, setAck] = useState(false);
+
+  function openRestore(b: BackupSnapshot) {
+    setRestoreTarget(b);
+    setAck(false);
+  }
+
+  function confirmRestore() {
+    if (!restoreTarget || !ack) return;
+    restoreBackup(restoreTarget);
+    setRestoreTarget(null);
+    setAck(false);
+  }
 
   function restoreBackup(b: BackupSnapshot) {
     const now = new Date();
@@ -167,7 +182,7 @@ export function BackupRestoreClient() {
                                 variant="outline"
                                 className="h-7"
                                 disabled={!canManage}
-                                onClick={() => restoreBackup(b)}
+                                onClick={() => openRestore(b)}
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
                                 Restore
@@ -227,6 +242,38 @@ export function BackupRestoreClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={restoreTarget !== null}
+        onClose={() => setRestoreTarget(null)}
+        title="Konfirmasi Restore"
+        description={restoreTarget ? `${restoreTarget.id} · ${restoreTarget.scope}` : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRestoreTarget(null)}>
+              Batal
+            </Button>
+            <Button size="sm" variant="destructive" disabled={!ack} onClick={confirmRestore}>
+              <RotateCcw className="h-4 w-4" />
+              Pulihkan Data
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Restore akan <b>menimpa data saat ini</b> dengan snapshot{" "}
+              {restoreTarget?.createdAt}. Tindakan ini tidak dapat dibatalkan.
+            </span>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="h-4 w-4" />
+            Saya memahami risiko dan ingin melanjutkan.
+          </label>
+        </div>
+      </Dialog>
     </div>
   );
 }
