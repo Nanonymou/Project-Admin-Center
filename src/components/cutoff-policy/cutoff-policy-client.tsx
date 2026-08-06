@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
-import { CalendarClock, Building2, Percent, Timer } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CalendarClock, Building2, LockOpen, Percent, Timer } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
@@ -22,6 +25,28 @@ import { cn } from "@/lib/utils";
 
 export function CutOffPolicyClient() {
   const { persona } = usePersona();
+  const canManage = persona.role === "leader_admin" || persona.role === "super_admin";
+
+  // Session flags for periods reopened this session.
+  const [reopened, setReopened] = useState<Record<string, boolean>>({});
+  const [modalTarget, setModalTarget] = useState<{ locationId: string; label: string } | null>(null);
+  const [reason, setReason] = useState("");
+  const [touched, setTouched] = useState(false);
+
+  function openReopenModal(locationId: string, label: string) {
+    setModalTarget({ locationId, label });
+    setReason("");
+    setTouched(false);
+  }
+
+  function confirmReopen() {
+    setTouched(true);
+    if (!modalTarget || reason.trim().length < 4) return;
+    setReopened((prev) => ({ ...prev, [modalTarget.locationId]: true }));
+    setModalTarget(null);
+    setReason("");
+    setTouched(false);
+  }
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -121,11 +146,14 @@ export function CutOffPolicyClient() {
                     <th className="px-3 py-2 text-right font-medium">Sisa Hari</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                     <th className="px-3 py-2 text-right font-medium">Submitted</th>
+                    <th className="px-3 py-2 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cutOffRows.map((r) => {
                     const meta = CUTOFF_STATUS_META[r.status];
+                    const isReopened = reopened[r.locationId];
+                    const isLocked = r.status === "locked" && !isReopened;
                     return (
                       <tr key={r.locationId} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="px-3 py-2 font-medium">
@@ -142,9 +170,28 @@ export function CutOffPolicyClient() {
                           {r.daysLeft <= 0 ? "Lewat" : `H-${r.daysLeft}`}
                         </td>
                         <td className="px-3 py-2">
-                          <Badge variant={meta.variant}>{meta.label}</Badge>
+                          {isReopened ? (
+                            <Badge variant="info">Dibuka kembali</Badge>
+                          ) : (
+                            <Badge variant={meta.variant}>{meta.label}</Badge>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.submittedPct}%</td>
+                        <td className="px-3 py-2 text-right">
+                          {isLocked && canManage ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7"
+                              onClick={() => openReopenModal(r.locationId, `${r.projectCode} · ${r.locationName}`)}
+                            >
+                              <LockOpen className="h-3.5 w-3.5" />
+                              Buka Kembali
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -154,6 +201,45 @@ export function CutOffPolicyClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={modalTarget !== null}
+        onClose={() => setModalTarget(null)}
+        title="Buka Kembali Periode"
+        description={modalTarget?.label}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setModalTarget(null)}>
+              Batal
+            </Button>
+            <Button size="sm" variant="destructive" onClick={confirmReopen}>
+              <LockOpen className="h-4 w-4" />
+              Buka Kembali
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Membuka kembali periode akan mengizinkan input & koreksi transaksi setelah cut-off.
+            Tindakan tercatat di audit trail.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Alasan <span className="text-rose-600">*</span>
+            </label>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="mis. Koreksi tagihan yang terlewat"
+              className={cn(touched && reason.trim().length < 4 && "border-rose-400")}
+            />
+            {touched && reason.trim().length < 4 && (
+              <p className="mt-1 text-[11px] text-rose-600">Alasan minimal 4 karakter.</p>
+            )}
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
