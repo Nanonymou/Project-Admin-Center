@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Download, Info, Lock, PiggyBank, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -198,9 +199,12 @@ export function MarginDashboardClient() {
                   const pct = (p.sales / grandSales) * 100;
                   return (
                     <li key={p.projectCode} className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary">
+                      <Link
+                        href={`/margin/${p.projectCode.toLowerCase()}`}
+                        className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-primary/10 text-[11px] font-bold text-primary hover:bg-primary/20"
+                      >
                         {p.projectCode}
-                      </div>
+                      </Link>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="text-sm font-medium tabular-nums">{formatCurrency(p.sales)}</span>
