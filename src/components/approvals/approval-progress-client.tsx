@@ -138,6 +138,22 @@ export function ApprovalProgressClient() {
       });
   }, [allApprovals]);
 
+  // Workload per assignee across the pending queue.
+  const assigneeWorkload = useMemo(() => {
+    const map = new Map<string, { count: number; amount: number; overdue: number }>();
+    for (const a of allApprovals) {
+      const e = map.get(a.assignee) ?? { count: 0, amount: 0, overdue: 0 };
+      e.count += 1;
+      e.amount += a.amount;
+      if (a.status === "overdue" || a.status === "escalation") e.overdue += 1;
+      map.set(a.assignee, e);
+    }
+    return Array.from(map.entries())
+      .map(([assignee, v]) => ({ assignee, ...v }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [allApprovals]);
+
   // SLA summary across the pending approval queue.
   const slaSummary = useMemo(() => {
     if (allApprovals.length === 0) return null;
@@ -395,6 +411,37 @@ export function ApprovalProgressClient() {
                   </div>
                   <div className="text-[11px] text-muted-foreground">invoice perlu eskalasi</div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {assigneeWorkload.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Beban Approval per Assignee</CardTitle>
+              <CardDescription>Distribusi invoice menunggu tindakan per PIC — bar merah = overdue.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {assigneeWorkload.map((w) => {
+                  const max = assigneeWorkload[0].count || 1;
+                  const pct = (w.count / max) * 100;
+                  const overduePct = w.count > 0 ? (w.overdue / w.count) * 100 : 0;
+                  return (
+                    <div key={w.assignee} className="flex items-center gap-3">
+                      <div className="w-36 shrink-0 truncate text-xs font-medium">{w.assignee}</div>
+                      <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-muted" style={{ maxWidth: `${pct}%` }}>
+                        <div className="absolute inset-0 bg-primary" />
+                        <div className="absolute inset-y-0 left-0 bg-rose-500" style={{ width: `${overduePct}%` }} />
+                      </div>
+                      <div className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{w.count}</div>
+                      <div className="w-16 shrink-0 text-right text-[11px] tabular-nums text-rose-600">
+                        {w.overdue > 0 ? `${w.overdue} od` : "—"}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
