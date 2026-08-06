@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Building2, Trophy } from "lucide-react";
+import { ArrowUpRight, Building2, ChevronDown, ChevronUp, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -108,6 +108,25 @@ export function ProjectPerformanceClient() {
       .sort((a, b) => b.profit - a.profit);
   }, [filteredSites]);
 
+  // Column sorting.
+  type SortKey = "sites" | "sales" | "profit" | "marginPct" | "avgSla" | "overdue";
+  const [sortKey, setSortKey] = useState<SortKey>("profit");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    const arr = [...ranked];
+    arr.sort((a, b) => (sortDir === "asc" ? a[sortKey] - b[sortKey] : b[sortKey] - a[sortKey]));
+    return arr;
+  }, [ranked, sortKey, sortDir]);
+
   const totals = useMemo(
     () => ({
       projects: ranked.length,
@@ -157,24 +176,24 @@ export function ProjectPerformanceClient() {
                   <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium">#</th>
                     <th className="px-3 py-2 text-left font-medium">Project</th>
-                    <th className="px-3 py-2 text-right font-medium">Site</th>
-                    <th className="px-3 py-2 text-right font-medium">Sales</th>
-                    <th className="px-3 py-2 text-right font-medium">Profit</th>
-                    <th className="px-3 py-2 text-right font-medium">Margin %</th>
-                    <th className="px-3 py-2 text-right font-medium">SLA</th>
-                    <th className="px-3 py-2 text-right font-medium">Overdue</th>
+                    <SortHeader label="Site" col="sites" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                    <SortHeader label="Sales" col="sales" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                    <SortHeader label="Profit" col="profit" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                    <SortHeader label="Margin %" col="marginPct" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                    <SortHeader label="SLA" col="avgSla" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                    <SortHeader label="Overdue" col="overdue" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                     <th className="px-3 py-2 text-right font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ranked.length === 0 && (
+                  {sorted.length === 0 && (
                     <tr>
                       <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Tidak ada project dalam scope & filter ini.
                       </td>
                     </tr>
                   )}
-                  {ranked.map((r, i) => (
+                  {sorted.map((r, i) => (
                     <tr key={r.code} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="px-3 py-2 text-lg">{medal[i] ?? <span className="text-sm text-muted-foreground">{i + 1}</span>}</td>
                       <td className="px-3 py-2">
@@ -213,5 +232,40 @@ export function ProjectPerformanceClient() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function SortHeader<K extends string>({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: K;
+  sortKey: K;
+  sortDir: "asc" | "desc";
+  onSort: (col: K) => void;
+}) {
+  const active = sortKey === col;
+  return (
+    <th className="px-3 py-2 text-right font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={cn(
+          "inline-flex items-center gap-0.5 hover:text-foreground",
+          active && "text-foreground",
+        )}
+      >
+        {label}
+        {active ? (
+          sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronDown className="h-3 w-3 opacity-30" />
+        )}
+      </button>
+    </th>
   );
 }
