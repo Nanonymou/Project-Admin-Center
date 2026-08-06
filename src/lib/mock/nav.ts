@@ -37,6 +37,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
       { label: "Dashboard Margin", href: "/margin", icon: PiggyBank },
       { label: "Site Performance", href: "/performance", icon: Trophy },
+      { label: "Perbandingan Sales", href: "/sales-compare", icon: ShoppingCart },
     ],
   },
   {
