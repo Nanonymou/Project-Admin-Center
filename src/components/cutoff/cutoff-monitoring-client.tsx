@@ -19,6 +19,7 @@ import {
 import { NotSubmittedWidget } from "@/components/cutoff/not-submitted-widget";
 import { PastCutOffWidget } from "@/components/cutoff/past-cutoff-widget";
 import { LockedPeriodsWidget } from "@/components/cutoff/locked-periods-widget";
+import { ReopenedPeriodsWidget } from "@/components/cutoff/reopened-periods-widget";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +97,8 @@ export function CutOffMonitoringClient() {
           <PastCutOffWidget sites={scopedSites} />
           <LockedPeriodsWidget sites={scopedSites} />
         </div>
+
+        <ReopenedPeriodsWidget sites={scopedSites} />
 
         <Card>
           <CardHeader>
