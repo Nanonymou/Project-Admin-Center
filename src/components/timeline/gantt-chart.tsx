@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import type { AggregateTimelineRow } from "@/lib/mock/aggregate-timeline";
@@ -38,6 +39,9 @@ export function GanttChart({
   const tickStep = Math.max(1, Math.ceil(maxSpan / 8));
   const ticks: number[] = [];
   for (let d = 0; d <= maxSpan; d += tickStep) ticks.push(d);
+
+  // Hovering a stage bar highlights the same stage across every row.
+  const [hoveredStage, setHoveredStage] = useState<string | null>(null);
 
   return (
     <div className="space-y-2">
@@ -80,6 +84,8 @@ export function GanttChart({
                 maxSpan={maxSpan}
                 ticks={ticks}
                 onSelect={onSelect}
+                hoveredStage={hoveredStage}
+                onHoverStage={setHoveredStage}
               />
             ))}
           </div>
@@ -94,11 +100,15 @@ function GanttRow({
   maxSpan,
   ticks,
   onSelect,
+  hoveredStage,
+  onHoverStage,
 }: {
   row: AggregateTimelineRow;
   maxSpan: number;
   ticks: number[];
   onSelect?: (row: AggregateTimelineRow) => void;
+  hoveredStage: string | null;
+  onHoverStage: (stage: string | null) => void;
 }) {
   const statusVariant =
     row.status === "overdue" ? "danger" : row.status === "atRisk" ? "warning" : "success";
@@ -145,10 +155,14 @@ function GanttRow({
           return (
             <div
               key={s.stage}
+              onMouseEnter={() => onHoverStage(s.stage)}
+              onMouseLeave={() => onHoverStage(null)}
               className={cn(
-                "absolute top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-sm",
+                "absolute top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-sm transition-all",
                 GANTT_STATE_COLOR[s.state],
                 s.breachedSla && "outline outline-1 outline-dashed outline-rose-900/50",
+                hoveredStage === s.stage && "z-10 ring-2 ring-foreground/60",
+                hoveredStage && hoveredStage !== s.stage && "opacity-40",
               )}
               style={{ left: `${leftPct}%`, width: `${Math.max(1.5, widthPct)}%` }}
               title={`${s.stage}: ${s.state === "upcoming" ? `SLA ${s.slaDays}h` : `${s.durationDays}h`}${s.breachedSla ? " (SLA lewat)" : ""} · ${s.actor}`}
