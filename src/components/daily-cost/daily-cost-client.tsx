@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, Save, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Info, MapPin, Save, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
 import { MissingSubmissionStrip } from "@/components/daily-cost/missing-submission-strip";
 import { buildSubmitStatus } from "@/lib/mock/closing-status";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { canAccessLocation } from "@/lib/personas";
 import {
   getCostCategories,
@@ -35,9 +36,24 @@ type SubmittedEntry = {
 export function DailyCostClient() {
   const { persona } = usePersona();
   const { activeWorkspace } = useActiveSite();
+
+  // Location selector — input can target any location the persona can access.
+  const accessibleWorkspaces = useMemo(
+    () => MOCK_WORKSPACES.filter((w) => canAccessLocation(persona, w.locationId, w.projectCode)),
+    [persona],
+  );
+  const [selectedLocationId, setSelectedLocationId] = useState(activeWorkspace.locationId);
+  useEffect(() => {
+    setSelectedLocationId(activeWorkspace.locationId);
+  }, [activeWorkspace.locationId]);
+  const workspace = useMemo(
+    () => accessibleWorkspaces.find((w) => w.locationId === selectedLocationId) ?? activeWorkspace,
+    [accessibleWorkspaces, selectedLocationId, activeWorkspace],
+  );
+
   const categories = useMemo(
-    () => getCostCategories(activeWorkspace.projectCode),
-    [activeWorkspace.projectCode],
+    () => getCostCategories(workspace.projectCode),
+    [workspace.projectCode],
   );
 
   const today = new Date().toISOString().slice(0, 10);
@@ -45,6 +61,14 @@ export function DailyCostClient() {
   const [values, setValues] = useState<CostEntryInput>({});
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+
+  // Reset the form when the target location/project changes.
+  useEffect(() => {
+    setValues({});
+    setDate(today);
+    setTouched(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace.locationId, workspace.projectCode]);
 
   const canCreate = persona.role === "site_admin" || persona.role === "super_admin" || persona.role === "leader_admin";
 
@@ -66,7 +90,7 @@ export function DailyCostClient() {
   const submittedIsos = useMemo(() => {
     const set = new Set<string>();
     let seed = 0;
-    for (const ch of activeWorkspace.locationId) seed += ch.charCodeAt(0);
+    for (const ch of workspace.locationId) seed += ch.charCodeAt(0);
     for (let i = 1; i <= 14; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -75,7 +99,7 @@ export function DailyCostClient() {
     }
     for (const e of entries) if (e.status === "submitted") set.add(e.date);
     return Array.from(set);
-  }, [activeWorkspace.locationId, entries]);
+  }, [workspace.locationId, entries]);
 
   const errors = useMemo(() => validateCostEntry(categories, values), [categories, values]);
   const total = useMemo(() => sumCostEntry(categories, values), [categories, values]);
@@ -109,7 +133,7 @@ export function DailyCostClient() {
     <div>
       <PageHeader
         title="Submit Daily Cost"
-        description={`Input pengeluaran harian untuk ${activeWorkspace.projectName} · ${activeWorkspace.locationName}.`}
+        description={`Input pengeluaran harian untuk ${workspace.projectName} · ${workspace.locationName}.`}
         breadcrumbs={[{ label: "Operasional" }, { label: "Daily Cost" }]}
         actions={
           <Link href="/daily-cost/history">
@@ -124,21 +148,44 @@ export function DailyCostClient() {
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner
           persona={persona}
-          scopeSummary={`${activeWorkspace.projectCode} · ${activeWorkspace.locationName}`}
+          scopeSummary={`${workspace.projectCode} · ${workspace.locationName}`}
         />
+
+        {accessibleWorkspaces.length > 1 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              Lokasi Input
+            </span>
+            <select
+              value={selectedLocationId}
+              onChange={(e) => setSelectedLocationId(e.target.value)}
+              className="h-9 min-w-[220px] rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {accessibleWorkspaces.map((w) => (
+                <option key={w.locationId} value={w.locationId}>
+                  {w.projectCode} · {w.locationName}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-muted-foreground">
+              Kategori cost menyesuaikan konfigurasi project lokasi terpilih.
+            </span>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             Aturan Cut-Off <b>H+1</b>: transaksi hanya dapat diinput untuk hari ini ({today}) atau
             kemarin ({yesterday}). Kategori mengikuti konfigurasi project{" "}
-            <b>{activeWorkspace.projectCode}</b>.
+            <b>{workspace.projectCode}</b>.
           </span>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Status Submit — {activeWorkspace.locationName}</CardTitle>
+            <CardTitle>Status Submit — {workspace.locationName}</CardTitle>
             <CardDescription>
               Tanggal yang belum di-submit ditandai merah agar tidak terlewat sebelum cut-off.
             </CardDescription>
