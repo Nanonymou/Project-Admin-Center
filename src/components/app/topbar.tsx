@@ -5,6 +5,7 @@ import { Bell, Check, ChevronsUpDown, Search, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
+import { TopbarFilter } from "@/components/app/topbar-filter";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +109,8 @@ export function Topbar() {
           className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
+
+      <TopbarFilter />
 
       <div className="ml-auto flex items-center gap-2">
         <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
