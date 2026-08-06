@@ -133,6 +133,34 @@ export function ActivityDashboardClient() {
     return `${p} · ${l}`;
   }, [filters.projects, filters.locations]);
 
+  // Site-selection ratio — used to make count-based KPIs and the comparison
+  // panel respond to the site filter (fraction of scoped sites selected).
+  const siteRatio = useMemo(() => {
+    if (scopedSites.length === 0) return 1;
+    return filteredSites.length / scopedSites.length;
+  }, [filteredSites.length, scopedSites.length]);
+
+  const scopedKpis = useMemo(() => {
+    if (siteRatio >= 0.999) return ACTIVITY_KPIS;
+    return ACTIVITY_KPIS.map((kpi) => {
+      // Scale numeric value strings; leave percentages untouched.
+      if (kpi.value.includes("%")) return kpi;
+      const num = Number(kpi.value.replace(/[.\s]/g, "").replace(",", "."));
+      if (Number.isNaN(num)) return kpi;
+      const scaled = Math.round(num * siteRatio);
+      return { ...kpi, value: new Intl.NumberFormat("id-ID").format(scaled) };
+    });
+  }, [siteRatio]);
+
+  const scopedComparison = useMemo(() => {
+    if (siteRatio >= 0.999) return COMPARISON_STATS;
+    return COMPARISON_STATS.map((s) =>
+      s.unit === "pct"
+        ? s
+        : { ...s, today: Math.round(s.today * siteRatio), yesterday: Math.round(s.yesterday * siteRatio) },
+    );
+  }, [siteRatio]);
+
   const canExport = persona.capabilities.canExport;
 
   return (
@@ -177,13 +205,13 @@ export function ActivityDashboardClient() {
         />
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {ACTIVITY_KPIS.map((kpi) => (
+          {scopedKpis.map((kpi) => (
             <KpiCard key={kpi.key} kpi={kpi} />
           ))}
         </section>
 
         <section>
-          <ComparisonPanel stats={COMPARISON_STATS} />
+          <ComparisonPanel stats={scopedComparison} />
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
