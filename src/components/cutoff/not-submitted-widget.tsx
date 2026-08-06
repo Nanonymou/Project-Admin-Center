@@ -15,6 +15,8 @@ export type NotSubmittedRow = {
   missingDays: string[]; // ISO dates in the last 7 days without a submission
 };
 
+export type SubmissionKind = "sales" | "cost";
+
 function seedOf(s: string) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffffff;
@@ -22,10 +24,15 @@ function seedOf(s: string) {
 }
 
 /** Determine which of the last `window` days a site has NOT submitted. */
-export function buildNotSubmitted(sites: SiteKpi[], windowDays = 7): NotSubmittedRow[] {
+export function buildNotSubmitted(
+  sites: SiteKpi[],
+  windowDays = 7,
+  kind: SubmissionKind = "sales",
+): NotSubmittedRow[] {
+  const kindOffset = kind === "cost" ? 101 : 0;
   return sites
     .map((site) => {
-      const seed = seedOf(site.locationId);
+      const seed = seedOf(site.locationId) + kindOffset;
       const missing: string[] = [];
       for (let i = 0; i < windowDays; i++) {
         const d = new Date();
@@ -43,11 +50,18 @@ export function buildNotSubmitted(sites: SiteKpi[], windowDays = 7): NotSubmitte
     .sort((a, b) => b.missingDays.length - a.missingDays.length);
 }
 
-export function NotSubmittedWidget({ sites }: { sites: SiteKpi[] }) {
-  const rows = useMemo(() => buildNotSubmitted(sites), [sites]);
+export function NotSubmittedWidget({
+  sites,
+  kind = "sales",
+}: {
+  sites: SiteKpi[];
+  kind?: SubmissionKind;
+}) {
+  const rows = useMemo(() => buildNotSubmitted(sites, 7, kind), [sites, kind]);
   const withMissing = rows.filter((r) => r.missingDays.length > 0);
   const totalMissing = withMissing.reduce((s, r) => s + r.missingDays.length, 0);
   const todayIso = new Date().toISOString().slice(0, 10);
+  const title = kind === "cost" ? "Daily Cost Belum Submit" : "Daily Sales Belum Submit";
 
   return (
     <Card>
@@ -55,7 +69,7 @@ export function NotSubmittedWidget({ sites }: { sites: SiteKpi[] }) {
         <div>
           <CardTitle className="flex items-center gap-2">
             <ClipboardX className="h-4 w-4 text-rose-500" />
-            Daily Sales Belum Submit
+            {title}
           </CardTitle>
           <CardDescription>Site dengan hari yang belum tersubmit dalam 7 hari terakhir.</CardDescription>
         </div>
@@ -69,7 +83,7 @@ export function NotSubmittedWidget({ sites }: { sites: SiteKpi[] }) {
         {withMissing.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
             <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-            Semua site sudah submit Daily Sales.
+            Semua site sudah submit {kind === "cost" ? "Daily Cost" : "Daily Sales"}.
           </div>
         ) : (
           <ul className="divide-y">

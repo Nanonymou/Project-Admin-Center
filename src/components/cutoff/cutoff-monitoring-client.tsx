@@ -85,7 +85,10 @@ export function CutOffMonitoringClient() {
           <KpiCard label="Belum Terkonfirmasi" value={counts.pendingDelivery} format="number" icon={Truck} tone="info" />
         </section>
 
-        <NotSubmittedWidget sites={scopedSites} />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <NotSubmittedWidget sites={scopedSites} kind="sales" />
+          <NotSubmittedWidget sites={scopedSites} kind="cost" />
+        </div>
 
         <Card>
           <CardHeader>
