@@ -43,6 +43,11 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
   }, [project.code, persona, filters.from, filters.to]);
 
   const bySite = useMemo(() => buildMarginBySite(sites), [sites]);
+  const locationTotals = useMemo(() => {
+    const salesSum = bySite.reduce((s, r) => s + r.sales, 0);
+    const profitSum = bySite.reduce((s, r) => s + r.profit, 0);
+    return { sales: salesSum, profit: profitSum, marginPct: salesSum > 0 ? (profitSum / salesSum) * 100 : 0 };
+  }, [bySite]);
   const trend = useMemo(
     () => buildProfitTrendForRange(sites, filters.from, filters.to),
     [sites, filters.from, filters.to],
@@ -169,6 +174,14 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t bg-muted/30 text-sm font-semibold">
+                          <td className="px-3 py-2">Total {project.code}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(locationTotals.sales)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(locationTotals.profit)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{locationTotals.marginPct.toFixed(1)}%</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </CardContent>
