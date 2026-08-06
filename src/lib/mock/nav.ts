@@ -38,6 +38,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard Margin", href: "/margin", icon: PiggyBank },
       { label: "Site Performance", href: "/performance", icon: Trophy },
       { label: "Perbandingan Sales", href: "/sales-compare", icon: ShoppingCart },
+      { label: "Perbandingan Cost", href: "/cost-compare", icon: Wallet },
     ],
   },
   {
