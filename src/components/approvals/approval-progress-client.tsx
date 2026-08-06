@@ -115,6 +115,16 @@ export function ApprovalProgressClient() {
     [allApprovals],
   );
 
+  // Invoice due cards: remaining days before the stage SLA is breached.
+  const dueCards = useMemo(
+    () =>
+      allApprovals
+        .map((a) => ({ ...a, remaining: a.slaTargetDays - a.timeInStageDays }))
+        .sort((a, b) => a.remaining - b.remaining)
+        .slice(0, 6),
+    [allApprovals],
+  );
+
   // Activities that are overdue or not finished on time — sorted most urgent first.
   const attentionItems = useMemo(() => {
     const rank: Record<string, number> = { escalation: 0, overdue: 1, at_risk: 2 };
@@ -385,6 +395,62 @@ export function ApprovalProgressClient() {
                   </div>
                   <div className="text-[11px] text-muted-foreground">invoice perlu eskalasi</div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {dueCards.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice Due & Sisa Hari</CardTitle>
+              <CardDescription>Invoice paling mendekati batas SLA tahapnya.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {dueCards.map((a) => {
+                  const tone =
+                    a.remaining <= 0
+                      ? "border-rose-300 bg-rose-50"
+                      : a.remaining <= 2
+                        ? "border-amber-300 bg-amber-50"
+                        : "border-emerald-200 bg-emerald-50/50";
+                  const remainingLabel =
+                    a.remaining < 0
+                      ? `Terlambat ${Math.abs(a.remaining)} hari`
+                      : a.remaining === 0
+                        ? "Jatuh tempo hari ini"
+                        : `Sisa ${a.remaining} hari`;
+                  return (
+                    <Link
+                      key={a.id}
+                      href={invoiceHref(a.invoiceNumber)}
+                      className={cn("block rounded-lg border p-3 transition-colors hover:shadow-sm", tone)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold tabular-nums text-primary">{a.invoiceNumber}</span>
+                        <Clock3
+                          className={cn(
+                            "h-4 w-4",
+                            a.remaining <= 0 ? "text-rose-600" : a.remaining <= 2 ? "text-amber-600" : "text-emerald-600",
+                          )}
+                        />
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {a.projectCode} · {a.locationName} · {a.stage}
+                      </div>
+                      <div
+                        className={cn(
+                          "mt-2 text-lg font-bold",
+                          a.remaining <= 0 ? "text-rose-700" : a.remaining <= 2 ? "text-amber-700" : "text-emerald-700",
+                        )}
+                      >
+                        {remainingLabel}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">{formatCurrency(a.amount)} · {a.assignee}</div>
+                    </Link>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
