@@ -100,6 +100,18 @@ export function ApprovalProgressClient() {
 
   const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
 
+  // SLA summary across the pending approval queue.
+  const slaSummary = useMemo(() => {
+    if (allApprovals.length === 0) return null;
+    const withinSla = allApprovals.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
+    const avgTime = allApprovals.reduce((s, a) => s + a.timeInStageDays, 0) / allApprovals.length;
+    return {
+      compliancePct: (withinSla / allApprovals.length) * 100,
+      avgTime,
+      breaching: allApprovals.length - withinSla,
+    };
+  }, [allApprovals]);
+
   const settledCount = useMemo(
     () =>
       filteredSites.reduce((total, site) => {
@@ -253,6 +265,61 @@ export function ApprovalProgressClient() {
             )}
           </CardContent>
         </Card>
+
+        {slaSummary && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ringkasan SLA</CardTitle>
+              <CardDescription>
+                Kepatuhan SLA antrian approval — waktu di tahap dibanding target SLA.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-md border p-3">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    SLA Compliance
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-1 text-2xl font-bold tabular-nums",
+                      slaSummary.compliancePct >= 80
+                        ? "text-emerald-700"
+                        : slaSummary.compliancePct >= 60
+                          ? "text-amber-600"
+                          : "text-rose-700",
+                    )}
+                  >
+                    {slaSummary.compliancePct.toFixed(0)}%
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${slaSummary.compliancePct}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Rata-rata Waktu di Tahap
+                  </div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums">
+                    {slaSummary.avgTime.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">hari</span>
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Melewati SLA
+                  </div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums text-rose-700">
+                    {slaSummary.breaching}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">invoice perlu eskalasi</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <section className="space-y-3">
           <div>
