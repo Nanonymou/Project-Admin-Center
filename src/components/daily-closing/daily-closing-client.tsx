@@ -5,8 +5,8 @@ import { ClipboardList } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
+import { ClosingStatusBadge } from "@/components/daily-closing/closing-status-badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
@@ -77,9 +77,9 @@ export function DailyClosingClient() {
                   <div key={state} className="rounded-md border p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {meta.step}
+                        Tahap {meta.step}
                       </span>
-                      <Badge variant={meta.variant}>{meta.label}</Badge>
+                      <ClosingStatusBadge state={state} />
                     </div>
                     <div className="mt-2 text-2xl font-bold tabular-nums">{count}</div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
