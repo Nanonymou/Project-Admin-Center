@@ -7,6 +7,8 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { LockPeriodForm } from "@/components/lock-period/lock-period-form";
 import { LockIndicator } from "@/components/lock-period/lock-indicator";
@@ -20,6 +22,10 @@ export function LockPeriodClient() {
   const [stateFilter, setStateFilter] = useState<PeriodLockState | "all">("all");
   // Local overrides applied by lock/unlock actions this session.
   const [overrides, setOverrides] = useState<Record<string, PeriodLockState>>({});
+  // Unlock confirmation state — unlocking reopens a closed period, so confirm first.
+  const [unlockTarget, setUnlockTarget] = useState<PeriodLockRow | null>(null);
+  const [unlockReason, setUnlockReason] = useState("");
+  const [unlockTouched, setUnlockTouched] = useState(false);
 
   const canUnlock = persona.role === "leader_admin" || persona.role === "super_admin";
 
@@ -58,6 +64,21 @@ export function LockPeriodClient() {
       for (const id of ids) next[id] = "locked";
       return next;
     });
+  }
+
+  function requestUnlock(row: PeriodLockRow) {
+    setUnlockTarget(row);
+    setUnlockReason("");
+    setUnlockTouched(false);
+  }
+
+  function confirmUnlock() {
+    setUnlockTouched(true);
+    if (!unlockTarget || unlockReason.trim().length < 4) return;
+    setOverrides((prev) => ({ ...prev, [unlockTarget.id]: "open" }));
+    setUnlockTarget(null);
+    setUnlockReason("");
+    setUnlockTouched(false);
   }
 
   return (
@@ -171,7 +192,7 @@ export function LockPeriodClient() {
                             variant={locked ? "outline" : "default"}
                             className="h-7"
                             disabled={!canUnlock}
-                            onClick={() => toggle(r)}
+                            onClick={() => (locked ? requestUnlock(r) : toggle(r))}
                           >
                             {locked ? (
                               <>
@@ -196,6 +217,52 @@ export function LockPeriodClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={unlockTarget !== null}
+        onClose={() => setUnlockTarget(null)}
+        title="Buka Kunci Periode"
+        description={
+          unlockTarget
+            ? `${unlockTarget.periodLabel} · ${unlockTarget.projectCode} · ${unlockTarget.locationName}`
+            : undefined
+        }
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setUnlockTarget(null)}>
+              Batal
+            </Button>
+            <Button size="sm" variant="destructive" onClick={confirmUnlock}>
+              <LockOpen className="h-4 w-4" />
+              Buka Kunci
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Membuka kunci akan mengizinkan kembali perubahan transaksi pada periode ini. Tindakan
+              ini tercatat pada audit trail.
+            </span>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Alasan buka kunci <span className="text-rose-600">*</span>
+            </label>
+            <Input
+              value={unlockReason}
+              onChange={(e) => setUnlockReason(e.target.value)}
+              placeholder="mis. Koreksi entri sales yang salah input"
+              className={cn(unlockTouched && unlockReason.trim().length < 4 && "border-rose-400")}
+            />
+            {unlockTouched && unlockReason.trim().length < 4 && (
+              <p className="mt-1 text-[11px] text-rose-600">Alasan minimal 4 karakter.</p>
+            )}
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
