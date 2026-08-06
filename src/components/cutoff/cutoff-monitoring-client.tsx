@@ -17,6 +17,7 @@ import {
   DELIVERY_STATUS_META,
 } from "@/lib/mock/cutoff-config";
 import { NotSubmittedWidget } from "@/components/cutoff/not-submitted-widget";
+import { PastCutOffWidget } from "@/components/cutoff/past-cutoff-widget";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +90,8 @@ export function CutOffMonitoringClient() {
           <NotSubmittedWidget sites={scopedSites} kind="sales" />
           <NotSubmittedWidget sites={scopedSites} kind="cost" />
         </div>
+
+        <PastCutOffWidget sites={scopedSites} />
 
         <Card>
           <CardHeader>
