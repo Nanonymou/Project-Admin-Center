@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import {
@@ -11,7 +12,9 @@ import {
   FileText,
   History,
   Paperclip,
+  Upload,
   UserCircle,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -379,33 +382,73 @@ function ActivityTimeline({
   );
 }
 
+type Attachment = { id: string; name: string; size: string; type: string; uploaded?: boolean };
+
 function AttachmentList({ invoiceNumber }: { invoiceNumber: string }) {
-  const attachments = [
-    { name: `${invoiceNumber.replace(/\//g, "-")}.pdf`, size: "1,2 MB", type: "Invoice PDF" },
-    { name: "berita-acara.pdf", size: "480 kB", type: "Berita Acara" },
-    { name: "supporting-doc.xlsx", size: "220 kB", type: "Rekap Kuantitas" },
+  const seed: Attachment[] = [
+    { id: "seed-1", name: `${invoiceNumber.replace(/\//g, "-")}.pdf`, size: "1,2 MB", type: "Invoice PDF" },
+    { id: "seed-2", name: "berita-acara.pdf", size: "480 kB", type: "Berita Acara" },
+    { id: "seed-3", name: "supporting-doc.xlsx", size: "220 kB", type: "Rekap Kuantitas" },
   ];
+  const [attachments, setAttachments] = useState<Attachment[]>(seed);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      const kb = Math.max(1, Math.round(file.size / 1024));
+      const size = kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} kB`;
+      setAttachments((prev) => [
+        ...prev,
+        { id: `up-${Date.now()}`, name: file.name, size, type: "Upload", uploaded: true },
+      ]);
+    }
+    e.target.value = "";
+  }
+
+  function remove(id: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
   return (
-    <ul className="divide-y">
-      {attachments.map((att) => (
-        <li key={att.name} className="flex items-center gap-3 py-2 text-sm">
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-muted">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{att.name}</div>
-            <div className="text-[11px] text-muted-foreground">{att.type} · {att.size}</div>
-          </div>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
-          >
-            Preview
-            <ArrowUpRight className="h-3 w-3" />
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <ul className="divide-y">
+        {attachments.map((att) => (
+          <li key={att.id} className="flex items-center gap-3 py-2 text-sm">
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-muted">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{att.name}</div>
+              <div className="text-[11px] text-muted-foreground">{att.type} · {att.size}</div>
+            </div>
+            {att.uploaded ? (
+              <button
+                type="button"
+                onClick={() => remove(att.id)}
+                className="rounded-md p-1 text-muted-foreground hover:text-rose-600"
+                aria-label={`Hapus ${att.name}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+              >
+                Preview
+                <ArrowUpRight className="h-3 w-3" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <input ref={inputRef} type="file" className="hidden" onChange={onUpload} />
+      <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+        <Upload className="h-4 w-4" />
+        Unggah Dokumen
+      </Button>
+    </div>
   );
 }
 
