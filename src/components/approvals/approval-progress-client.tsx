@@ -96,9 +96,25 @@ export function ApprovalProgressClient() {
     [filteredSites, scopedDetailMap],
   );
 
+  const [queueLocation, setQueueLocation] = useState<string | "all">("all");
+  const queueLocations = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; project: string }>();
+    for (const a of allApprovals) map.set(a.locationId, { id: a.locationId, name: a.locationName, project: a.projectCode });
+    return Array.from(map.values()).sort((x, y) => x.name.localeCompare(y.name));
+  }, [allApprovals]);
+
+  useEffect(() => {
+    if (queueLocation !== "all" && !queueLocations.some((l) => l.id === queueLocation)) setQueueLocation("all");
+  }, [queueLocations, queueLocation]);
+
   const approvals = useMemo(
-    () => (stageFilter === "all" ? allApprovals : allApprovals.filter((a) => a.stage === stageFilter)),
-    [allApprovals, stageFilter],
+    () =>
+      allApprovals.filter(
+        (a) =>
+          (stageFilter === "all" || a.stage === stageFilter) &&
+          (queueLocation === "all" || a.locationId === queueLocation),
+      ),
+    [allApprovals, stageFilter, queueLocation],
   );
 
   const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
@@ -631,6 +647,41 @@ export function ApprovalProgressClient() {
                 );
               })}
             </div>
+
+            {queueLocations.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Lokasi
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQueueLocation("all")}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-xs font-medium",
+                    queueLocation === "all"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  Semua
+                </button>
+                {queueLocations.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setQueueLocation(l.id)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-xs font-medium",
+                      queueLocation === l.id
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent",
+                    )}
+                  >
+                    {l.project} · {l.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <ApprovalReminderList items={approvals} />
           </CardContent>
         </Card>
