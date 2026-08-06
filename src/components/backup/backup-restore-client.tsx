@@ -14,6 +14,7 @@ import {
   BACKUP_STATUS_META,
   type BackupSnapshot,
 } from "@/lib/mock/backups";
+import { downloadTextFile } from "@/lib/csv";
 import { formatNumber } from "@/lib/utils";
 
 export function BackupRestoreClient() {
@@ -32,6 +33,21 @@ export function BackupRestoreClient() {
       sizeMb: completed.reduce((s, b) => s + b.sizeMb, 0),
     };
   }, [backups]);
+
+  function downloadBackup(b: BackupSnapshot) {
+    const manifest = {
+      backupId: b.id,
+      createdAt: b.createdAt,
+      createdBy: b.createdBy,
+      type: b.type,
+      scope: b.scope,
+      sizeMb: b.sizeMb,
+      records: b.records,
+      status: b.status,
+      note: "Mock backup manifest — data tiruan Project Admin Center.",
+    };
+    downloadTextFile(`${b.id}.json`, JSON.stringify(manifest, null, 2), "application/json;charset=utf-8");
+  }
 
   function createBackup() {
     const now = new Date();
@@ -124,10 +140,16 @@ export function BackupRestoreClient() {
                         </td>
                         <td className="px-3 py-2 text-right">
                           {b.status === "completed" ? (
-                            <Button size="sm" variant="outline" className="h-7" disabled={!canManage}>
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              Restore
-                            </Button>
+                            <div className="inline-flex items-center gap-2">
+                              <Button size="sm" variant="ghost" className="h-7" onClick={() => downloadBackup(b)}>
+                                <DownloadCloud className="h-3.5 w-3.5" />
+                                Unduh
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7" disabled={!canManage}>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Restore
+                              </Button>
+                            </div>
                           ) : (
                             <span className="text-[11px] text-muted-foreground">—</span>
                           )}
