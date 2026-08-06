@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, MapPin, Save, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Info, MapPin, Paperclip, Save, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +29,7 @@ type SubmittedEntry = {
   id: string;
   date: string;
   total: number;
-  breakdown: { label: string; amount: number }[];
+  breakdown: { label: string; amount: number; proof?: string }[];
   status: "draft" | "submitted";
 };
 
@@ -59,12 +59,14 @@ export function DailyCostClient() {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [values, setValues] = useState<CostEntryInput>({});
+  const [proofs, setProofs] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
 
   // Reset the form when the target location/project changes.
   useEffect(() => {
     setValues({});
+    setProofs({});
     setDate(today);
     setTouched(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,14 +107,30 @@ export function DailyCostClient() {
   const total = useMemo(() => sumCostEntry(categories, values), [categories, values]);
   const formError = errors.find((e) => e.key === "_form");
 
+  // Config-driven: a proof-required category with a positive amount must have
+  // an attachment before it can be submitted.
+  const missingProofKeys = useMemo(
+    () =>
+      categories
+        .filter((c) => c.requiresProof && (values[c.key] || 0) > 0 && !proofs[c.key])
+        .map((c) => c.key),
+    [categories, values, proofs],
+  );
+
   function setValue(key: string, raw: string) {
     const num = raw === "" ? NaN : Number(raw);
     setValues((prev) => ({ ...prev, [key]: num }));
   }
 
+  function setProof(key: string, name: string) {
+    setProofs((prev) => ({ ...prev, [key]: name }));
+  }
+
   function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
     if (!dateAllowed || errors.length > 0) return;
+    // Drafts may miss proofs; a final submit cannot.
+    if (status === "submitted" && missingProofKeys.length > 0) return;
     setEntries((prev) => [
       {
         id: `${date}-${Date.now()}`,
@@ -121,11 +139,12 @@ export function DailyCostClient() {
         status,
         breakdown: categories
           .filter((c) => (values[c.key] || 0) > 0)
-          .map((c) => ({ label: c.label, amount: values[c.key] })),
+          .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key] })),
       },
       ...prev,
     ]);
     setValues({});
+    setProofs({});
     setTouched(false);
   }
 
@@ -249,6 +268,35 @@ export function DailyCostClient() {
                       />
                       {cat.hint && <p className="mt-0.5 text-[10px] text-muted-foreground">{cat.hint}</p>}
                       {touched && err && <p className="mt-0.5 text-[11px] text-rose-600">{err.message}</p>}
+                      {cat.requiresProof && (values[cat.key] || 0) > 0 && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <label
+                            className={cn(
+                              "inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-accent",
+                              touched && missingProofKeys.includes(cat.key) && "border-rose-400 text-rose-600",
+                            )}
+                          >
+                            <Paperclip className="h-3 w-3" />
+                            {proofs[cat.key] ? "Ganti bukti" : "Unggah bukti"}
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) setProof(cat.key, f.name);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {proofs[cat.key] ? (
+                            <span className="truncate text-[10px] text-emerald-700">{proofs[cat.key]}</span>
+                          ) : (
+                            touched && missingProofKeys.includes(cat.key) && (
+                              <span className="text-[10px] text-rose-600">bukti wajib</span>
+                            )
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -258,6 +306,13 @@ export function DailyCostClient() {
                 <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   {formError.message}
+                </div>
+              )}
+
+              {touched && missingProofKeys.length > 0 && (
+                <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  {missingProofKeys.length} kategori butuh bukti sebelum submit final.
                 </div>
               )}
 
@@ -277,7 +332,7 @@ export function DailyCostClient() {
                   </Button>
                   <Button
                     size="sm"
-                    disabled={!canCreate}
+                    disabled={!canCreate || missingProofKeys.length > 0}
                     onClick={() => handleSubmit("submitted")}
                   >
                     <Save className="h-4 w-4" />
@@ -320,7 +375,10 @@ export function DailyCostClient() {
                       <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
                         {entry.breakdown.map((b) => (
                           <li key={b.label} className="flex justify-between">
-                            <span>{b.label}</span>
+                            <span className="flex items-center gap-1">
+                              {b.label}
+                              {b.proof && <Paperclip className="h-2.5 w-2.5 text-emerald-600" />}
+                            </span>
                             <span className="tabular-nums">{formatCurrency(b.amount)}</span>
                           </li>
                         ))}
