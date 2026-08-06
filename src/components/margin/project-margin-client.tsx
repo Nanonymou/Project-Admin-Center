@@ -10,6 +10,7 @@ import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-summary-cards";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
+import { LocationComparison } from "@/components/margin/location-comparison";
 import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -170,6 +171,8 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
                 </CardContent>
               </Card>
             )}
+
+            {sites.length >= 2 && <LocationComparison sites={sites} />}
 
             <Card>
               <CardHeader>
