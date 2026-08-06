@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, Lock, MapPin, Paperclip, Save, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Info, Lock, MapPin, Paperclip, Pencil, Save, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +63,7 @@ export function DailyCostClient() {
   const [proofs, setProofs] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Reset the form when the target location/project changes.
   useEffect(() => {
@@ -70,6 +71,7 @@ export function DailyCostClient() {
     setProofs({});
     setDate(today);
     setTouched(false);
+    setEditingId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace.locationId, workspace.projectCode]);
 
@@ -169,21 +171,46 @@ export function DailyCostClient() {
     if (!dateAllowed || errors.length > 0 || isPeriodLocked) return;
     // Drafts may miss proofs; a final submit cannot.
     if (status === "submitted" && missingProofKeys.length > 0) return;
-    setEntries((prev) => [
-      {
-        id: `${date}-${Date.now()}`,
-        date,
-        total,
-        status,
-        breakdown: categories
-          .filter((c) => (values[c.key] || 0) > 0)
-          .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key] })),
-      },
-      ...prev,
-    ]);
+    const entry: SubmittedEntry = {
+      id: editingId ?? `${date}-${Date.now()}`,
+      date,
+      total,
+      status,
+      breakdown: categories
+        .filter((c) => (values[c.key] || 0) > 0)
+        .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key] })),
+    };
+    setEntries((prev) => (editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev]));
     setValues({});
     setProofs({});
+    setDate(today);
     setTouched(false);
+    setEditingId(null);
+  }
+
+  function editEntry(entry: SubmittedEntry) {
+    const labelToKey = new Map(categories.map((c) => [c.label, c.key]));
+    const nextValues: CostEntryInput = {};
+    const nextProofs: Record<string, string> = {};
+    for (const b of entry.breakdown) {
+      const key = labelToKey.get(b.label);
+      if (!key) continue;
+      nextValues[key] = b.amount;
+      if (b.proof) nextProofs[key] = b.proof;
+    }
+    setValues(nextValues);
+    setProofs(nextProofs);
+    setDate(entry.date);
+    setEditingId(entry.id);
+    setTouched(false);
+  }
+
+  function cancelEdit() {
+    setValues({});
+    setProofs({});
+    setDate(today);
+    setTouched(false);
+    setEditingId(null);
   }
 
   return (
@@ -371,6 +398,11 @@ export function DailyCostClient() {
                   <span className="font-semibold tabular-nums">{formatCurrency(total)}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {editingId && (
+                    <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                      Batal
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -385,7 +417,7 @@ export function DailyCostClient() {
                     onClick={() => handleSubmit("submitted")}
                   >
                     <Save className="h-4 w-4" />
-                    Submit
+                    {editingId ? "Update" : "Submit"}
                   </Button>
                 </div>
               </div>
@@ -432,7 +464,13 @@ export function DailyCostClient() {
                   </div>
                   <ul className="space-y-2">
                     {entries.map((entry) => (
-                      <li key={entry.id} className="rounded-md border p-2.5">
+                      <li
+                        key={entry.id}
+                        className={cn(
+                          "rounded-md border p-2.5",
+                          editingId === entry.id && "border-primary ring-1 ring-primary",
+                        )}
+                      >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium tabular-nums">{entry.date}</span>
                           <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
@@ -454,7 +492,15 @@ export function DailyCostClient() {
                           ))}
                         </ul>
                         {canCreate && (
-                          <div className="mt-2 flex justify-end border-t pt-2">
+                          <div className="mt-2 flex items-center justify-end gap-3 border-t pt-2">
+                            <button
+                              type="button"
+                              onClick={() => editEntry(entry)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
                             <button
                               type="button"
                               onClick={() => deleteEntry(entry.id)}
