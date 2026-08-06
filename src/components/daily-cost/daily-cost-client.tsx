@@ -30,6 +30,8 @@ type SubmittedEntry = {
   id: string;
   date: string;
   total: number;
+  locationId: string;
+  locationName: string;
   breakdown: { label: string; amount: number; proof?: string }[];
   status: "draft" | "submitted";
 };
@@ -64,6 +66,13 @@ export function DailyCostClient() {
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [entryScope, setEntryScope] = useState<"current" | "all">("current");
+
+  // Entries filtered by the active workspace location (or all locations).
+  const visibleEntries = useMemo(
+    () => (entryScope === "all" ? entries : entries.filter((e) => e.locationId === workspace.locationId)),
+    [entries, entryScope, workspace.locationId],
+  );
 
   // Reset the form when the target location/project changes.
   useEffect(() => {
@@ -131,16 +140,16 @@ export function DailyCostClient() {
     [categories, values, proofs],
   );
 
-  // Automatic totals across all session entries.
+  // Automatic totals across the visible (location-filtered) session entries.
   const sessionTotals = useMemo(() => {
     let all = 0;
     let submitted = 0;
-    for (const e of entries) {
+    for (const e of visibleEntries) {
       all += e.total;
       if (e.status === "submitted") submitted += e.total;
     }
-    return { all, submitted, count: entries.length };
-  }, [entries]);
+    return { all, submitted, count: visibleEntries.length };
+  }, [visibleEntries]);
 
   function deleteEntry(id: string) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
@@ -149,7 +158,7 @@ export function DailyCostClient() {
   // Aggregate cost per category across all session entries.
   const categoryTotals = useMemo(() => {
     const map = new Map<string, number>();
-    for (const e of entries) for (const b of e.breakdown) map.set(b.label, (map.get(b.label) || 0) + b.amount);
+    for (const e of visibleEntries) for (const b of e.breakdown) map.set(b.label, (map.get(b.label) || 0) + b.amount);
     const arr = Array.from(map.entries())
       .map(([label, amount]) => ({ label, amount }))
       .sort((a, b) => b.amount - a.amount);
@@ -175,6 +184,8 @@ export function DailyCostClient() {
       id: editingId ?? `${date}-${Date.now()}`,
       date,
       total,
+      locationId: workspace.locationId,
+      locationName: workspace.locationName,
       status,
       breakdown: categories
         .filter((c) => (values[c.key] || 0) > 0)
@@ -449,14 +460,33 @@ export function DailyCostClient() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Daftar Transaksi</CardTitle>
-              <CardDescription>
-                Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
-              </CardDescription>
+            <CardHeader className="space-y-2">
+              <div>
+                <CardTitle>Daftar Transaksi</CardTitle>
+                <CardDescription>
+                  Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                {(["current", "all"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setEntryScope(s)}
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-[11px] font-medium",
+                      entryScope === s
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent",
+                    )}
+                  >
+                    {s === "current" ? workspace.locationName : "Semua lokasi"}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent>
-              {entries.length === 0 ? (
+              {visibleEntries.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
                   <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
                   Belum ada entri Daily Cost.
@@ -482,7 +512,7 @@ export function DailyCostClient() {
                     </div>
                   </div>
                   <ul className="space-y-2">
-                    {entries.map((entry) => (
+                    {visibleEntries.map((entry) => (
                       <li
                         key={entry.id}
                         className={cn(
@@ -491,7 +521,14 @@ export function DailyCostClient() {
                         )}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium tabular-nums">{entry.date}</span>
+                          <span className="text-sm font-medium tabular-nums">
+                            {entry.date}
+                            {entryScope === "all" && (
+                              <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                                · {entry.locationName}
+                              </span>
+                            )}
+                          </span>
                           <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
                             {entry.status === "submitted" ? "Submitted" : "Draft"}
                           </Badge>
