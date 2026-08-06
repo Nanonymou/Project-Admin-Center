@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  CheckCheck,
+  Clock,
   CopyPlus,
   Download,
   History,
   Info,
+  Lock,
   MapPin,
   Pencil,
   Save,
@@ -37,11 +40,14 @@ import { getPriceListFor } from "@/lib/mock/pricing-config";
 import { getAreasFor } from "@/lib/mock/area-config";
 import { buildSalesHistory } from "@/lib/mock/sales-history";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { buildPeriodLocks } from "@/lib/mock/lock-period";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { canAccessLocation } from "@/lib/personas";
 import { computeTax } from "@/lib/finance";
 import { toCsv, parseCsv, downloadTextFile } from "@/lib/csv";
 import { cn, formatCurrency } from "@/lib/utils";
+
+type EntryStatus = "draft" | "submitted" | "approved";
 
 type SubmittedEntry = {
   id: string;
@@ -51,11 +57,13 @@ type SubmittedEntry = {
   total: number;
   tax: number;
   lines: { label: string; qty: number; price: number; total: number }[];
-  status: "draft" | "submitted";
+  status: EntryStatus;
   // Snapshot of the raw form input so the entry can be re-loaded for editing.
   input: SalesEntryInput;
   activeKeys: string[];
 };
+
+type ActivityLog = { id: string; time: string; text: string };
 
 export function DailySalesEngine() {
   const { persona } = usePersona();
@@ -108,6 +116,26 @@ export function DailySalesEngine() {
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
+
+  function logActivity(text: string) {
+    setActivityLog((prev) => [
+      { id: `${Date.now()}-${prev.length}`, time: new Date().toLocaleTimeString("id-ID"), text },
+      ...prev,
+    ]);
+  }
+
+  // Period lock: past months are locked for this location, so entries dated in
+  // a locked month cannot be submitted. Reads the same config as Lock Period.
+  const lockRows = useMemo(
+    () => buildPeriodLocks(SITE_KPI.filter((s) => s.locationId === workspace.locationId)),
+    [workspace.locationId],
+  );
+  const isPeriodLocked = useMemo(
+    () => lockRows.some((r) => r.periodKey === date.slice(0, 7) && r.state === "locked"),
+    [lockRows, date],
+  );
+  const canApprove = persona.role === "leader_admin" || persona.role === "super_admin";
 
   // When the target location/project changes, reset the form to that project's
   // categories & default prices so stale keys never leak across projects.
@@ -176,7 +204,7 @@ export function DailySalesEngine() {
 
   function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
-    if (!dateAllowed || !area || errors.length > 0) return;
+    if (!dateAllowed || !area || errors.length > 0 || isPeriodLocked) return;
     const entry: SubmittedEntry = {
       id: editingId ?? `${date}-${Date.now()}`,
       date,
@@ -199,7 +227,16 @@ export function DailySalesEngine() {
     setEntries((prev) =>
       editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev],
     );
+    logActivity(
+      `${editingId ? "Mengubah" : status === "submitted" ? "Submit" : "Menyimpan draft"} entri ${entry.date} · ${entry.area} (${formatCurrency(entry.total)})`,
+    );
     resetForm();
+  }
+
+  function approveEntry(id: string) {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, status: "approved" } : e)));
+    const target = entries.find((e) => e.id === id);
+    if (target) logActivity(`Menyetujui entri ${target.date} · ${target.area}`);
   }
 
   function editEntry(entry: SubmittedEntry) {
@@ -213,8 +250,10 @@ export function DailySalesEngine() {
   }
 
   function deleteEntry(id: string) {
+    const target = entries.find((e) => e.id === id);
     setEntries((prev) => prev.filter((e) => e.id !== id));
     if (editingId === id) resetForm();
+    if (target) logActivity(`Menghapus entri ${target.date} · ${target.area}`);
   }
 
   // Prefill the form from yesterday's entry (or the latest one) as a fresh entry.
@@ -231,6 +270,7 @@ export function DailySalesEngine() {
     setDate(today);
     setEditingId(null);
     setTouched(false);
+    logActivity(`Menyalin entri ${copySource.date} ke form`);
   }
 
   function duplicateEntry(entry: SubmittedEntry) {
@@ -243,6 +283,7 @@ export function DailySalesEngine() {
       lines: entry.lines.map((l) => ({ ...l })),
     };
     setEntries((prev) => [copy, ...prev]);
+    logActivity(`Menduplikat entri ${entry.date} · ${entry.area}`);
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,6 +300,7 @@ export function DailySalesEngine() {
     }
     downloadTextFile(`daily-sales-${workspace.projectCode}-${workspace.locationName}.csv`, toCsv(rows));
     setIoMessage(`${entries.length} entri diekspor.`);
+    logActivity(`Ekspor ${entries.length} entri ke Excel`);
   }
 
   // Import a CSV using the same columns; rows are grouped into entries by
@@ -313,6 +355,7 @@ export function DailySalesEngine() {
     }
     setEntries((prev) => [...imported, ...prev]);
     setIoMessage(`${imported.length} entri diimpor dari ${file.name}.`);
+    logActivity(`Impor ${imported.length} entri dari ${file.name}`);
   }
 
   function onImportChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -448,6 +491,16 @@ export function DailySalesEngine() {
                 <b>{workspace.locationName}</b> — dapat diubah manual bila perlu.
               </p>
 
+              {isPeriodLocked && (
+                <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Periode <b>{date.slice(0, 7)}</b> terkunci untuk lokasi ini. Input & submit
+                    dinonaktifkan — hubungi Leader Admin untuk membuka kunci.
+                  </span>
+                </div>
+              )}
+
               <DynamicSalesTable
                 categories={categories}
                 activeKeys={activeKeys}
@@ -495,17 +548,17 @@ export function DailySalesEngine() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={!canCreate || !copySource}
+                    disabled={!canCreate || !copySource || isPeriodLocked}
                     onClick={copyYesterday}
                     title={copySource ? "Salin entri kemarin ke form" : "Belum ada entri untuk disalin"}
                   >
                     <CopyPlus className="h-4 w-4" />
                     Salin Kemarin
                   </Button>
-                  <Button variant="outline" size="sm" disabled={!canCreate} onClick={() => handleSubmit("draft")}>
+                  <Button variant="outline" size="sm" disabled={!canCreate || isPeriodLocked} onClick={() => handleSubmit("draft")}>
                     Simpan Draft
                   </Button>
-                  <Button size="sm" disabled={!canCreate} onClick={() => handleSubmit("submitted")}>
+                  <Button size="sm" disabled={!canCreate || isPeriodLocked} onClick={() => handleSubmit("submitted")}>
                     <Save className="h-4 w-4" />
                     {editingId ? "Update" : "Submit"}
                   </Button>
@@ -549,8 +602,20 @@ export function DailySalesEngine() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium tabular-nums">{entry.date}</span>
-                        <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
-                          {entry.status === "submitted" ? "Submitted" : "Draft"}
+                        <Badge
+                          variant={
+                            entry.status === "approved"
+                              ? "success"
+                              : entry.status === "submitted"
+                                ? "info"
+                                : "muted"
+                          }
+                        >
+                          {entry.status === "approved"
+                            ? "Approved"
+                            : entry.status === "submitted"
+                              ? "Submitted"
+                              : "Draft"}
                         </Badge>
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">{entry.area}</div>
@@ -567,6 +632,16 @@ export function DailySalesEngine() {
                       </ul>
                       {canCreate && (
                         <div className="mt-2 flex items-center justify-end gap-2 border-t pt-2">
+                          {canApprove && entry.status === "submitted" && (
+                            <button
+                              type="button"
+                              onClick={() => approveEntry(entry.id)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                            >
+                              <CheckCheck className="h-3 w-3" />
+                              Approve
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => duplicateEntry(entry)}
@@ -612,6 +687,28 @@ export function DailySalesEngine() {
             <SalesEntryTable entries={salesHistory} />
           </CardContent>
         </Card>
+
+        {activityLog.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                Riwayat Aktivitas Sesi
+              </CardTitle>
+              <CardDescription>Jejak tindakan input, approval & lock pada sesi ini.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-1.5">
+                {activityLog.map((a) => (
+                  <li key={a.id} className="flex items-center gap-3 text-sm">
+                    <span className="w-20 shrink-0 text-[11px] tabular-nums text-muted-foreground">{a.time}</span>
+                    <span className="text-muted-foreground">{a.text}</span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
