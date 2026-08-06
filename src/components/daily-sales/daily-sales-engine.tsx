@@ -1,7 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CopyPlus, History, Info, MapPin, Pencil, Save, ShoppingCart, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CopyPlus,
+  Download,
+  History,
+  Info,
+  MapPin,
+  Pencil,
+  Save,
+  ShoppingCart,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +40,7 @@ import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { canAccessLocation } from "@/lib/personas";
 import { computeTax } from "@/lib/finance";
+import { toCsv, parseCsv, downloadTextFile } from "@/lib/csv";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type SubmittedEntry = {
@@ -232,12 +245,112 @@ export function DailySalesEngine() {
     setEntries((prev) => [copy, ...prev]);
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ioMessage, setIoMessage] = useState<string | null>(null);
+
+  // Export all session entries as a flat CSV (one row per line item).
+  function exportExcel() {
+    const header = ["Tanggal", "Area", "Kategori", "Qty", "Harga", "Subtotal", "Status"];
+    const rows: (string | number)[][] = [header];
+    for (const e of entries) {
+      for (const l of e.lines) {
+        rows.push([e.date, e.area, l.label, l.qty, l.price, l.total, e.status]);
+      }
+    }
+    downloadTextFile(`daily-sales-${workspace.projectCode}-${workspace.locationName}.csv`, toCsv(rows));
+    setIoMessage(`${entries.length} entri diekspor.`);
+  }
+
+  // Import a CSV using the same columns; rows are grouped into entries by
+  // date + area, matched to the current project's categories by label.
+  async function importExcel(file: File) {
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      setIoMessage("File kosong atau format tidak dikenali.");
+      return;
+    }
+    const labelToCat = new Map(categories.map((c) => [c.label.toLowerCase(), c]));
+    const groups = new Map<string, { date: string; area: string; input: SalesEntryInput; keys: string[] }>();
+    for (let i = 1; i < rows.length; i++) {
+      const [date, area, kategori, qtyRaw, priceRaw] = rows[i];
+      const cat = labelToCat.get((kategori ?? "").trim().toLowerCase());
+      if (!cat) continue;
+      const key = `${date}||${area}`;
+      const group = groups.get(key) ?? { date, area, input: {}, keys: [] };
+      group.input[cat.key] = { qty: Number(qtyRaw) || 0, price: Number(priceRaw) || 0 };
+      if (!group.keys.includes(cat.key)) group.keys.push(cat.key);
+      groups.set(key, group);
+    }
+    const imported: SubmittedEntry[] = [];
+    for (const group of groups.values()) {
+      const groupCats = categories.filter((c) => group.keys.includes(c.key));
+      const bd = sumSalesBreakdown(groupCats, group.input);
+      const matchedArea = areas.find((a) => a.name === group.area);
+      imported.push({
+        id: `${group.date}-imp-${Date.now()}-${imported.length}`,
+        date: group.date,
+        area: group.area,
+        areaId: matchedArea?.id ?? "",
+        total: bd.net,
+        tax: computeTax(bd.net, workspace.projectCode),
+        status: "draft",
+        input: group.input,
+        activeKeys: group.keys,
+        lines: groupCats
+          .filter((c) => (group.input[c.key]?.qty || 0) > 0)
+          .map((c) => ({
+            label: c.label,
+            qty: group.input[c.key].qty,
+            price: group.input[c.key].price,
+            total: lineTotal(group.input[c.key]),
+          })),
+      });
+    }
+    if (imported.length === 0) {
+      setIoMessage("Tidak ada baris yang cocok dengan kategori project ini.");
+      return;
+    }
+    setEntries((prev) => [...imported, ...prev]);
+    setIoMessage(`${imported.length} entri diimpor dari ${file.name}.`);
+  }
+
+  function onImportChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void importExcel(file);
+    e.target.value = "";
+  }
+
   return (
     <div>
       <PageHeader
         title="Submit Daily Sales"
         description={`Input penjualan harian untuk ${workspace.projectName} · ${workspace.locationName}.`}
         breadcrumbs={[{ label: "Operasional" }, { label: "Daily Sales" }]}
+        actions={
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={onImportChange}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canCreate}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Impor Excel
+            </Button>
+            <Button variant="outline" size="sm" disabled={entries.length === 0} onClick={exportExcel}>
+              <Download className="h-4 w-4" />
+              Ekspor Excel
+            </Button>
+          </>
+        }
       />
 
       <div className="space-y-6 p-4 md:p-6">
@@ -245,6 +358,15 @@ export function DailySalesEngine() {
           persona={persona}
           scopeSummary={`${workspace.projectCode} · ${workspace.locationName}`}
         />
+
+        {ioMessage && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <span>{ioMessage}</span>
+            <button type="button" onClick={() => setIoMessage(null)} className="text-sky-700 hover:underline">
+              Tutup
+            </button>
+          </div>
+        )}
 
         {accessibleWorkspaces.length > 1 && (
           <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2">
