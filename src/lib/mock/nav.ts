@@ -54,6 +54,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Kalender Deadline", href: "/calendar", icon: CalendarDays },
       { label: "Cut-Off & Pengiriman", href: "/cutoff", icon: CalendarDays },
       { label: "Timeline Approval", href: "/timeline", icon: GanttChartSquare },
+      { label: "Attachment Center", href: "/attachment-center", icon: FileText },
     ],
   },
   {
