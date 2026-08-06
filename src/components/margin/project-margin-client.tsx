@@ -74,6 +74,14 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
     () => buildProfitTrendForRange(sites, filters.from, filters.to),
     [sites, filters.from, filters.to],
   );
+  const trendInsight = useMemo(() => {
+    if (trend.length === 0) return null;
+    const avgMargin = trend.reduce((s, p) => s + p.marginPct, 0) / trend.length;
+    const best = trend.reduce((a, b) => (b.profit > a.profit ? b : a));
+    const worst = trend.reduce((a, b) => (b.profit < a.profit ? b : a));
+    const delta = trend[trend.length - 1].marginPct - trend[0].marginPct;
+    return { avgMargin, best, worst, delta };
+  }, [trend]);
   const periodDays = daysBetween(filters.from, filters.to);
   const canExport = persona.capabilities.canExport;
 
@@ -192,8 +200,26 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
                   margin % (aksis kanan).
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <ProfitTrendChart data={trend} />
+                {trendInsight && (
+                  <div className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid-cols-4">
+                    <InsightTile label="Rata-rata Margin" value={`${trendInsight.avgMargin.toFixed(1)}%`} />
+                    <InsightTile
+                      label="Arah Margin"
+                      value={`${trendInsight.delta >= 0 ? "▲" : "▼"} ${Math.abs(trendInsight.delta).toFixed(1)} pt`}
+                      tone={trendInsight.delta >= 0 ? "text-emerald-700" : "text-rose-700"}
+                    />
+                    <InsightTile
+                      label={`Profit Tertinggi (${trendInsight.best.month})`}
+                      value={formatCurrency(trendInsight.best.profit)}
+                    />
+                    <InsightTile
+                      label={`Profit Terendah (${trendInsight.worst.month})`}
+                      value={formatCurrency(trendInsight.worst.profit)}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -264,6 +290,15 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function InsightTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-2.5">
+      <div className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("mt-0.5 text-sm font-semibold tabular-nums", tone)}>{value}</div>
     </div>
   );
 }
