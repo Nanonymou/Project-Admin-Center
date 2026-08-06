@@ -18,6 +18,7 @@ import {
 } from "@/lib/mock/cutoff-config";
 import { NotSubmittedWidget } from "@/components/cutoff/not-submitted-widget";
 import { PastCutOffWidget } from "@/components/cutoff/past-cutoff-widget";
+import { LockedPeriodsWidget } from "@/components/cutoff/locked-periods-widget";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
@@ -91,7 +92,10 @@ export function CutOffMonitoringClient() {
           <NotSubmittedWidget sites={scopedSites} kind="cost" />
         </div>
 
-        <PastCutOffWidget sites={scopedSites} />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
+          <PastCutOffWidget sites={scopedSites} />
+          <LockedPeriodsWidget sites={scopedSites} />
+        </div>
 
         <Card>
           <CardHeader>
