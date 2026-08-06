@@ -24,11 +24,15 @@ export type InvoiceFormValue = {
   locationName: string;
   pic: string;
   dueDate: string;
+  /** Invoice-level deduction / potongan (Rupiah), subtracted before tax. */
+  deduction: number;
   lines: InvoiceFormLine[];
 };
 
 export type InvoiceComputed = {
   subtotal: number;
+  deduction: number;
+  taxBase: number;
   tax: number;
   taxLabel: string;
   net: number;
@@ -59,6 +63,7 @@ function emptyValue(sites: SiteOption[]): InvoiceFormValue {
     locationName: first?.locationName ?? "",
     pic: "",
     dueDate: "",
+    deduction: 0,
     lines: [newLine()],
   };
 }
@@ -86,9 +91,19 @@ export function InvoiceForm({ open, mode, sites, initial, onClose, onSubmit }: P
       (s, l) => s + Math.max(0, l.qty) * Math.max(0, l.unitPrice),
       0,
     );
-    const tax = computeTax(subtotal, value.projectCode);
-    return { subtotal, tax, taxLabel: getTaxConfig(value.projectCode).label, net: subtotal + tax };
-  }, [value.lines, value.projectCode]);
+    // Potongan reduces the taxable base; tax and net follow automatically.
+    const deduction = Math.min(Math.max(0, value.deduction || 0), subtotal);
+    const taxBase = subtotal - deduction;
+    const tax = computeTax(taxBase, value.projectCode);
+    return {
+      subtotal,
+      deduction,
+      taxBase,
+      tax,
+      taxLabel: getTaxConfig(value.projectCode).label,
+      net: taxBase + tax,
+    };
+  }, [value.lines, value.deduction, value.projectCode]);
 
   function setLine(id: string, field: keyof InvoiceFormLine, raw: string) {
     setValue((prev) => ({
@@ -198,6 +213,17 @@ export function InvoiceForm({ open, mode, sites, initial, onClose, onSubmit }: P
               onChange={(e) => setValue((prev) => ({ ...prev, dueDate: e.target.value }))}
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Potongan</label>
+            <Input
+              type="number"
+              min={0}
+              value={value.deduction || ""}
+              placeholder="0"
+              onChange={(e) => setValue((prev) => ({ ...prev, deduction: Number(e.target.value) || 0 }))}
+              className="tabular-nums"
+            />
+          </div>
         </div>
 
         <div className="rounded-md border">
@@ -258,9 +284,13 @@ export function InvoiceForm({ open, mode, sites, initial, onClose, onSubmit }: P
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Tile label="Subtotal" value={formatCurrency(computed.subtotal)} />
-          <Tile label={computed.taxLabel} value={formatCurrency(computed.tax)} />
+          <Tile
+            label="Potongan"
+            value={`${computed.deduction > 0 ? "−" : ""}${formatCurrency(computed.deduction)}`}
+          />
+          <Tile label={`DPP + ${computed.taxLabel}`} value={formatCurrency(computed.taxBase + computed.tax)} />
           <Tile label="Net Invoice" value={formatCurrency(computed.net)} highlight />
         </div>
       </div>

@@ -228,6 +228,7 @@ export function InvoiceListClient() {
       locationName: item.locationName,
       pic: item.pic,
       dueDate: "",
+      deduction: 0,
       lines: [{ id: "l1", description: `Tagihan ${item.projectCode} · ${item.locationName}`, qty: 1, unitPrice: subtotal }],
     });
     setFormOpen(true);
