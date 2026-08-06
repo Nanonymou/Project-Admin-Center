@@ -64,6 +64,7 @@ export function SalesEntryTable({ entries }: { entries: SalesHistoryEntry[] }) {
                   <thead>
                     <tr className="border-y bg-background text-[11px] uppercase tracking-wide text-muted-foreground">
                       <th className="px-3 py-2 text-left font-medium">Tanggal</th>
+                      <th className="px-3 py-2 text-left font-medium">Area</th>
                       <th className="px-3 py-2 text-left font-medium">Kategori Top</th>
                       <th className="px-3 py-2 text-right font-medium">Lines</th>
                       <th className="px-3 py-2 text-right font-medium">Subtotal</th>
@@ -75,6 +76,7 @@ export function SalesEntryTable({ entries }: { entries: SalesHistoryEntry[] }) {
                     {g.rows.slice(0, 12).map((r) => (
                       <tr key={r.id} className="border-b last:border-0 hover:bg-muted/20">
                         <td className="px-3 py-2 tabular-nums">{r.dateLabel}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.area}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.topCategory}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{r.lineCount}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.subtotal)}</td>

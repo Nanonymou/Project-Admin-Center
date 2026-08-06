@@ -1,5 +1,6 @@
 import { getServiceCategories } from "./service-config";
 import { getPriceFor } from "./pricing-config";
+import { getAreasFor } from "./area-config";
 import { computeTax } from "@/lib/finance";
 import type { ClosingState } from "./closing-status";
 import type { SiteKpi } from "./site-kpi";
@@ -11,6 +12,7 @@ export type SalesHistoryEntry = {
   locationId: string;
   locationName: string;
   projectCode: string;
+  area: string;
   subtotal: number;
   tax: number;
   netInvoice: number;
@@ -36,6 +38,7 @@ export function buildSalesHistory(sites: SiteKpi[], days = 30): SalesHistoryEntr
   const out: SalesHistoryEntry[] = [];
   for (const site of sites) {
     const cats = getServiceCategories(site.projectCode);
+    const areas = getAreasFor(site.locationId, site.locationName);
     const baseDaily = site.sales / 30;
     for (let i = 1; i <= days; i++) {
       const seed = seedOf(site.locationId) + i;
@@ -74,6 +77,7 @@ export function buildSalesHistory(sites: SiteKpi[], days = 30): SalesHistoryEntr
         locationId: site.locationId,
         locationName: site.locationName,
         projectCode: site.projectCode,
+        area: areas[seed % areas.length]?.name ?? "-",
         subtotal,
         tax,
         netInvoice: subtotal + tax,
