@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, MapPin, Pencil, Plus, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
-import { KpiCard } from "@/components/common/kpi-card";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +35,20 @@ const SETTLEMENT_META: Record<
   outstanding: { label: "Outstanding", variant: "warning" },
   overdue: { label: "Overdue", variant: "danger" },
 };
+
+const STAGE_ORDER = ["Verifikasi Site", "Approval Leader", "Verifikasi Finance", "Kirim Client", "Payment"];
+
+const STATUS_CARDS: {
+  key: InvoiceSettlement | "all";
+  label: string;
+  icon: typeof FileText;
+  tone: string;
+}[] = [
+  { key: "all", label: "Semua", icon: FileText, tone: "text-primary bg-primary/10" },
+  { key: "settled", label: "Lunas", icon: CheckCircle2, tone: "text-emerald-700 bg-emerald-50" },
+  { key: "outstanding", label: "Outstanding", icon: Clock, tone: "text-amber-700 bg-amber-50" },
+  { key: "overdue", label: "Overdue", icon: Wallet, tone: "text-rose-700 bg-rose-50" },
+];
 
 export function InvoiceListClient() {
   const { persona } = usePersona();
@@ -115,11 +128,35 @@ export function InvoiceListClient() {
     }
   }, [locationChips, activeLocation]);
 
-  const invoices = useMemo(
+  const locationFiltered = useMemo(
     () => (activeLocation === "all" ? allInvoices : allInvoices.filter((i) => i.locationId === activeLocation)),
     [allInvoices, activeLocation],
   );
+
+  // Status filter driven by the clickable status cards.
+  const [settlementFilter, setSettlementFilter] = useState<InvoiceSettlement | "all">("all");
+  const statusSummary = useMemo(() => summarizeInvoiceList(locationFiltered), [locationFiltered]);
+
+  const invoices = useMemo(
+    () =>
+      settlementFilter === "all"
+        ? locationFiltered
+        : locationFiltered.filter((i) => i.settlement === settlementFilter),
+    [locationFiltered, settlementFilter],
+  );
   const summary = useMemo(() => summarizeInvoiceList(invoices), [invoices]);
+
+  // Per-stage recap for the summary card (counts + amount by approval stage).
+  const stageSummary = useMemo(() => {
+    const map = new Map<string, { count: number; amount: number }>();
+    for (const inv of locationFiltered) {
+      const entry = map.get(inv.stage) ?? { count: 0, amount: 0 };
+      entry.count += 1;
+      entry.amount += inv.amount;
+      map.set(inv.stage, entry);
+    }
+    return STAGE_ORDER.filter((s) => map.has(s)).map((s) => ({ stage: s, ...map.get(s)! }));
+  }, [locationFiltered]);
 
   // Invoice creation is allowed for site/leader/super admin (PRD: "Membuat Invoice").
   const canManage =
@@ -266,17 +303,79 @@ export function InvoiceListClient() {
         )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <KpiCard label="Total Invoice" value={summary.totalAmount} format="currency" icon={FileText} tone="primary" />
-          <KpiCard label="Lunas" value={summary.bySettlement.settled.amount} format="currency" icon={CheckCircle2} tone="success" />
-          <KpiCard label="Outstanding" value={summary.bySettlement.outstanding.amount} format="currency" icon={Clock} tone="warning" />
-          <KpiCard label="Overdue" value={summary.bySettlement.overdue.amount} format="currency" icon={Wallet} tone="danger" />
+          {STATUS_CARDS.map((card) => {
+            const data =
+              card.key === "all"
+                ? { count: statusSummary.totalCount, amount: statusSummary.totalAmount }
+                : statusSummary.bySettlement[card.key];
+            const active = settlementFilter === card.key;
+            const Icon = card.icon;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                onClick={() => setSettlementFilter(card.key)}
+                className={cn(
+                  "rounded-lg border p-4 text-left transition-colors hover:bg-accent/40",
+                  active ? "border-primary ring-1 ring-primary" : "border-border",
+                )}
+                aria-pressed={active}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {card.label}
+                  </span>
+                  <span className={cn("flex h-6 w-6 items-center justify-center rounded", card.tone)}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                </div>
+                <div className="mt-1.5 truncate text-lg font-semibold tabular-nums">
+                  {formatCurrency(data.amount)}
+                </div>
+                <div className="text-[11px] text-muted-foreground">{data.count} invoice</div>
+              </button>
+            );
+          })}
         </section>
+
+        {stageSummary.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ringkasan per Stage</CardTitle>
+              <CardDescription>
+                Distribusi invoice pada tiap tahap approval{activeLocation !== "all" ? " (lokasi terpilih)" : ""}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {stageSummary.map((s) => {
+                  const pct = statusSummary.totalAmount > 0 ? (s.amount / statusSummary.totalAmount) * 100 : 0;
+                  return (
+                    <div key={s.stage} className="flex items-center gap-3">
+                      <div className="w-40 shrink-0 truncate text-xs font-medium">{s.stage}</div>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                        {s.count}
+                      </div>
+                      <div className="w-28 shrink-0 text-right text-xs tabular-nums font-medium">
+                        {formatCurrency(s.amount)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
             <CardTitle>Daftar Invoice</CardTitle>
             <CardDescription>
-              {summary.totalCount} invoice dari {filteredSites.length} site aktif.
+              {summary.totalCount} invoice dari {filteredSites.length} site aktif
+              {settlementFilter !== "all" ? ` · status ${SETTLEMENT_META[settlementFilter].label}` : ""}.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
