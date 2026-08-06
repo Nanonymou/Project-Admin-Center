@@ -14,6 +14,7 @@ import { InvoiceStatusPanel } from "@/components/site/invoice-status-panel";
 import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { SitePeriodComparison } from "@/components/site/site-period-comparison";
 import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
+import { AreaSalesSummary } from "@/components/site/area-sales-summary";
 import { computeSiteKpi } from "@/lib/mock/site-kpi-calc";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { ReminderWidget } from "@/components/site/reminder-widget";
@@ -328,6 +329,10 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
               )}
             </CardContent>
           </Card>
+        </section>
+
+        <section>
+          <AreaSalesSummary site={detail.site} />
         </section>
 
         <section>
