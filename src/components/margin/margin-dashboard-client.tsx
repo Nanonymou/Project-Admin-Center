@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Info, Lock, PiggyBank, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -8,6 +8,7 @@ import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
+import { ProfitLineChart } from "@/components/margin/profit-line-chart";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 export function MarginDashboardClient() {
   const { persona } = usePersona();
   const { filters, setFilters, reset } = useGlobalFilters();
+  const [trendView, setTrendView] = useState<"composite" | "line">("composite");
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -134,16 +136,41 @@ export function MarginDashboardClient() {
         </section>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Tren Profit & Margin ({trendGranularity})</CardTitle>
-            <CardDescription>
-              Periode {filters.from} → {filters.to} · titik {trendGranularity} · area = profit,
-              garis = sales/cost, garis ungu = margin % (aksis kanan).
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Tren Profit & Margin ({trendGranularity})</CardTitle>
+              <CardDescription>
+                Periode {filters.from} → {filters.to} · titik {trendGranularity}.
+                {trendView === "composite"
+                  ? " Area = profit, garis = sales/cost, ungu = margin % (aksis kanan)."
+                  : " Garis Sales / Cost / Profit — klik legenda untuk sembunyikan."}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              {(["composite", "line"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setTrendView(v)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs font-medium",
+                    trendView === v
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  {v === "composite" ? "Komposit" : "Garis"}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             {filteredSites.length > 0 ? (
-              <ProfitTrendChart data={trend} />
+              trendView === "composite" ? (
+                <ProfitTrendChart data={trend} />
+              ) : (
+                <ProfitLineChart data={trend} />
+              )
             ) : (
               <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
                 Tidak ada site dalam scope.
