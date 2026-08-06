@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { FileText, ImageIcon, Paperclip, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export type Attachment = {
@@ -39,7 +40,13 @@ export function AttachmentCenter({
 }) {
   const [items, setItems] = useState<Attachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [previewItem, setPreviewItem] = useState<Attachment | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  function preview(it: Attachment) {
+    setPreviewItem(it);
+    onPreview?.(it);
+  }
 
   function addFiles(files: FileList | File[]) {
     const next = [...items];
@@ -125,7 +132,7 @@ export function AttachmentCenter({
             <div key={it.id} className="group relative rounded-md border p-2">
               <button
                 type="button"
-                onClick={() => onPreview?.(it)}
+                onClick={() => preview(it)}
                 className="block w-full text-left"
                 title="Pratinjau"
               >
@@ -156,6 +163,28 @@ export function AttachmentCenter({
           ))}
         </div>
       )}
+
+      <Dialog
+        open={previewItem !== null}
+        onClose={() => setPreviewItem(null)}
+        title="Pratinjau Lampiran"
+        description={previewItem ? `${previewItem.name} · ${previewItem.sizeLabel}` : undefined}
+      >
+        {previewItem?.isImage && previewItem.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewItem.url}
+            alt={previewItem.name}
+            className="mx-auto max-h-[60vh] w-auto rounded-md border"
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
+            <FileText className="h-10 w-10" />
+            <div>Pratinjau hanya tersedia untuk gambar (JPG/PNG).</div>
+            <div className="text-xs">{previewItem?.name}</div>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
