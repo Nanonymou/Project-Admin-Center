@@ -18,6 +18,7 @@ import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { SalesCompareBar } from "@/components/sales-compare/sales-compare-bar";
+import { CostByCategoryChart } from "@/components/cost-compare/cost-by-category-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -172,6 +173,16 @@ export function CostCompareClient() {
           </CardHeader>
           <CardContent>
             <SalesCompareBar data={barData} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Komposisi Cost per Site</CardTitle>
+            <CardDescription>Stacked breakdown per kategori cost (config per project).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CostByCategoryChart sites={filteredSites} />
           </CardContent>
         </Card>
 
