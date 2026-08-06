@@ -20,6 +20,8 @@ import {
 } from "@/lib/mock/closing-status";
 import { cn } from "@/lib/utils";
 
+type StatusHistoryEntry = { id: string; state: ClosingState; time: string; by: string };
+
 export function DailyClosingDetailClient({ locationId }: { locationId: string }) {
   const { persona } = usePersona();
   const router = useRouter();
@@ -40,6 +42,20 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
   const [notes, setNotes] = useState("");
   const [editing, setEditing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Status-change history timeline — seeded from the steps already reached.
+  const [history, setHistory] = useState<StatusHistoryEntry[]>(() => {
+    const reached = CLOSING_STATES.filter(
+      (s) => CLOSING_STATE_META[s].step <= CLOSING_STATE_META[overall].step,
+    );
+    const seeded = reached.map((s, i) => ({
+      id: `seed-${s}`,
+      state: s,
+      time: `${(reached.length - i) * 6} jam lalu`,
+      by: i === 0 ? status.submittedBy : "System",
+    }));
+    return seeded.reverse();
+  });
 
   const nextState = useMemo<ClosingState | null>(() => {
     const idx = CLOSING_STATES.indexOf(closingState);
@@ -69,7 +85,13 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
   const currentStep = CLOSING_STATE_META[closingState].step;
 
   function confirmAdvance() {
-    if (nextState) setClosingState(nextState);
+    if (nextState) {
+      setClosingState(nextState);
+      setHistory((prev) => [
+        { id: `h-${Date.now()}`, state: nextState, time: "baru saja", by: persona.roleLabel },
+        ...prev,
+      ]);
+    }
     setConfirmOpen(false);
   }
 
@@ -211,6 +233,32 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Riwayat Perubahan Status</CardTitle>
+            <CardDescription>Timeline transisi status closing periode ini.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="relative">
+              {history.map((h, i) => (
+                <li key={h.id} className="flex gap-3 py-2">
+                  <div className="relative mt-1 flex flex-col items-center">
+                    <span className="h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
+                    {i < history.length - 1 && <span className="mt-1 w-px flex-1 bg-border" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ClosingStatusBadge state={h.state} />
+                      <span className="text-[11px] text-muted-foreground">oleh {h.by}</span>
+                      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">{h.time}</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
       </div>
