@@ -9,6 +9,7 @@ import {
   CalendarClock,
   Clock,
   FileText,
+  History,
   Paperclip,
   UserCircle,
 } from "lucide-react";
@@ -20,6 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { findInvoiceByNumber } from "@/lib/mock/invoice-lookup";
 import { buildApprovalReminders } from "@/lib/mock/approvals";
+import { buildInvoiceAuditTrail } from "@/lib/mock/invoice-audit";
+import { AUDIT_ACTION_META } from "@/lib/mock/audit-trail";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -52,6 +55,7 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
   );
   const stageIndex = Math.max(0, STAGE_FLOW.indexOf(invoice.stage));
   const meta = STATUS_META[invoice.status];
+  const auditTrail = buildInvoiceAuditTrail(invoice);
 
   if (!inScope) {
     return (
@@ -201,8 +205,55 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
             </CardContent>
           </Card>
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Audit Trail
+            </CardTitle>
+            <CardDescription>
+              Riwayat lengkap — siapa melakukan apa dan kapan pada invoice ini.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AuditTrail entries={auditTrail} />
+          </CardContent>
+        </Card>
       </div>
     </div>
+  );
+}
+
+function AuditTrail({ entries }: { entries: ReturnType<typeof buildInvoiceAuditTrail> }) {
+  if (entries.length === 0) {
+    return <div className="py-6 text-center text-sm text-muted-foreground">Belum ada aktivitas tercatat.</div>;
+  }
+  // Newest first for display.
+  const ordered = [...entries].sort((a, b) => a.offsetHours - b.offsetHours);
+  return (
+    <ol className="relative">
+      {ordered.map((entry, i) => {
+        const meta = AUDIT_ACTION_META[entry.action];
+        return (
+          <li key={entry.id} className="flex gap-3 py-2.5">
+            <div className="relative mt-1 flex flex-col items-center">
+              <span className="h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
+              {i < ordered.length - 1 && <span className="mt-1 w-px flex-1 bg-border" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={meta.variant}>{meta.label}</Badge>
+                <span className="text-sm font-medium">{entry.actor}</span>
+                <span className="text-[11px] text-muted-foreground">· {entry.role}</span>
+                <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">{entry.timeLabel}</span>
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{entry.detail}</div>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

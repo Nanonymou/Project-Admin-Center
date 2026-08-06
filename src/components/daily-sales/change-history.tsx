@@ -15,6 +15,8 @@ const DOT: Record<AuditAction, string> = {
   reject: "bg-rose-500",
   lock: "bg-emerald-600",
   unlock: "bg-amber-600",
+  upload: "bg-sky-500",
+  send: "bg-sky-500",
 };
 
 export function ChangeHistory({ entries }: { entries: AuditEntry[] }) {

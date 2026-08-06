@@ -1,6 +1,16 @@
 import type { SiteKpi } from "./site-kpi";
 
-export type AuditAction = "create" | "edit" | "submit" | "review" | "approve" | "reject" | "lock" | "unlock";
+export type AuditAction =
+  | "create"
+  | "edit"
+  | "submit"
+  | "review"
+  | "approve"
+  | "reject"
+  | "lock"
+  | "unlock"
+  | "upload"
+  | "send";
 
 export type AuditEntry = {
   id: string;
@@ -28,6 +38,8 @@ export const AUDIT_ACTION_META: Record<
   reject: { label: "Reject", variant: "danger" },
   lock: { label: "Lock", variant: "success" },
   unlock: { label: "Unlock", variant: "warning" },
+  upload: { label: "Upload", variant: "info" },
+  send: { label: "Kirim", variant: "info" },
 };
 
 const FLOW: { action: AuditAction; actor: string; role: string; detail: string }[] = [
