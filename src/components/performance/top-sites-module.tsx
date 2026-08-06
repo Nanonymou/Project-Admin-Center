@@ -30,12 +30,14 @@ export function TopSitesModule({
   sites,
   topN = 5,
   defaultMetric = "netMargin",
+  order = "desc",
   title = "Top 5 Site Performance",
   description = "Site dengan performa terbaik pada metrik terpilih.",
 }: {
   sites: SiteKpi[];
   topN?: number;
   defaultMetric?: PerfMetric;
+  order?: "desc" | "asc";
   title?: string;
   description?: string;
 }) {
@@ -43,10 +45,12 @@ export function TopSitesModule({
   const cfg = METRIC_META[metric];
 
   const ranked = useMemo(() => {
-    return [...sites].sort((a, b) => cfg.raw(b) - cfg.raw(a)).slice(0, topN);
-  }, [sites, cfg, topN]);
+    const dir = order === "asc" ? 1 : -1;
+    return [...sites].sort((a, b) => (cfg.raw(a) - cfg.raw(b)) * dir).slice(0, topN);
+  }, [sites, cfg, topN, order]);
 
-  const max = ranked.length > 0 ? cfg.raw(ranked[0]) : 0;
+  // Bar scale relative to the strongest value across the full set.
+  const max = sites.reduce((m, s) => Math.max(m, cfg.raw(s)), 0);
 
   return (
     <Card>
