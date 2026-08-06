@@ -60,6 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Projects", href: "/master/projects", icon: Building2 },
       { label: "Users & Roles", href: "/master/users", icon: Users },
       { label: "Approvals", href: "/master/approvals", icon: BadgeCheck },
+      { label: "Lock Period", href: "/lock-period", icon: Settings2 },
       { label: "Configuration", href: "/master/config", icon: Settings2 },
     ],
   },
