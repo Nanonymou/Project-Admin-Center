@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, Wallet } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, MapPin, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -23,7 +23,7 @@ import {
   type InvoiceSettlement,
 } from "@/lib/mock/invoice-list";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 const SETTLEMENT_META: Record<
   InvoiceSettlement,
@@ -77,9 +77,34 @@ export function InvoiceListClient() {
     });
   }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
-  const invoices = useMemo(
+  const allInvoices = useMemo(
     () => buildInvoiceListFor(filteredSites, SITE_DETAILS),
     [filteredSites],
+  );
+
+  // On-page location filter — chips derived from whatever locations are in
+  // scope, so it adapts to any project's sites (no hard-coded locations).
+  const [activeLocation, setActiveLocation] = useState<string | "all">("all");
+  const locationChips = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const inv of allInvoices) {
+      const entry = map.get(inv.locationId) ?? { id: inv.locationId, name: inv.locationName, count: 0 };
+      entry.count += 1;
+      map.set(inv.locationId, entry);
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allInvoices]);
+
+  // Reset the chip when the active location leaves scope (persona/filter change).
+  useEffect(() => {
+    if (activeLocation !== "all" && !locationChips.some((c) => c.id === activeLocation)) {
+      setActiveLocation("all");
+    }
+  }, [locationChips, activeLocation]);
+
+  const invoices = useMemo(
+    () => (activeLocation === "all" ? allInvoices : allInvoices.filter((i) => i.locationId === activeLocation)),
+    [allInvoices, activeLocation],
   );
   const summary = useMemo(() => summarizeInvoiceList(invoices), [invoices]);
 
@@ -107,6 +132,42 @@ export function InvoiceListClient() {
             stage approval dan aging — sama untuk semua project.
           </span>
         </div>
+
+        {locationChips.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
+            <span className="inline-flex items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3 w-3" />
+              Lokasi
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveLocation("all")}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                activeLocation === "all"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background hover:bg-accent",
+              )}
+            >
+              Semua · {allInvoices.length}
+            </button>
+            {locationChips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveLocation(c.id)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                  activeLocation === c.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background hover:bg-accent",
+                )}
+              >
+                {c.name} · {c.count}
+              </button>
+            ))}
+          </div>
+        )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Total Invoice" value={summary.totalAmount} format="currency" icon={FileText} tone="primary" />
