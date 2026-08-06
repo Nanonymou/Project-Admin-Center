@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, History, Info, MapPin, Pencil, Save, ShoppingCart, Trash2 } from "lucide-react";
+import { AlertTriangle, CopyPlus, History, Info, MapPin, Pencil, Save, ShoppingCart, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -204,6 +204,34 @@ export function DailySalesEngine() {
     if (editingId === id) resetForm();
   }
 
+  // Prefill the form from yesterday's entry (or the latest one) as a fresh entry.
+  const copySource = useMemo(
+    () => entries.find((e) => e.date === yesterday) ?? entries[0],
+    [entries, yesterday],
+  );
+
+  function copyYesterday() {
+    if (!copySource) return;
+    setValues(JSON.parse(JSON.stringify(copySource.input)));
+    setActiveKeys(copySource.activeKeys);
+    setArea(copySource.areaId);
+    setDate(today);
+    setEditingId(null);
+    setTouched(false);
+  }
+
+  function duplicateEntry(entry: SubmittedEntry) {
+    const copy: SubmittedEntry = {
+      ...entry,
+      id: `${entry.date}-${Date.now()}`,
+      status: "draft",
+      input: JSON.parse(JSON.stringify(entry.input)),
+      activeKeys: [...entry.activeKeys],
+      lines: entry.lines.map((l) => ({ ...l })),
+    };
+    setEntries((prev) => [copy, ...prev]);
+  }
+
   return (
     <div>
       <PageHeader
@@ -342,6 +370,16 @@ export function DailySalesEngine() {
                       Batal
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!canCreate || !copySource}
+                    onClick={copyYesterday}
+                    title={copySource ? "Salin entri kemarin ke form" : "Belum ada entri untuk disalin"}
+                  >
+                    <CopyPlus className="h-4 w-4" />
+                    Salin Kemarin
+                  </Button>
                   <Button variant="outline" size="sm" disabled={!canCreate} onClick={() => handleSubmit("draft")}>
                     Simpan Draft
                   </Button>
@@ -407,6 +445,14 @@ export function DailySalesEngine() {
                       </ul>
                       {canCreate && (
                         <div className="mt-2 flex items-center justify-end gap-2 border-t pt-2">
+                          <button
+                            type="button"
+                            onClick={() => duplicateEntry(entry)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                          >
+                            <CopyPlus className="h-3 w-3" />
+                            Duplikat
+                          </button>
                           <button
                             type="button"
                             onClick={() => editEntry(entry)}
