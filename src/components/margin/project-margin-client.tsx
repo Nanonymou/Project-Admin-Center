@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { notFound, useRouter } from "next/navigation";
-import { ArrowLeft, Download, Info, Lock, RefreshCcw } from "lucide-react";
+import { ArrowLeft, CalendarRange, Download, Info, Lock, MapPin, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -27,7 +27,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
   const { persona } = usePersona();
-  const { filters } = useGlobalFilters();
+  const { filters, setFilters } = useGlobalFilters();
   const router = useRouter();
 
   const project = PROJECT_OPTIONS.find((p) => p.code.toLowerCase() === projectCode.toLowerCase());
@@ -35,12 +35,34 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
 
   const model = getMarginModel(project.code);
 
+  // State-based filters local to this dashboard.
+  const [locationFilter, setLocationFilter] = useState<string | "all">("all");
+
+  // Locations available for this project within the persona's scope.
+  const locationOptions = useMemo(
+    () =>
+      SITE_KPI.filter(
+        (s) => s.projectCode === project.code && canAccessLocation(persona, s.locationId, s.projectCode),
+      ).map((s) => ({ id: s.locationId, name: s.locationName })),
+    [project.code, persona],
+  );
+
   const sites = useMemo(() => {
     const rows = SITE_KPI.filter(
-      (s) => s.projectCode === project.code && canAccessLocation(persona, s.locationId, s.projectCode),
+      (s) =>
+        s.projectCode === project.code &&
+        canAccessLocation(persona, s.locationId, s.projectCode) &&
+        (locationFilter === "all" || s.locationId === locationFilter),
     );
     return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
-  }, [project.code, persona, filters.from, filters.to]);
+  }, [project.code, persona, locationFilter, filters.from, filters.to]);
+
+  function applyPeriodPreset(days: number) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    setFilters({ ...filters, from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) });
+  }
 
   const bySite = useMemo(() => buildMarginBySite(sites), [sites]);
   const locationTotals = useMemo(() => {
@@ -104,6 +126,46 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
         </div>
 
         <SitePeriodBar scopedInfo={`${sites.length} location · ${project.code}`} />
+
+        <div className="flex flex-wrap items-center gap-4 rounded-md border bg-card p-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              Lokasi
+            </span>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="all">Semua location</option>
+              {locationOptions.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <CalendarRange className="h-3.5 w-3.5" />
+              Periode
+            </span>
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => applyPeriodPreset(d)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                  periodDays === d
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background hover:bg-accent",
+                )}
+              >
+                {d} hari
+              </button>
+            ))}
+          </div>
+        </div>
 
         {noAccess ? (
           <Card>
