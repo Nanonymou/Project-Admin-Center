@@ -18,6 +18,7 @@ import {
   type SalesEntryInput,
 } from "@/lib/mock/service-config";
 import { DynamicSalesTable } from "@/components/daily-sales/dynamic-sales-table";
+import { getPriceListFor } from "@/lib/mock/pricing-config";
 import { computeTax } from "@/lib/finance";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -45,9 +46,14 @@ export function DailySalesEngine() {
     return d.toISOString().slice(0, 10);
   }, []);
 
+  const priceList = useMemo(
+    () => getPriceListFor(activeWorkspace.projectCode, activeWorkspace.locationId),
+    [activeWorkspace.projectCode, activeWorkspace.locationId],
+  );
+
   const [date, setDate] = useState(today);
   const [values, setValues] = useState<SalesEntryInput>(() =>
-    Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: c.defaultPrice }])),
+    Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])),
   );
   const [activeKeys, setActiveKeys] = useState<string[]>(() => categories.map((c) => c.key));
   const [touched, setTouched] = useState(false);
@@ -65,7 +71,7 @@ export function DailySalesEngine() {
     setValues((prev) =>
       prev[key]
         ? prev
-        : { ...prev, [key]: { qty: 0, price: categories.find((c) => c.key === key)?.defaultPrice ?? 0 } },
+        : { ...prev, [key]: { qty: 0, price: priceList[key] ?? categories.find((c) => c.key === key)?.defaultPrice ?? 0 } },
     );
   }
 
@@ -107,7 +113,7 @@ export function DailySalesEngine() {
       },
       ...prev,
     ]);
-    setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: c.defaultPrice }])));
+    setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
     setTouched(false);
   }
 
@@ -152,6 +158,11 @@ export function DailySalesEngine() {
                 )}
               </div>
 
+              <p className="text-[11px] text-muted-foreground">
+                Harga terisi otomatis dari Master Pricing lokasi{" "}
+                <b>{activeWorkspace.locationName}</b> — dapat diubah manual bila perlu.
+              </p>
+
               <DynamicSalesTable
                 categories={categories}
                 activeKeys={activeKeys}
@@ -161,6 +172,13 @@ export function DailySalesEngine() {
                 onToggleCategory={toggleCategory}
                 onChangeLine={setLine}
               />
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <TotalTile label="Item" value={`${activeCategories.filter((c) => (values[c.key]?.qty || 0) > 0).length} kategori`} />
+                <TotalTile label="Subtotal" value={formatCurrency(subtotal)} />
+                <TotalTile label={`Pajak ${activeWorkspace.projectCode}`} value={formatCurrency(tax)} />
+                <TotalTile label="Net Invoice" value={formatCurrency(subtotal + tax)} highlight />
+              </div>
 
               {touched && formError && (
                 <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -237,6 +255,30 @@ export function DailySalesEngine() {
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TotalTile({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border p-2.5",
+        highlight ? "border-primary/30 bg-primary/5" : "bg-background",
+      )}
+    >
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 truncate text-sm font-semibold tabular-nums">{value}</div>
     </div>
   );
 }
