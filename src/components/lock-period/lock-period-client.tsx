@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
+import { LockPeriodForm } from "@/components/lock-period/lock-period-form";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks, type PeriodLockRow, type PeriodLockState } from "@/lib/mock/lock-period";
 import { canAccessLocation } from "@/lib/personas";
@@ -51,6 +52,14 @@ export function LockPeriodClient() {
     setOverrides((prev) => ({ ...prev, [row.id]: row.state === "locked" ? "open" : "locked" }));
   }
 
+  function lockMany(ids: string[]) {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = "locked";
+      return next;
+    });
+  }
+
   return (
     <div>
       <PageHeader
@@ -76,6 +85,8 @@ export function LockPeriodClient() {
           <KpiCard label="Terkunci" value={counts.locked} format="number" icon={Lock} tone="success" />
           <KpiCard label="Terbuka" value={counts.open} format="number" icon={LockOpen} tone="warning" />
         </section>
+
+        {canUnlock && <LockPeriodForm rows={rows} canLock={canUnlock} onLock={lockMany} />}
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
