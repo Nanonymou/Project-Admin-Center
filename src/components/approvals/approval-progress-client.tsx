@@ -113,6 +113,9 @@ export function ApprovalProgressClient() {
     { id: string; invoiceNumber: string; changes: string; by: string; time: string }[]
   >([]);
 
+  // Read-only activity detail modal state.
+  const [detailTarget, setDetailTarget] = useState<ApprovalReminder | null>(null);
+
   // Edit-activity modal state.
   const [editTarget, setEditTarget] = useState<ApprovalReminder | null>(null);
   const [editAssignee, setEditAssignee] = useState("");
@@ -742,18 +745,26 @@ export function ApprovalProgressClient() {
                         <td className="px-3 py-2 text-muted-foreground">{a.assignee}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(a.amount)}</td>
                         <td className="px-3 py-2 text-right">
-                          {canEditApproval ? (
+                          <div className="inline-flex items-center gap-3">
                             <button
                               type="button"
-                              onClick={() => openEdit(a)}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                              onClick={() => setDetailTarget(a)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                             >
-                              <Pencil className="h-3 w-3" />
-                              Edit
+                              <Info className="h-3 w-3" />
+                              Detail
                             </button>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground">—</span>
-                          )}
+                            {canEditApproval && (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(a)}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Edit
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -869,6 +880,77 @@ export function ApprovalProgressClient() {
       </div>
 
       <Dialog
+        open={detailTarget !== null}
+        onClose={() => setDetailTarget(null)}
+        title="Detail Aktivitas Approval"
+        description={detailTarget ? `${detailTarget.projectCode} · ${detailTarget.locationName}` : undefined}
+        footer={
+          detailTarget && (
+            <div className="flex items-center justify-end gap-2">
+              <Link href={invoiceHref(detailTarget.invoiceNumber)}>
+                <Button size="sm" variant="outline">Buka Invoice</Button>
+              </Link>
+              {canEditApproval && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const t = detailTarget;
+                    setDetailTarget(null);
+                    openEdit(t);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+            </div>
+          )
+        }
+      >
+        {detailTarget && (
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-medium tabular-nums text-primary">{detailTarget.invoiceNumber}</span>
+              <Badge
+                variant={
+                  detailTarget.status === "overdue" || detailTarget.status === "escalation"
+                    ? "danger"
+                    : detailTarget.status === "at_risk"
+                      ? "warning"
+                      : "success"
+                }
+              >
+                {detailTarget.stage}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/20 p-3 text-xs">
+              <DetailRow label="Nilai" value={formatCurrency(detailTarget.amount)} />
+              <DetailRow label="Prioritas" value={detailTarget.priority.toUpperCase()} />
+              <DetailRow label="Assignee" value={detailTarget.assignee} />
+              <DetailRow label="Disubmit" value={detailTarget.submittedAt} />
+              <DetailRow label="Due" value={detailTarget.dueLabel} />
+              <DetailRow label="Waktu di tahap" value={`${detailTarget.timeInStageDays}h / SLA ${detailTarget.slaTargetDays}h`} />
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>Progress SLA</span>
+                <span>{Math.min(100, Math.round((detailTarget.timeInStageDays / Math.max(1, detailTarget.slaTargetDays)) * 100))}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    detailTarget.timeInStageDays > detailTarget.slaTargetDays ? "bg-rose-500" : "bg-primary",
+                  )}
+                  style={{ width: `${Math.min(100, (detailTarget.timeInStageDays / Math.max(1, detailTarget.slaTargetDays)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog
         open={editTarget !== null}
         onClose={() => setEditTarget(null)}
         title="Edit Aktivitas Approval"
@@ -917,6 +999,15 @@ export function ApprovalProgressClient() {
           </div>
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium tabular-nums">{value}</div>
     </div>
   );
 }
