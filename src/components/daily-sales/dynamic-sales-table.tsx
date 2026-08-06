@@ -37,6 +37,9 @@ export function DynamicSalesTable({
   const activeCategories = categories.filter((c) => activeSet.has(c.key));
   const inactiveCategories = categories.filter((c) => !activeSet.has(c.key));
 
+  const totalQty = activeCategories.reduce((sum, c) => sum + Math.max(0, values[c.key]?.qty || 0), 0);
+  const totalAmount = activeCategories.reduce((sum, c) => sum + lineTotal(values[c.key]), 0);
+
   return (
     <div className="space-y-3">
       <div className="rounded-md border bg-muted/20 p-2.5">
@@ -106,13 +109,16 @@ export function DynamicSalesTable({
                       <div className="text-[10px] text-muted-foreground">per {cat.unit}</div>
                     </td>
                     <td className="px-3 py-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={line?.qty ?? 0}
-                        onChange={(e) => onChangeLine(cat.key, "qty", e.target.value)}
-                        className={cn("h-8 w-24 text-right", touched && err && "border-rose-400")}
-                      />
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={line?.qty ?? 0}
+                          onChange={(e) => onChangeLine(cat.key, "qty", e.target.value)}
+                          className={cn("h-8 w-20 text-right tabular-nums", touched && err && "border-rose-400")}
+                        />
+                        <span className="w-10 text-left text-[10px] text-muted-foreground">{cat.unit}</span>
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <Input
@@ -140,6 +146,15 @@ export function DynamicSalesTable({
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr className="border-t bg-muted/30 text-xs font-medium">
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right tabular-nums">{totalQty}</td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(totalAmount)}</td>
+                <td className="px-3 py-2" />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
