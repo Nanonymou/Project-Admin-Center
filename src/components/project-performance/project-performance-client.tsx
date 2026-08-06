@@ -199,6 +199,20 @@ export function ProjectPerformanceClient() {
                       <td className="px-3 py-2">
                         <div className="font-medium">{r.code}</div>
                         <div className="text-[11px] text-muted-foreground">{r.name}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {r.marginPct < 45 && (
+                            <Badge variant="danger" className="h-4 px-1 text-[9px]">Margin Rendah</Badge>
+                          )}
+                          {r.avgSla < 90 && (
+                            <Badge variant="warning" className="h-4 px-1 text-[9px]">SLA Rendah</Badge>
+                          )}
+                          {r.overdue > 0 && (
+                            <Badge variant="danger" className="h-4 px-1 text-[9px]">{r.overdue} Overdue</Badge>
+                          )}
+                          {r.marginPct >= 55 && r.avgSla >= 95 && r.overdue === 0 && (
+                            <Badge variant="success" className="h-4 px-1 text-[9px]">Sehat</Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.sites}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.sales)}</td>
