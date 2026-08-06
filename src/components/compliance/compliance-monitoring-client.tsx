@@ -13,6 +13,8 @@ import { useGlobalFilters } from "@/components/providers/global-filter-provider"
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { SITE_DETAILS } from "@/lib/mock/site-detail";
+import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { buildCutOffRows, DELIVERY_STATUS_META } from "@/lib/mock/cutoff-config";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +105,21 @@ export function ComplianceMonitoringClient() {
     });
   }, [filteredSites]);
 
+  // Approval SLA compliance per location — % of invoices within their stage SLA.
+  const approvalSla = useMemo(() => {
+    return filteredSites.map((s) => {
+      const detail = SITE_DETAILS[s.locationId];
+      const rem = detail ? buildApprovalReminders(s, detail) : [];
+      const within = rem.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
+      return {
+        locationId: s.locationId,
+        label: `${s.projectCode} · ${s.locationName}`,
+        count: rem.length,
+        pct: rem.length ? (within / rem.length) * 100 : 100,
+      };
+    });
+  }, [filteredSites]);
+
   const summary = useMemo(() => {
     const compliant = rows.filter((r) => r.compliance === "compliant").length;
     const atRisk = rows.filter((r) => r.compliance === "at_risk").length;
@@ -174,6 +191,36 @@ export function ComplianceMonitoringClient() {
                     <div className={cn("w-12 shrink-0 text-right text-xs font-semibold tabular-nums", row.pct >= 80 ? "text-emerald-700" : row.pct >= 60 ? "text-amber-700" : "text-rose-700")}>
                       {row.pct.toFixed(0)}%
                     </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {approvalSla.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Indikator SLA Persetujuan per Lokasi</CardTitle>
+              <CardDescription>Persentase invoice yang diproses dalam batas SLA tahapnya.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {approvalSla.map((a) => (
+                  <div key={a.locationId} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">{a.label}</span>
+                      <Badge variant={a.pct >= 80 ? "success" : a.pct >= 60 ? "warning" : "danger"}>
+                        {a.pct.toFixed(0)}%
+                      </Badge>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn("h-full rounded-full", a.pct >= 80 ? "bg-emerald-500" : a.pct >= 60 ? "bg-amber-500" : "bg-rose-500")}
+                        style={{ width: `${a.pct}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">{a.count} invoice dalam alur approval</div>
                   </div>
                 ))}
               </div>
