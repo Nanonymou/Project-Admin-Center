@@ -9,6 +9,8 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-summary-cards";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
+import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
+import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +41,10 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
   }, [project.code, persona, filters.from, filters.to]);
 
   const bySite = useMemo(() => buildMarginBySite(sites), [sites]);
+  const trend = useMemo(
+    () => buildProfitTrendForRange(sites, filters.from, filters.to),
+    [sites, filters.from, filters.to],
+  );
   const periodDays = daysBetween(filters.from, filters.to);
   const canExport = persona.capabilities.canExport;
 
@@ -106,6 +112,19 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
         ) : (
           <>
             <MarginSummaryCards summary={summarizeMargin(sites)} />
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Tren Sales, Cost & Margin</CardTitle>
+                <CardDescription>
+                  Periode {filters.from} → {filters.to} · area = profit, garis = sales/cost, ungu =
+                  margin % (aksis kanan).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ProfitTrendChart data={trend} />
+              </CardContent>
+            </Card>
 
             {model === "per_location" && (
               <Card>
