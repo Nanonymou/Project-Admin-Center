@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, MapPin, Wallet } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Clock, FileText, Info, MapPin, Pencil, Plus, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -23,6 +23,9 @@ import {
   type InvoiceSettlement,
 } from "@/lib/mock/invoice-list";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
+import { getTaxConfig } from "@/lib/mock/tax-config";
+import { Button } from "@/components/ui/button";
+import { InvoiceForm, type InvoiceComputed, type InvoiceFormValue } from "@/components/invoice/invoice-form";
 import { cn, formatCurrency } from "@/lib/utils";
 
 const SETTLEMENT_META: Record<
@@ -77,9 +80,19 @@ export function InvoiceListClient() {
     });
   }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
-  const allInvoices = useMemo(
+  const baseInvoices = useMemo(
     () => buildInvoiceListFor(filteredSites, SITE_DETAILS),
     [filteredSites],
+  );
+
+  // Session-created invoices and edits applied to existing ones (mock — no
+  // backend yet). Merged into the base feed for display.
+  const [addedItems, setAddedItems] = useState<InvoiceListItem[]>([]);
+  const [edits, setEdits] = useState<Record<string, InvoiceListItem>>({});
+
+  const allInvoices = useMemo(
+    () => [...addedItems, ...baseInvoices].map((i) => edits[i.id] ?? i),
+    [addedItems, baseInvoices, edits],
   );
 
   // On-page location filter — chips derived from whatever locations are in
@@ -108,6 +121,79 @@ export function InvoiceListClient() {
   );
   const summary = useMemo(() => summarizeInvoiceList(invoices), [invoices]);
 
+  // Invoice creation is allowed for site/leader/super admin (PRD: "Membuat Invoice").
+  const canManage =
+    persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin";
+
+  const siteOptions = useMemo(
+    () => scopedSites.map((s) => ({ locationId: s.locationId, locationName: s.locationName, projectCode: s.projectCode })),
+    [scopedSites],
+  );
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<"add" | "edit">("add");
+  const [formInitial, setFormInitial] = useState<InvoiceFormValue | undefined>(undefined);
+  const [editingItem, setEditingItem] = useState<InvoiceListItem | null>(null);
+
+  function openAdd() {
+    setFormMode("add");
+    setFormInitial(undefined);
+    setEditingItem(null);
+    setFormOpen(true);
+  }
+
+  function openEdit(item: InvoiceListItem) {
+    const rate = getTaxConfig(item.projectCode).rate;
+    const subtotal = Math.round(item.amount / (1 + rate));
+    setFormMode("edit");
+    setEditingItem(item);
+    setFormInitial({
+      id: item.id,
+      invoiceNumber: item.invoiceNumber,
+      projectCode: item.projectCode,
+      locationId: item.locationId,
+      locationName: item.locationName,
+      pic: item.pic,
+      dueDate: "",
+      lines: [{ id: "l1", description: `Tagihan ${item.projectCode} · ${item.locationName}`, qty: 1, unitPrice: subtotal }],
+    });
+    setFormOpen(true);
+  }
+
+  function generateNumber(projectCode: string): string {
+    const now = new Date();
+    const seq = String(now.getTime()).slice(-4);
+    return `INV/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${projectCode}/${seq}`;
+  }
+
+  function handleSubmit(value: InvoiceFormValue, computed: InvoiceComputed) {
+    const dueDate = value.dueDate
+      ? new Date(value.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+      : editingItem?.dueDate ?? "—";
+    const item: InvoiceListItem = {
+      id: value.id ?? `session-${Date.now()}`,
+      invoiceNumber: value.invoiceNumber ?? generateNumber(value.projectCode),
+      amount: computed.net,
+      projectCode: value.projectCode,
+      locationId: value.locationId,
+      locationName: value.locationName,
+      stage: editingItem?.stage ?? "Verifikasi Site",
+      status: editingItem?.status ?? "onTime",
+      settlement: editingItem?.settlement ?? "outstanding",
+      agingBucket: editingItem?.agingBucket ?? "0-30",
+      dueDate,
+      pic: value.pic,
+    };
+    if (formMode === "add") {
+      setAddedItems((prev) => [item, ...prev]);
+    } else if (item.id.startsWith("session-")) {
+      setAddedItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+    } else {
+      setEdits((prev) => ({ ...prev, [item.id]: item }));
+    }
+    setFormOpen(false);
+  }
+
   function navigateFromRow(e: React.MouseEvent, item: InvoiceListItem) {
     if ((e.target as HTMLElement).closest("a,button")) return;
     router.push(invoiceHref(item.invoiceNumber));
@@ -119,7 +205,17 @@ export function InvoiceListClient() {
         title="Monitoring Invoice"
         description="Daftar seluruh invoice per site — status penagihan, stage approval, dan drill ke detail."
         breadcrumbs={[{ label: "Operasional" }, { label: "Invoice" }]}
-        actions={<ActivePeriodBadge />}
+        actions={
+          <>
+            <ActivePeriodBadge />
+            {canManage && (
+              <Button size="sm" onClick={openAdd} disabled={siteOptions.length === 0}>
+                <Plus className="h-4 w-4" />
+                Tambah Invoice
+              </Button>
+            )}
+          </>
+        }
       />
 
       <div className="space-y-6 p-4 md:p-6">
@@ -242,13 +338,25 @@ export function InvoiceListClient() {
                           {formatCurrency(item.amount)}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Link
-                            href={invoiceHref(item.invoiceNumber)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                          >
-                            Detail
-                            <ArrowUpRight className="h-3 w-3" />
-                          </Link>
+                          <div className="inline-flex items-center gap-3">
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(item)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Edit
+                              </button>
+                            )}
+                            <Link
+                              href={invoiceHref(item.invoiceNumber)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                            >
+                              Detail
+                              <ArrowUpRight className="h-3 w-3" />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -272,6 +380,15 @@ export function InvoiceListClient() {
           </CardContent>
         </Card>
       </div>
+
+      <InvoiceForm
+        open={formOpen}
+        mode={formMode}
+        sites={siteOptions}
+        initial={formInitial}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }
