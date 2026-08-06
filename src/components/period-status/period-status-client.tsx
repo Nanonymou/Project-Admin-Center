@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarRange, CheckCircle2, Lock, LockOpen, ShieldAlert } from "lucide-react";
+import { CalendarRange, CheckCircle2, History, Lock, LockOpen, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -16,6 +16,15 @@ import { buildPeriodLocks, type PeriodLockState } from "@/lib/mock/lock-period";
 import { CutOffCalculator } from "@/components/period-status/cutoff-calculator";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
+
+type HistoryEntry = {
+  id: string;
+  action: "lock" | "unlock";
+  periodLabel: string;
+  by: string;
+  time: string;
+  reason: string;
+};
 
 export function PeriodStatusClient() {
   const { persona } = usePersona();
@@ -42,6 +51,29 @@ export function PeriodStatusClient() {
   const [modalPeriodKey, setModalPeriodKey] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [touched, setTouched] = useState(false);
+
+  // Period change history — seeded from existing locks + this session's actions.
+  const [sessionHistory, setSessionHistory] = useState<HistoryEntry[]>([]);
+  const seededHistory = useMemo<HistoryEntry[]>(() => {
+    const seen = new Set<string>();
+    const out: HistoryEntry[] = [];
+    for (const r of baseRows) {
+      if (r.state !== "locked" || !r.lockedBy) continue;
+      const key = `${r.periodKey}-${r.lockedBy}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        id: `seed-${r.id}`,
+        action: "lock",
+        periodLabel: r.periodLabel,
+        by: r.lockedBy,
+        time: r.lockedAt ?? "—",
+        reason: "Closing bulanan",
+      });
+    }
+    return out.slice(0, 8);
+  }, [baseRows]);
+  const history = useMemo(() => [...sessionHistory, ...seededHistory], [sessionHistory, seededHistory]);
 
   // Group per period (month) with lock progress and totals.
   const periods = useMemo(() => {
@@ -98,6 +130,17 @@ export function PeriodStatusClient() {
       for (const id of openIds) next[id] = "locked";
       return next;
     });
+    setSessionHistory((prev) => [
+      {
+        id: `sess-${Date.now()}`,
+        action: "lock",
+        periodLabel: modalPeriod.label,
+        by: persona.roleLabel,
+        time: new Date().toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+        reason: reason.trim(),
+      },
+      ...prev,
+    ]);
     setModalPeriodKey(null);
     setReason("");
     setTouched(false);
@@ -197,6 +240,40 @@ export function PeriodStatusClient() {
             })}
           </div>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Histori Perubahan Periode
+            </CardTitle>
+            <CardDescription>Jejak penguncian & pembukaan periode oleh admin.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {history.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">Belum ada histori periode.</div>
+            ) : (
+              <ol className="space-y-2">
+                {history.map((h) => (
+                  <li key={h.id} className="flex items-start gap-3 text-sm">
+                    <Badge variant={h.action === "lock" ? "success" : "warning"} className="mt-0.5 inline-flex items-center gap-1">
+                      {h.action === "lock" ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                      {h.action === "lock" ? "Kunci" : "Buka"}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">
+                        {h.periodLabel} <span className="text-muted-foreground">· {h.by}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {h.reason} · {h.time}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog
