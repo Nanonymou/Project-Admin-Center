@@ -100,6 +100,18 @@ export function ApprovalProgressClient() {
 
   const stages = useMemo(() => buildStageProgress(allApprovals), [allApprovals]);
 
+  // Per-stage timeline: count + average time-in-stage for each approval stage.
+  const stageTimeline = useMemo(
+    () =>
+      APPROVAL_STAGES.map((stage) => {
+        const items = allApprovals.filter((a) => a.stage === stage);
+        const avg = items.length ? items.reduce((s, a) => s + a.timeInStageDays, 0) / items.length : 0;
+        const sla = items.length ? items[0].slaTargetDays : 0;
+        return { stage, count: items.length, avg, sla, breaching: avg > sla && sla > 0 };
+      }),
+    [allApprovals],
+  );
+
   // SLA summary across the pending approval queue.
   const slaSummary = useMemo(() => {
     if (allApprovals.length === 0) return null;
@@ -265,6 +277,47 @@ export function ApprovalProgressClient() {
             )}
           </CardContent>
         </Card>
+
+        {allApprovals.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Timeline Tahapan Approval</CardTitle>
+              <CardDescription>
+                Rata-rata waktu di tiap tahap vs target SLA — tahap merah melewati SLA.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ol className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-0">
+                {stageTimeline.map((s, i) => (
+                  <li key={s.stage} className="flex-1">
+                    <div className="flex items-center gap-2 sm:flex-col sm:items-start sm:gap-1">
+                      <div className="flex items-center">
+                        <span
+                          className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold text-white",
+                            s.breaching ? "bg-rose-500" : s.count > 0 ? "bg-primary" : "bg-muted-foreground/40",
+                          )}
+                        >
+                          {i + 1}
+                        </span>
+                        {i < stageTimeline.length - 1 && (
+                          <span className="mx-1 hidden h-px w-8 bg-border sm:block" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-medium">{s.stage}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {s.count} invoice · {s.avg.toFixed(1)} hari
+                          {s.sla > 0 && <span className="text-muted-foreground/70"> / SLA {s.sla}h</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
 
         {slaSummary && (
           <Card>
