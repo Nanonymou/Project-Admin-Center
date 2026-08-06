@@ -392,6 +392,25 @@ export function DailyCostClient() {
                 </div>
               )}
 
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-md border p-2.5">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Kategori Terisi</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums">
+                    {categories.filter((c) => (values[c.key] || 0) > 0).length} / {categories.length}
+                  </div>
+                </div>
+                <div className="rounded-md border p-2.5">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Total Form</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums">{formatCurrency(total)}</div>
+                </div>
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Total Sesi + Form</div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums">
+                    {formatCurrency(sessionTotals.all + (editingId ? 0 : total))}
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between border-t pt-3">
                 <div className="text-sm">
                   <span className="text-muted-foreground">Total: </span>
