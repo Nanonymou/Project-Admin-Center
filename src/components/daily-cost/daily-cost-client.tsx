@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, Save, Wallet } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, History, Info, Save, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,6 +111,14 @@ export function DailyCostClient() {
         title="Submit Daily Cost"
         description={`Input pengeluaran harian untuk ${activeWorkspace.projectName} · ${activeWorkspace.locationName}.`}
         breadcrumbs={[{ label: "Operasional" }, { label: "Daily Cost" }]}
+        actions={
+          <Link href="/daily-cost/history">
+            <Button variant="outline" size="sm">
+              <History className="h-4 w-4" />
+              Riwayat Submit
+            </Button>
+          </Link>
+        }
       />
 
       <div className="space-y-6 p-4 md:p-6">
