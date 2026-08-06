@@ -23,8 +23,11 @@ import { APPROVAL_STAGES, type ApprovalStageName } from "@/lib/mock/approval-pro
 import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
 import { buildStageProgress, summarizeApprovalProgress } from "@/lib/mock/approval-progress";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
+import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { canAccessLocation } from "@/lib/personas";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export function ApprovalProgressClient() {
   const { persona } = usePersona();
@@ -111,6 +114,19 @@ export function ApprovalProgressClient() {
       }),
     [allApprovals],
   );
+
+  // Activities that are overdue or not finished on time — sorted most urgent first.
+  const attentionItems = useMemo(() => {
+    const rank: Record<string, number> = { escalation: 0, overdue: 1, at_risk: 2 };
+    return allApprovals
+      .filter((a) => a.status === "overdue" || a.status === "escalation" || a.status === "at_risk")
+      .sort((a, b) => {
+        const ra = rank[a.status] ?? 9;
+        const rb = rank[b.status] ?? 9;
+        if (ra !== rb) return ra - rb;
+        return b.timeInStageDays - b.slaTargetDays - (a.timeInStageDays - a.slaTargetDays);
+      });
+  }, [allApprovals]);
 
   // SLA summary across the pending approval queue.
   const slaSummary = useMemo(() => {
@@ -383,6 +399,77 @@ export function ApprovalProgressClient() {
           </div>
           <SiteProgressCards sites={siteProgress} />
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-rose-500" />
+              Aktivitas Belum Selesai & Terlambat
+            </CardTitle>
+            <CardDescription>
+              Invoice yang melewati atau berisiko melewati SLA — perlu tindakan segera.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {attentionItems.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                <BadgeCheck className="h-4 w-4 text-emerald-500" />
+                Tidak ada aktivitas terlambat pada scope ini.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Invoice</th>
+                      <th className="px-3 py-2 text-left font-medium">Site</th>
+                      <th className="px-3 py-2 text-left font-medium">Stage</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-right font-medium">Waktu / SLA</th>
+                      <th className="px-3 py-2 text-left font-medium">Assignee</th>
+                      <th className="px-3 py-2 text-right font-medium">Nilai</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attentionItems.slice(0, 12).map((a) => (
+                      <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2">
+                          <Link href={invoiceHref(a.invoiceNumber)} className="font-medium text-primary hover:underline">
+                            {a.invoiceNumber}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {a.projectCode} · {a.locationName}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{a.stage}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={a.status === "at_risk" ? "warning" : "danger"}>
+                            {a.status === "escalation" ? "Eskalasi" : a.status === "overdue" ? "Terlambat" : "At Risk"}
+                          </Badge>
+                        </td>
+                        <td
+                          className={cn(
+                            "px-3 py-2 text-right tabular-nums",
+                            a.timeInStageDays > a.slaTargetDays && "font-semibold text-rose-600",
+                          )}
+                        >
+                          {a.timeInStageDays}h / {a.slaTargetDays}h
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{a.assignee}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(a.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {attentionItems.length > 12 && (
+                  <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                    Menampilkan 12 dari {attentionItems.length} aktivitas terlambat.
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
