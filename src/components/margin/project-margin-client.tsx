@@ -11,6 +11,7 @@ import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
 import { LocationComparison } from "@/components/margin/location-comparison";
+import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +97,8 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
             Periode {filters.from} → {filters.to} ({periodDays} hari).
           </span>
         </div>
+
+        <SitePeriodBar scopedInfo={`${sites.length} location · ${project.code}`} />
 
         {noAccess ? (
           <Card>
