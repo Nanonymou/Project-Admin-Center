@@ -93,6 +93,12 @@ export function SalesCompareClient() {
   const periodDays = daysBetween(filters.from, filters.to);
   const canExport = persona.capabilities.canExport;
 
+  const scopeLabel = useMemo(() => {
+    const p = filters.projects.length === 0 ? "semua project" : filters.projects.join(", ");
+    const l = filters.locations.length === 0 ? "semua location" : `${filters.locations.length} location`;
+    return `${p} · ${l}`;
+  }, [filters.projects, filters.locations]);
+
   const barData = dimension === "site" ? bySite : byProject.map((p) => ({ label: p.projectCode, sales: p.sales, key: p.projectCode }));
 
   return (
@@ -151,7 +157,9 @@ export function SalesCompareClient() {
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>Perbandingan Sales per {dimension === "site" ? "Site" : "Project"}</CardTitle>
-              <CardDescription>Diurutkan dari sales tertinggi.</CardDescription>
+              <CardDescription>
+                Diurutkan dari sales tertinggi · scope: {scopeLabel} · {filteredSites.length} site.
+              </CardDescription>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               {(["site", "project"] as const).map((d) => (
@@ -179,7 +187,9 @@ export function SalesCompareClient() {
         <Card>
           <CardHeader>
             <CardTitle>Tren Sales</CardTitle>
-            <CardDescription>Perkembangan sales sepanjang periode aktif.</CardDescription>
+            <CardDescription>
+              Periode {filters.from} → {filters.to} ({periodDays} hari) · scope: {scopeLabel}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {trend.length === 0 ? (
