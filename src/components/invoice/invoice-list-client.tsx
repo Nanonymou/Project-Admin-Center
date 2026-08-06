@@ -129,9 +129,10 @@ export function InvoiceListClient() {
     [allInvoices, activeProject],
   );
 
-  // On-page location filter — chips derived from whatever locations are in
+  // On-page multi-select location filter — chips derived from the locations in
   // scope, so it adapts to any project's sites (no hard-coded locations).
-  const [activeLocation, setActiveLocation] = useState<string | "all">("all");
+  // Empty selection means "all locations".
+  const [selectedLocations, setSelectedLocations] = useState<Set<string>>(new Set());
   const locationChips = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number }>();
     for (const inv of projectFiltered) {
@@ -142,16 +143,30 @@ export function InvoiceListClient() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [projectFiltered]);
 
-  // Reset the chip when the active location leaves scope (persona/filter change).
+  function toggleLocation(id: string) {
+    setSelectedLocations((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Drop any selected location that has left the current scope.
   useEffect(() => {
-    if (activeLocation !== "all" && !locationChips.some((c) => c.id === activeLocation)) {
-      setActiveLocation("all");
-    }
-  }, [locationChips, activeLocation]);
+    setSelectedLocations((prev) => {
+      const valid = new Set(locationChips.map((c) => c.id));
+      const next = new Set(Array.from(prev).filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [locationChips]);
 
   const locationFiltered = useMemo(
-    () => (activeLocation === "all" ? projectFiltered : projectFiltered.filter((i) => i.locationId === activeLocation)),
-    [projectFiltered, activeLocation],
+    () =>
+      selectedLocations.size === 0
+        ? projectFiltered
+        : projectFiltered.filter((i) => selectedLocations.has(i.locationId)),
+    [projectFiltered, selectedLocations],
   );
 
   // Status filter driven by the clickable status cards.
@@ -331,10 +346,10 @@ export function InvoiceListClient() {
             </span>
             <button
               type="button"
-              onClick={() => setActiveLocation("all")}
+              onClick={() => setSelectedLocations(new Set())}
               className={cn(
                 "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
-                activeLocation === "all"
+                selectedLocations.size === 0
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-input bg-background hover:bg-accent",
               )}
@@ -345,10 +360,10 @@ export function InvoiceListClient() {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setActiveLocation(c.id)}
+                onClick={() => toggleLocation(c.id)}
                 className={cn(
                   "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
-                  activeLocation === c.id
+                  selectedLocations.has(c.id)
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-input bg-background hover:bg-accent",
                 )}
@@ -356,6 +371,11 @@ export function InvoiceListClient() {
                 {c.name} · {c.count}
               </button>
             ))}
+            {selectedLocations.size > 0 && (
+              <span className="ml-1 text-[11px] text-muted-foreground">
+                {selectedLocations.size} lokasi dipilih
+              </span>
+            )}
           </div>
         )}
 
@@ -400,7 +420,7 @@ export function InvoiceListClient() {
             <CardHeader>
               <CardTitle>Ringkasan per Stage</CardTitle>
               <CardDescription>
-                Distribusi invoice pada tiap tahap approval{activeLocation !== "all" ? " (lokasi terpilih)" : ""}.
+                Distribusi invoice pada tiap tahap approval{selectedLocations.size > 0 ? " (lokasi terpilih)" : ""}.
               </CardDescription>
             </CardHeader>
             <CardContent>
