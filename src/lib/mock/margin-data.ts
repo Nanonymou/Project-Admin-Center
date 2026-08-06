@@ -1,4 +1,5 @@
 import type { ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
+import { computeMarginPct, computeProfit } from "@/lib/finance";
 import type { SiteKpi } from "./site-kpi";
 
 /**
@@ -16,13 +17,13 @@ export function buildProfitTrend(sites: SiteKpi[]): ProfitTrendPoint[] {
     const wave = 0.85 + Math.sin((11 - i) / 2) * 0.12 + ((i * 7) % 10) / 100;
     const sales = Math.round(totalSales * wave);
     const cost = Math.round(totalCost * wave * (0.95 + ((i * 3) % 8) / 100));
-    const profit = sales - cost;
+    const profit = computeProfit(sales, cost);
     out.push({
       month: d.toLocaleDateString("id-ID", { month: "short", year: "2-digit" }),
       sales,
       cost,
       profit,
-      marginPct: sales === 0 ? 0 : (profit / sales) * 100,
+      marginPct: computeMarginPct(sales, cost),
     });
   }
   return out;
@@ -59,13 +60,13 @@ export function buildProfitTrendForRange(
       const wave = 0.8 + Math.sin(i / 3) * 0.15 + ((i * 7) % 10) / 100;
       const sales = Math.round(perDaySales * wave);
       const cost = Math.round(perDayCost * wave * (0.95 + ((i * 3) % 8) / 100));
-      const profit = sales - cost;
+      const profit = computeProfit(sales, cost);
       points.push({
         month: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
         sales,
         cost,
         profit,
-        marginPct: sales === 0 ? 0 : (profit / sales) * 100,
+        marginPct: computeMarginPct(sales, cost),
       });
     }
   } else {
@@ -82,13 +83,13 @@ export function buildProfitTrendForRange(
       const wave = 0.85 + Math.sin(i / 2) * 0.12 + ((i * 7) % 10) / 100;
       const sales = Math.round(perMonthSales * wave);
       const cost = Math.round(perMonthCost * wave * (0.95 + ((i * 3) % 8) / 100));
-      const profit = sales - cost;
+      const profit = computeProfit(sales, cost);
       points.push({
         month: m.toLocaleDateString("id-ID", { month: "short", year: "2-digit" }),
         sales,
         cost,
         profit,
-        marginPct: sales === 0 ? 0 : (profit / sales) * 100,
+        marginPct: computeMarginPct(sales, cost),
       });
     });
   }
