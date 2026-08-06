@@ -40,6 +40,21 @@ export function LocationComparison({ sites }: { sites: SiteKpi[] }) {
     [sites, rightId],
   );
 
+  // Tally which side wins across the metrics for a head-to-head verdict.
+  const tally = useMemo(() => {
+    if (!left || !right) return { left: 0, right: 0 };
+    let l = 0;
+    let r = 0;
+    for (const m of METRICS) {
+      const lv = m.value(left);
+      const rv = m.value(right);
+      const higherBetter = m.higherBetter ?? true;
+      if (higherBetter ? lv > rv : lv < rv) l++;
+      else if (higherBetter ? rv > lv : rv < lv) r++;
+    }
+    return { left: l, right: r };
+  }, [left, right]);
+
   if (sites.length < 2 || !left || !right) {
     return (
       <Card>
@@ -65,6 +80,18 @@ export function LocationComparison({ sites }: { sites: SiteKpi[] }) {
           <LocationPicker label="Lokasi A" sites={sites} value={leftId} onChange={setLeftId} />
           <LocationPicker label="Lokasi B" sites={sites} value={rightId} onChange={setRightId} />
         </div>
+
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-md border bg-muted/20 p-3">
+          <VsSide name={left.locationName} marginPct={left.marginPct} wins={tally.left} winner={tally.left > tally.right} />
+          <div className="text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">vs</div>
+          <VsSide name={right.locationName} marginPct={right.marginPct} wins={tally.right} winner={tally.right > tally.left} alignRight />
+        </div>
+
+        <p className="text-center text-[11px] text-muted-foreground">
+          {tally.left === tally.right
+            ? "Kedua lokasi imbang pada periode ini."
+            : `${tally.left > tally.right ? left.locationName : right.locationName} unggul di ${Math.max(tally.left, tally.right)} dari ${METRICS.length} metrik.`}
+        </p>
 
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-sm">
@@ -113,6 +140,35 @@ export function LocationComparison({ sites }: { sites: SiteKpi[] }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function VsSide({
+  name,
+  marginPct,
+  wins,
+  winner,
+  alignRight,
+}: {
+  name: string;
+  marginPct: number;
+  wins: number;
+  winner: boolean;
+  alignRight?: boolean;
+}) {
+  return (
+    <div className={cn(alignRight && "text-right")}>
+      <div className="flex items-center gap-1.5" style={alignRight ? { justifyContent: "flex-end" } : undefined}>
+        <span className="text-sm font-semibold">{name}</span>
+        {winner && (
+          <span className="rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
+            Unggul
+          </span>
+        )}
+      </div>
+      <div className="mt-0.5 text-lg font-bold tabular-nums">{marginPct.toFixed(1)}%</div>
+      <div className="text-[11px] text-muted-foreground">{wins} metrik menang</div>
+    </div>
   );
 }
 
