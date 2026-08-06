@@ -108,6 +108,11 @@ export function ApprovalProgressClient() {
     [filteredSites, scopedDetailMap, approvalOverrides],
   );
 
+  // Change history for activity edits this session.
+  const [editHistory, setEditHistory] = useState<
+    { id: string; invoiceNumber: string; changes: string; by: string; time: string }[]
+  >([]);
+
   // Edit-activity modal state.
   const [editTarget, setEditTarget] = useState<ApprovalReminder | null>(null);
   const [editAssignee, setEditAssignee] = useState("");
@@ -123,10 +128,27 @@ export function ApprovalProgressClient() {
 
   function saveEdit() {
     if (!editTarget) return;
+    const changes: string[] = [];
+    const assignee = editAssignee.trim() || editTarget.assignee;
+    if (assignee !== editTarget.assignee) changes.push(`Assignee: ${editTarget.assignee} → ${assignee}`);
+    if (editPriority !== editTarget.priority) changes.push(`Prioritas: ${editTarget.priority} → ${editPriority}`);
+    if (editStage !== editTarget.stage) changes.push(`Stage: ${editTarget.stage} → ${editStage}`);
     setApprovalOverrides((prev) => ({
       ...prev,
-      [editTarget.id]: { assignee: editAssignee.trim() || editTarget.assignee, priority: editPriority, stage: editStage },
+      [editTarget.id]: { assignee, priority: editPriority, stage: editStage },
     }));
+    if (changes.length > 0) {
+      setEditHistory((prev) => [
+        {
+          id: `${editTarget.id}-${Date.now()}`,
+          invoiceNumber: editTarget.invoiceNumber,
+          changes: changes.join(" · "),
+          by: persona.roleLabel,
+          time: new Date().toLocaleTimeString("id-ID"),
+        },
+        ...prev,
+      ]);
+    }
     setEditTarget(null);
   }
 
@@ -737,6 +759,31 @@ export function ApprovalProgressClient() {
             <ApprovalReminderList items={approvals} />
           </CardContent>
         </Card>
+
+        {editHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Riwayat Perubahan Aktivitas</CardTitle>
+              <CardDescription>Jejak edit assignee, prioritas & stage pada sesi ini.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-2">
+                {editHistory.map((h) => (
+                  <li key={h.id} className="flex items-start gap-3 text-sm">
+                    <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium tabular-nums">{h.invoiceNumber}</div>
+                      <div className="text-[11px] text-muted-foreground">{h.changes}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {h.by} · {h.time}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog
