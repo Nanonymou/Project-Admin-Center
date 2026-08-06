@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { FileText, ImageIcon, Paperclip, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, FileText, ImageIcon, Paperclip, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -41,13 +41,32 @@ export function AttachmentCenter({
 }) {
   const [items, setItems] = useState<Attachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [previewItem, setPreviewItem] = useState<Attachment | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const previewItem = previewIndex !== null ? items[previewIndex] ?? null : null;
+
   function preview(it: Attachment) {
-    setPreviewItem(it);
+    const idx = items.findIndex((x) => x.id === it.id);
+    setPreviewIndex(idx >= 0 ? idx : null);
     onPreview?.(it);
   }
+
+  function step(delta: number) {
+    setPreviewIndex((i) => (i === null || items.length === 0 ? i : (i + delta + items.length) % items.length));
+  }
+
+  // Arrow-key navigation while the preview is open.
+  useEffect(() => {
+    if (previewIndex === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") step(1);
+      else if (e.key === "ArrowLeft") step(-1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewIndex, items.length]);
 
   function addFiles(files: FileList | File[]) {
     const next = [...items];
@@ -169,9 +188,28 @@ export function AttachmentCenter({
 
       <Dialog
         open={previewItem !== null}
-        onClose={() => setPreviewItem(null)}
+        onClose={() => setPreviewIndex(null)}
         title="Pratinjau Lampiran"
-        description={previewItem ? `${previewItem.name} · ${previewItem.sizeLabel}` : undefined}
+        description={
+          previewItem
+            ? `${previewItem.name} · ${previewItem.sizeLabel} · ${(previewIndex ?? 0) + 1}/${items.length}`
+            : undefined
+        }
+        footer={
+          items.length > 1 && (
+            <div className="flex items-center justify-between">
+              <Button variant="outline" size="sm" onClick={() => step(-1)}>
+                <ChevronLeft className="h-4 w-4" />
+                Sebelumnya
+              </Button>
+              <span className="text-[11px] text-muted-foreground">Gunakan ← / → untuk navigasi</span>
+              <Button variant="outline" size="sm" onClick={() => step(1)}>
+                Berikutnya
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )
+        }
       >
         {previewItem?.isImage && previewItem.url ? (
           // eslint-disable-next-line @next/next/no-img-element
