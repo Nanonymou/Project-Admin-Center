@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Database, DownloadCloud, HardDrive, Plus, RotateCcw, ShieldAlert } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Database, Download, DownloadCloud, HardDrive, Plus, RotateCcw, ShieldAlert, Upload } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -15,7 +15,11 @@ import {
   BACKUP_STATUS_META,
   type BackupSnapshot,
 } from "@/lib/mock/backups";
-import { downloadTextFile } from "@/lib/csv";
+import { downloadTextFile, toCsv, parseCsv } from "@/lib/csv";
+import { PROJECT_OPTIONS } from "@/lib/mock/filters";
+import { getInvoicePeriodType } from "@/lib/mock/cutoff-config";
+import { getTaxConfig } from "@/lib/mock/tax-config";
+import { getMarginModel } from "@/lib/mock/margin-model";
 import { formatNumber } from "@/lib/utils";
 
 export function BackupRestoreClient() {
@@ -81,6 +85,51 @@ export function BackupRestoreClient() {
     downloadTextFile(`${b.id}.json`, JSON.stringify(manifest, null, 2), "application/json;charset=utf-8");
   }
 
+  // Master-data export/import (mock).
+  const masterFileRef = useRef<HTMLInputElement>(null);
+  const [ioMessage, setIoMessage] = useState<string | null>(null);
+
+  const masterData = useMemo(
+    () =>
+      PROJECT_OPTIONS.map((p) => ({
+        code: p.code,
+        name: p.name,
+        invoicePeriod: getInvoicePeriodType(p.code),
+        tax: getTaxConfig(p.code),
+        marginModel: getMarginModel(p.code),
+      })),
+    [],
+  );
+
+  function exportMasterJson() {
+    downloadTextFile("master-data.json", JSON.stringify(masterData, null, 2), "application/json;charset=utf-8");
+    setIoMessage(`Master data ${masterData.length} project diekspor (JSON).`);
+  }
+
+  function exportMasterCsv() {
+    const header = ["code", "name", "invoicePeriod", "taxCode", "taxRate", "marginModel"];
+    const rows = masterData.map((m) => [m.code, m.name, m.invoicePeriod, m.tax.code, m.tax.rate, m.marginModel]);
+    downloadTextFile("master-data.csv", toCsv([header, ...rows]));
+    setIoMessage(`Master data ${masterData.length} project diekspor (CSV).`);
+  }
+
+  async function importMaster(file: File) {
+    const text = await file.text();
+    let count = 0;
+    if (file.name.endsWith(".json")) {
+      try {
+        const parsed = JSON.parse(text);
+        count = Array.isArray(parsed) ? parsed.length : 1;
+      } catch {
+        setIoMessage("File JSON tidak valid.");
+        return;
+      }
+    } else {
+      count = Math.max(0, parseCsv(text).length - 1);
+    }
+    setIoMessage(`${count} entri master data terbaca dari ${file.name} (mock — tidak diterapkan).`);
+  }
+
   function createBackup() {
     const now = new Date();
     setAdded((prev) => [
@@ -125,6 +174,53 @@ export function BackupRestoreClient() {
             </span>
           </div>
         )}
+
+        {ioMessage && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <span>{ioMessage}</span>
+            <button type="button" onClick={() => setIoMessage(null)} className="text-sky-700 hover:underline">
+              Tutup
+            </button>
+          </div>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Ekspor / Impor Master Data</CardTitle>
+            <CardDescription>Unduh konfigurasi master project atau impor dari file (mock).</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportMasterJson}>
+              <Download className="h-4 w-4" />
+              Ekspor JSON
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportMasterCsv}>
+              <Download className="h-4 w-4" />
+              Ekspor CSV
+            </Button>
+            <input
+              ref={masterFileRef}
+              type="file"
+              accept=".json,.csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importMaster(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canManage}
+              onClick={() => masterFileRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Impor Master Data
+            </Button>
+            <span className="text-[11px] text-muted-foreground">{masterData.length} project dalam master</span>
+          </CardContent>
+        </Card>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <KpiCard label="Total Backup" value={stats.total} format="number" icon={Database} tone="primary" />
