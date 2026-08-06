@@ -18,6 +18,7 @@ import { useActiveSite } from "@/components/providers/active-site-provider";
 import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
 import { computeSiteKpi } from "@/lib/mock/site-kpi-calc";
 import { getSiteDetail } from "@/lib/mock/site-detail";
+import { TopSitesModule } from "@/components/performance/top-sites-module";
 import {
   aggregateAging,
   aggregateTotals,
@@ -269,6 +270,10 @@ export function ExecutiveDashboardClient() {
               )}
             </CardContent>
           </Card>
+        </section>
+
+        <section>
+          <TopSitesModule sites={scopedSites} />
         </section>
       </div>
     </div>
