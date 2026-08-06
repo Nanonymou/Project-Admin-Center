@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, Lock, MapPin, Paperclip, Pencil, Save, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, History, Info, Lock, MapPin, Paperclip, Pencil, Save, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
@@ -25,6 +26,8 @@ import {
   type CostEntryInput,
 } from "@/lib/mock/cost-config";
 import { cn, formatCurrency } from "@/lib/utils";
+
+type ProofFile = { name: string; url: string; isImage: boolean };
 
 type SubmittedEntry = {
   id: string;
@@ -62,7 +65,8 @@ export function DailyCostClient() {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [values, setValues] = useState<CostEntryInput>({});
-  const [proofs, setProofs] = useState<Record<string, string>>({});
+  const [proofs, setProofs] = useState<Record<string, ProofFile>>({});
+  const [previewProof, setPreviewProof] = useState<ProofFile | null>(null);
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -173,8 +177,10 @@ export function DailyCostClient() {
     setValues((prev) => ({ ...prev, [key]: num }));
   }
 
-  function setProof(key: string, name: string) {
-    setProofs((prev) => ({ ...prev, [key]: name }));
+  function setProof(key: string, file: File) {
+    const isImage = file.type.startsWith("image/");
+    const url = isImage ? URL.createObjectURL(file) : "";
+    setProofs((prev) => ({ ...prev, [key]: { name: file.name, url, isImage } }));
   }
 
   function handleSubmit(status: "draft" | "submitted") {
@@ -191,7 +197,7 @@ export function DailyCostClient() {
       status,
       breakdown: categories
         .filter((c) => (values[c.key] || 0) > 0)
-        .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key] })),
+        .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key]?.name })),
     };
     setEntries((prev) => (editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev]));
     setValues({});
@@ -204,12 +210,12 @@ export function DailyCostClient() {
   function editEntry(entry: SubmittedEntry) {
     const labelToKey = new Map(categories.map((c) => [c.label, c.key]));
     const nextValues: CostEntryInput = {};
-    const nextProofs: Record<string, string> = {};
+    const nextProofs: Record<string, ProofFile> = {};
     for (const b of entry.breakdown) {
       const key = labelToKey.get(b.label);
       if (!key) continue;
       nextValues[key] = b.amount;
-      if (b.proof) nextProofs[key] = b.proof;
+      if (b.proof) nextProofs[key] = { name: b.proof, url: "", isImage: false };
     }
     setValues(nextValues);
     setProofs(nextProofs);
@@ -372,22 +378,44 @@ export function DailyCostClient() {
                             className={cn(
                               "inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-accent",
                               touched && missingProofKeys.includes(cat.key) && "border-rose-400 text-rose-600",
+                              readOnly && "pointer-events-none opacity-60",
                             )}
                           >
                             <Paperclip className="h-3 w-3" />
                             {proofs[cat.key] ? "Ganti bukti" : "Unggah bukti"}
                             <input
                               type="file"
+                              accept="image/*,.pdf"
                               className="hidden"
+                              disabled={readOnly}
                               onChange={(e) => {
                                 const f = e.target.files?.[0];
-                                if (f) setProof(cat.key, f.name);
+                                if (f) setProof(cat.key, f);
                                 e.target.value = "";
                               }}
                             />
                           </label>
                           {proofs[cat.key] ? (
-                            <span className="truncate text-[10px] text-emerald-700">{proofs[cat.key]}</span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewProof(proofs[cat.key])}
+                              className="inline-flex items-center gap-1.5 rounded-md border px-1.5 py-1 hover:bg-accent"
+                              title="Lihat preview bukti"
+                            >
+                              {proofs[cat.key].isImage && proofs[cat.key].url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={proofs[cat.key].url}
+                                  alt={proofs[cat.key].name}
+                                  className="h-6 w-6 rounded object-cover"
+                                />
+                              ) : (
+                                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                              )}
+                              <span className="max-w-[100px] truncate text-[10px] text-emerald-700">
+                                {proofs[cat.key].name}
+                              </span>
+                            </button>
                           ) : (
                             touched && missingProofKeys.includes(cat.key) && (
                               <span className="text-[10px] text-rose-600">bukti wajib</span>
@@ -636,6 +664,28 @@ export function DailyCostClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={previewProof !== null}
+        onClose={() => setPreviewProof(null)}
+        title="Preview Bukti"
+        description={previewProof?.name}
+      >
+        {previewProof?.isImage && previewProof.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewProof.url}
+            alt={previewProof.name}
+            className="mx-auto max-h-[60vh] w-auto rounded-md border"
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
+            <FileText className="h-10 w-10 text-muted-foreground" />
+            <div>Preview tidak tersedia untuk tipe file ini.</div>
+            <div className="text-xs">{previewProof?.name}</div>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
