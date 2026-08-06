@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, History, Info, MapPin, Save, ShoppingCart } from "lucide-react";
+import { AlertTriangle, History, Info, MapPin, Pencil, Save, ShoppingCart, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,10 +34,14 @@ type SubmittedEntry = {
   id: string;
   date: string;
   area: string;
+  areaId: string;
   total: number;
   tax: number;
   lines: { label: string; qty: number; price: number; total: number }[];
   status: "draft" | "submitted";
+  // Snapshot of the raw form input so the entry can be re-loaded for editing.
+  input: SalesEntryInput;
+  activeKeys: string[];
 };
 
 export function DailySalesEngine() {
@@ -90,6 +94,7 @@ export function DailySalesEngine() {
   const [activeKeys, setActiveKeys] = useState<string[]>(() => categories.map((c) => c.key));
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // When the target location/project changes, reset the form to that project's
   // categories & default prices so stale keys never leak across projects.
@@ -98,6 +103,7 @@ export function DailySalesEngine() {
     setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
     setActiveKeys(categories.map((c) => c.key));
     setTouched(false);
+    setEditingId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace.locationId, workspace.projectCode]);
 
@@ -144,31 +150,56 @@ export function DailySalesEngine() {
     setValues((prev) => ({ ...prev, [key]: { ...prev[key], [field]: num } }));
   }
 
+  function resetForm() {
+    setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
+    setActiveKeys(categories.map((c) => c.key));
+    setArea("");
+    setDate(today);
+    setTouched(false);
+    setEditingId(null);
+  }
+
   function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
     if (!dateAllowed || !area || errors.length > 0) return;
-    setEntries((prev) => [
-      {
-        id: `${date}-${Date.now()}`,
-        date,
-        area: areas.find((a) => a.id === area)?.name ?? area,
-        total: subtotal,
-        tax,
-        status,
-        lines: activeCategories
-          .filter((c) => (values[c.key]?.qty || 0) > 0)
-          .map((c) => ({
-            label: c.label,
-            qty: values[c.key].qty,
-            price: values[c.key].price,
-            total: lineTotal(values[c.key]),
-          })),
-      },
-      ...prev,
-    ]);
-    setValues(Object.fromEntries(categories.map((c) => [c.key, { qty: 0, price: priceList[c.key] ?? c.defaultPrice }])));
-    setArea("");
+    const entry: SubmittedEntry = {
+      id: editingId ?? `${date}-${Date.now()}`,
+      date,
+      area: areas.find((a) => a.id === area)?.name ?? area,
+      areaId: area,
+      total: subtotal,
+      tax,
+      status,
+      input: JSON.parse(JSON.stringify(values)),
+      activeKeys: [...activeKeys],
+      lines: activeCategories
+        .filter((c) => (values[c.key]?.qty || 0) > 0)
+        .map((c) => ({
+          label: c.label,
+          qty: values[c.key].qty,
+          price: values[c.key].price,
+          total: lineTotal(values[c.key]),
+        })),
+    };
+    setEntries((prev) =>
+      editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev],
+    );
+    resetForm();
+  }
+
+  function editEntry(entry: SubmittedEntry) {
+    setDate(entry.date);
+    setArea(entry.areaId);
+    setValues(JSON.parse(JSON.stringify(entry.input)));
+    setActiveKeys(entry.activeKeys);
+    setEditingId(entry.id);
     setTouched(false);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function deleteEntry(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    if (editingId === id) resetForm();
   }
 
   return (
@@ -301,15 +332,26 @@ export function DailySalesEngine() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {editingId && (
+                    <Button variant="ghost" size="sm" onClick={resetForm}>
+                      Batal
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" disabled={!canCreate} onClick={() => handleSubmit("draft")}>
                     Simpan Draft
                   </Button>
                   <Button size="sm" disabled={!canCreate} onClick={() => handleSubmit("submitted")}>
                     <Save className="h-4 w-4" />
-                    Submit
+                    {editingId ? "Update" : "Submit"}
                   </Button>
                 </div>
               </div>
+              {editingId && (
+                <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-[11px] text-primary">
+                  <Pencil className="h-3 w-3" />
+                  Sedang mengedit entri — perubahan akan menimpa entri terpilih.
+                </div>
+              )}
               {!canCreate && (
                 <p className="text-[11px] text-muted-foreground">
                   Peran {persona.roleLabel} tidak memiliki izin input Daily Sales.
@@ -321,7 +363,9 @@ export function DailySalesEngine() {
           <Card>
             <CardHeader>
               <CardTitle>Entri Terbaru</CardTitle>
-              <CardDescription>Tersimpan di sesi ini (mock).</CardDescription>
+              <CardDescription>
+                Tersimpan di sesi ini (mock){entries.length > 0 ? ` · ${entries.length} entri` : ""}.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {entries.length === 0 ? (
@@ -331,7 +375,13 @@ export function DailySalesEngine() {
               ) : (
                 <ul className="space-y-2">
                   {entries.map((entry) => (
-                    <li key={entry.id} className="rounded-md border p-2.5">
+                    <li
+                      key={entry.id}
+                      className={cn(
+                        "rounded-md border p-2.5",
+                        editingId === entry.id && "border-primary ring-1 ring-primary",
+                      )}
+                    >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium tabular-nums">{entry.date}</span>
                         <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
@@ -350,6 +400,26 @@ export function DailySalesEngine() {
                           </li>
                         ))}
                       </ul>
+                      {canCreate && (
+                        <div className="mt-2 flex items-center justify-end gap-2 border-t pt-2">
+                          <button
+                            type="button"
+                            onClick={() => editEntry(entry)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEntry(entry.id)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-rose-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Hapus
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
