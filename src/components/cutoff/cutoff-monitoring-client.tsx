@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AlarmClock, CalendarClock, Download, Info, Lock, RefreshCcw, Truck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -15,7 +15,9 @@ import {
   buildCutOffRows,
   CUTOFF_STATUS_META,
   DELIVERY_STATUS_META,
+  type CutOffRow,
 } from "@/lib/mock/cutoff-config";
+import { Dialog } from "@/components/ui/dialog";
 import { NotSubmittedWidget } from "@/components/cutoff/not-submitted-widget";
 import { PastCutOffWidget } from "@/components/cutoff/past-cutoff-widget";
 import { LockedPeriodsWidget } from "@/components/cutoff/locked-periods-widget";
@@ -25,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 export function CutOffMonitoringClient() {
   const { persona } = usePersona();
+  const [active, setActive] = useState<CutOffRow | null>(null);
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -130,7 +133,14 @@ export function CutOffMonitoringClient() {
                       const st = CUTOFF_STATUS_META[r.status];
                       const dv = DELIVERY_STATUS_META[r.delivery];
                       return (
-                        <tr key={r.locationId} className="border-b last:border-0 hover:bg-muted/30">
+                        <tr
+                          key={r.locationId}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("a")) return;
+                            setActive(r);
+                          }}
+                          className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
+                        >
                           <td className="px-3 py-2">
                             <div className="text-sm font-medium">{r.locationName}</div>
                             <div className="text-[11px] text-muted-foreground">{r.projectCode}</div>
@@ -194,6 +204,82 @@ export function CutOffMonitoringClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={active !== null}
+        onClose={() => setActive(null)}
+        title={active ? `${active.projectCode} · ${active.locationName}` : undefined}
+        description={active ? `Periode invoice ${active.periodLabel}` : undefined}
+        footer={
+          active && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                Cut-off {active.cutOffDate}
+              </span>
+              <Link href={`/site/${active.locationId}`}>
+                <Button size="sm">Buka Site Dashboard</Button>
+              </Link>
+            </div>
+          )
+        }
+      >
+        {active && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={CUTOFF_STATUS_META[active.status].variant}>
+                {CUTOFF_STATUS_META[active.status].label}
+              </Badge>
+              <Badge variant={DELIVERY_STATUS_META[active.delivery].variant}>
+                {DELIVERY_STATUS_META[active.delivery].label}
+              </Badge>
+              <span
+                className={cn(
+                  "rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums",
+                  active.daysLeft <= 0
+                    ? "bg-rose-100 text-rose-800"
+                    : active.daysLeft <= 2
+                      ? "bg-amber-100 text-amber-900"
+                      : "bg-emerald-100 text-emerald-800",
+                )}
+              >
+                {active.daysLeft <= 0 ? "Hari ini" : `H-${active.daysLeft}`}
+              </span>
+            </div>
+            <DetailRow label="Cut-off date" value={active.cutOffDate} />
+            <DetailRow label="Periode invoice" value={active.periodLabel} />
+            <DetailRow label="Invoice pending" value={`${active.pendingInvoices}`} />
+            <div>
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Progress Submit
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 flex-1 overflow-hidden rounded bg-muted">
+                  <div
+                    className={
+                      active.submittedPct >= 90
+                        ? "h-full bg-emerald-500"
+                        : active.submittedPct >= 60
+                          ? "h-full bg-amber-500"
+                          : "h-full bg-rose-500"
+                    }
+                    style={{ width: `${Math.min(100, active.submittedPct)}%` }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">{active.submittedPct}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b pb-2 last:border-0">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-right text-sm font-medium">{value}</span>
     </div>
   );
 }
