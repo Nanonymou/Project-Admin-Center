@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BadgeCheck, Clock3, Download, Info, Lock, ShieldAlert } from "lucide-react";
+import { BadgeCheck, Clock3, Download, Info, Lock, Pencil, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
@@ -15,12 +15,18 @@ import { ApprovalReminderList } from "@/components/reminders/approval-reminder-l
 import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { daysBetween, SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS, type SiteDetail } from "@/lib/mock/site-detail";
 import { APPROVAL_STAGES, type ApprovalStageName } from "@/lib/mock/approval-progress";
-import { buildApprovalRemindersFor } from "@/lib/mock/approvals";
+import {
+  buildApprovalRemindersFor,
+  type ApprovalReminder,
+  type ApprovalReminderPriority,
+} from "@/lib/mock/approvals";
 import { buildStageProgress, summarizeApprovalProgress } from "@/lib/mock/approval-progress";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
@@ -91,10 +97,41 @@ export function ApprovalProgressClient() {
     return map;
   }, [filteredSites, periodFactor]);
 
+  // Local edits applied to approval activities this session.
+  const [approvalOverrides, setApprovalOverrides] = useState<Record<string, Partial<ApprovalReminder>>>({});
+
   const allApprovals = useMemo(
-    () => buildApprovalRemindersFor(filteredSites, scopedDetailMap),
-    [filteredSites, scopedDetailMap],
+    () =>
+      buildApprovalRemindersFor(filteredSites, scopedDetailMap).map((a) =>
+        approvalOverrides[a.id] ? { ...a, ...approvalOverrides[a.id] } : a,
+      ),
+    [filteredSites, scopedDetailMap, approvalOverrides],
   );
+
+  // Edit-activity modal state.
+  const [editTarget, setEditTarget] = useState<ApprovalReminder | null>(null);
+  const [editAssignee, setEditAssignee] = useState("");
+  const [editPriority, setEditPriority] = useState<ApprovalReminderPriority>("medium");
+  const [editStage, setEditStage] = useState<ApprovalStageName>("Verifikasi Site");
+
+  function openEdit(a: ApprovalReminder) {
+    setEditTarget(a);
+    setEditAssignee(a.assignee);
+    setEditPriority(a.priority);
+    setEditStage(a.stage as ApprovalStageName);
+  }
+
+  function saveEdit() {
+    if (!editTarget) return;
+    setApprovalOverrides((prev) => ({
+      ...prev,
+      [editTarget.id]: { assignee: editAssignee.trim() || editTarget.assignee, priority: editPriority, stage: editStage },
+    }));
+    setEditTarget(null);
+  }
+
+  const canEditApproval =
+    persona.role === "leader_admin" || persona.role === "super_admin" || persona.role === "site_admin";
 
   const [queueLocation, setQueueLocation] = useState<string | "all">("all");
   const queueLocations = useMemo(() => {
@@ -557,6 +594,7 @@ export function ApprovalProgressClient() {
                       <th className="px-3 py-2 text-right font-medium">Waktu / SLA</th>
                       <th className="px-3 py-2 text-left font-medium">Assignee</th>
                       <th className="px-3 py-2 text-right font-medium">Nilai</th>
+                      <th className="px-3 py-2 text-right font-medium">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -586,6 +624,20 @@ export function ApprovalProgressClient() {
                         </td>
                         <td className="px-3 py-2 text-muted-foreground">{a.assignee}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(a.amount)}</td>
+                        <td className="px-3 py-2 text-right">
+                          {canEditApproval ? (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(a)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -686,6 +738,56 @@ export function ApprovalProgressClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        title="Edit Aktivitas Approval"
+        description={editTarget ? `${editTarget.invoiceNumber} · ${editTarget.projectCode} · ${editTarget.locationName}` : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditTarget(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveEdit}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Assignee</label>
+            <Input value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder="Nama PIC" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Prioritas</label>
+              <select
+                value={editPriority}
+                onChange={(e) => setEditPriority(e.target.value as ApprovalReminderPriority)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+              <select
+                value={editStage}
+                onChange={(e) => setEditStage(e.target.value as ApprovalStageName)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                {APPROVAL_STAGES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
