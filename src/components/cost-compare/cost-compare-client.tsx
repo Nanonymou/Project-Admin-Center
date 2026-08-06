@@ -19,6 +19,7 @@ import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { KpiCard } from "@/components/common/kpi-card";
 import { SalesCompareBar } from "@/components/sales-compare/sales-compare-bar";
 import { CostByCategoryChart } from "@/components/cost-compare/cost-by-category-chart";
+import { SitePeriodBar } from "@/components/site/site-period-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -140,6 +141,8 @@ export function CostCompareClient() {
           locationOptions={personaLocationOptions}
         />
 
+        <SitePeriodBar scopedInfo={`${filteredSites.length} site`} />
+
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Total Cost" value={totalCost} format="currency" icon={Wallet} tone="warning" />
           <KpiCard label="Rata-rata / Site" value={avgPerSite} format="currency" icon={Wallet} tone="info" />
@@ -151,7 +154,9 @@ export function CostCompareClient() {
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>Perbandingan Cost per {dimension === "site" ? "Site" : "Project"}</CardTitle>
-              <CardDescription>Diurutkan dari cost tertinggi.</CardDescription>
+              <CardDescription>
+                Diurutkan dari cost tertinggi · periode {filters.from} → {filters.to} ({periodDays} hari).
+              </CardDescription>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               {(["site", "project"] as const).map((d) => (
@@ -189,7 +194,9 @@ export function CostCompareClient() {
         <Card>
           <CardHeader>
             <CardTitle>Tren Cost</CardTitle>
-            <CardDescription>Perkembangan cost sepanjang periode aktif.</CardDescription>
+            <CardDescription>
+              Periode {filters.from} → {filters.to} · titik {periodDays <= 62 ? "harian" : "bulanan"}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {trend.length === 0 ? (
