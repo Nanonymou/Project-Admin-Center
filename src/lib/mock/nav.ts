@@ -46,6 +46,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Daily Sales", href: "/daily-sales", icon: ShoppingCart },
       { label: "Daily Cost", href: "/daily-cost", icon: Wallet },
+      { label: "Daily Closing", href: "/daily-closing", icon: BadgeCheck },
       { label: "Invoice", href: "/invoice", icon: FileText },
       { label: "Outstanding Invoice", href: "/outstanding", icon: FileText },
       { label: "Approval Progress", href: "/approvals", icon: BadgeCheck },
