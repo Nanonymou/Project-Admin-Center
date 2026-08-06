@@ -16,6 +16,7 @@ import {
   CUTOFF_STATUS_META,
   DELIVERY_STATUS_META,
 } from "@/lib/mock/cutoff-config";
+import { NotSubmittedWidget } from "@/components/cutoff/not-submitted-widget";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +84,8 @@ export function CutOffMonitoringClient() {
           <KpiCard label="Closing Soon" value={counts.closingSoon} format="number" icon={CalendarClock} tone="warning" />
           <KpiCard label="Belum Terkonfirmasi" value={counts.pendingDelivery} format="number" icon={Truck} tone="info" />
         </section>
+
+        <NotSubmittedWidget sites={scopedSites} />
 
         <Card>
           <CardHeader>
