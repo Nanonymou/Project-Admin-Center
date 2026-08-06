@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Info, Lock, PiggyBank, RefreshCcw } from "lucide-react";
+import { Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
-import { KpiCard } from "@/components/common/kpi-card";
+import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-summary-cards";
 import { ProfitTrendChart } from "@/components/margin/profit-trend-chart";
 import { ProfitLineChart } from "@/components/margin/profit-line-chart";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import {
-  aggregateTotals,
   daysBetween,
   scaleSiteKpisByPeriod,
   SITE_KPI,
@@ -70,7 +69,6 @@ export function MarginDashboardClient() {
     return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
   }, [scopedSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
 
-  const totals = useMemo(() => aggregateTotals(filteredSites), [filteredSites]);
   const trend = useMemo(
     () => buildProfitTrendForRange(filteredSites, filters.from, filters.to),
     [filteredSites, filters.from, filters.to],
@@ -131,12 +129,7 @@ export function MarginDashboardClient() {
           locationOptions={personaLocationOptions}
         />
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <KpiCard label="Total Profit" value={totals.netMargin} format="currency" icon={PiggyBank} tone="success" sub={`${totals.marginPct.toFixed(1)}% GP`} />
-          <KpiCard label="Total Sales" value={totals.sales} format="currency" icon={PiggyBank} tone="primary" />
-          <KpiCard label="Total Cost" value={totals.cost} format="currency" icon={PiggyBank} tone="warning" />
-          <KpiCard label="Margin Rata-rata" value={totals.marginPct} format="percent" icon={PiggyBank} tone="info" />
-        </section>
+        <MarginSummaryCards summary={summarizeMargin(filteredSites)} />
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">

@@ -2,12 +2,12 @@
 
 import { useMemo } from "react";
 import { notFound, useRouter } from "next/navigation";
-import { ArrowLeft, Download, Info, Lock, PiggyBank, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Download, Info, Lock, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
-import { KpiCard } from "@/components/common/kpi-card";
+import { MarginSummaryCards, summarizeMargin } from "@/components/margin/margin-summary-cards";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,6 @@ import { useGlobalFilters } from "@/components/providers/global-filter-provider"
 import { daysBetween, scaleSiteKpisByPeriod, SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildMarginBySite } from "@/lib/mock/margin-data";
 import { getMarginModel, marginModelLabel } from "@/lib/mock/margin-model";
-import { portfolioMarginPct } from "@/lib/finance";
 import { canAccessLocation } from "@/lib/personas";
 import { PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -40,10 +39,6 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
   }, [project.code, persona, filters.from, filters.to]);
 
   const bySite = useMemo(() => buildMarginBySite(sites), [sites]);
-  const totalSales = sites.reduce((s, x) => s + x.sales, 0);
-  const totalCost = sites.reduce((s, x) => s + x.cost, 0);
-  const totalProfit = totalSales - totalCost;
-  const projMargin = portfolioMarginPct(sites.map((s) => ({ sales: s.sales, cost: s.cost })));
   const periodDays = daysBetween(filters.from, filters.to);
   const canExport = persona.capabilities.canExport;
 
@@ -110,12 +105,7 @@ export function ProjectMarginClient({ projectCode }: { projectCode: string }) {
           </Card>
         ) : (
           <>
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <KpiCard label="Total Sales" value={totalSales} format="currency" icon={PiggyBank} tone="primary" />
-              <KpiCard label="Total Cost" value={totalCost} format="currency" icon={PiggyBank} tone="warning" />
-              <KpiCard label="Total Profit" value={totalProfit} format="currency" icon={PiggyBank} tone="success" />
-              <KpiCard label="Margin Project" value={projMargin} format="percent" icon={PiggyBank} tone="info" />
-            </section>
+            <MarginSummaryCards summary={summarizeMargin(sites)} />
 
             {model === "per_location" && (
               <Card>
