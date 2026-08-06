@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, History, Info, MapPin, Paperclip, Save, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Info, MapPin, Paperclip, Save, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +116,21 @@ export function DailyCostClient() {
         .map((c) => c.key),
     [categories, values, proofs],
   );
+
+  // Automatic totals across all session entries.
+  const sessionTotals = useMemo(() => {
+    let all = 0;
+    let submitted = 0;
+    for (const e of entries) {
+      all += e.total;
+      if (e.status === "submitted") submitted += e.total;
+    }
+    return { all, submitted, count: entries.length };
+  }, [entries]);
+
+  function deleteEntry(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+  }
 
   function setValue(key: string, raw: string) {
     const num = raw === "" ? NaN : Number(raw);
@@ -350,8 +365,10 @@ export function DailyCostClient() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Entri Terbaru</CardTitle>
-              <CardDescription>Data tersimpan di sesi ini (mock).</CardDescription>
+              <CardTitle>Daftar Transaksi</CardTitle>
+              <CardDescription>
+                Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {entries.length === 0 ? (
@@ -360,32 +377,68 @@ export function DailyCostClient() {
                   Belum ada entri Daily Cost.
                 </div>
               ) : (
-                <ul className="space-y-2">
-                  {entries.map((entry) => (
-                    <li key={entry.id} className="rounded-md border p-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium tabular-nums">{entry.date}</span>
-                        <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
-                          {entry.status === "submitted" ? "Submitted" : "Draft"}
-                        </Badge>
+                <>
+                  <div className="mb-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-md border bg-primary/5 p-2.5">
+                      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Total Sesi
                       </div>
-                      <div className="mt-1 text-sm font-semibold tabular-nums">
-                        {formatCurrency(entry.total)}
+                      <div className="mt-0.5 text-sm font-semibold tabular-nums">
+                        {formatCurrency(sessionTotals.all)}
                       </div>
-                      <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-                        {entry.breakdown.map((b) => (
-                          <li key={b.label} className="flex justify-between">
-                            <span className="flex items-center gap-1">
-                              {b.label}
-                              {b.proof && <Paperclip className="h-2.5 w-2.5 text-emerald-600" />}
-                            </span>
-                            <span className="tabular-nums">{formatCurrency(b.amount)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <div className="rounded-md border p-2.5">
+                      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Sudah Submit
+                      </div>
+                      <div className="mt-0.5 text-sm font-semibold tabular-nums text-emerald-700">
+                        {formatCurrency(sessionTotals.submitted)}
+                      </div>
+                    </div>
+                  </div>
+                  <ul className="space-y-2">
+                    {entries.map((entry) => (
+                      <li key={entry.id} className="rounded-md border p-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium tabular-nums">{entry.date}</span>
+                          <Badge variant={entry.status === "submitted" ? "success" : "muted"}>
+                            {entry.status === "submitted" ? "Submitted" : "Draft"}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-sm font-semibold tabular-nums">
+                          {formatCurrency(entry.total)}
+                        </div>
+                        <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                          {entry.breakdown.map((b) => (
+                            <li key={b.label} className="flex justify-between">
+                              <span className="flex items-center gap-1">
+                                {b.label}
+                                {b.proof && <Paperclip className="h-2.5 w-2.5 text-emerald-600" />}
+                              </span>
+                              <span className="tabular-nums">{formatCurrency(b.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {canCreate && (
+                          <div className="mt-2 flex justify-end border-t pt-2">
+                            <button
+                              type="button"
+                              onClick={() => deleteEntry(entry.id)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-rose-600"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Hapus
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-medium">
+                    <span>Total Otomatis</span>
+                    <span className="tabular-nums">{formatCurrency(sessionTotals.all)}</span>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
