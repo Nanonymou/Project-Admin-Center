@@ -61,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Users & Roles", href: "/master/users", icon: Users },
       { label: "Approvals", href: "/master/approvals", icon: BadgeCheck },
       { label: "Manajemen Periode", href: "/period-status", icon: CalendarDays },
+      { label: "Kebijakan Cut-Off", href: "/cutoff-policy", icon: CalendarDays },
       { label: "Lock Period", href: "/lock-period", icon: Settings2 },
       { label: "Configuration", href: "/master/config", icon: Settings2 },
     ],
