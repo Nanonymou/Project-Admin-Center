@@ -18,7 +18,11 @@ import {
   type SalesEntryInput,
 } from "@/lib/mock/service-config";
 import { DynamicSalesTable } from "@/components/daily-sales/dynamic-sales-table";
+import { SalesEntryTable } from "@/components/daily-sales/sales-entry-table";
 import { getPriceListFor } from "@/lib/mock/pricing-config";
+import { buildSalesHistory } from "@/lib/mock/sales-history";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { canAccessLocation } from "@/lib/personas";
 import { computeTax } from "@/lib/finance";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -63,6 +67,11 @@ export function DailySalesEngine() {
     () => categories.filter((c) => activeKeys.includes(c.key)),
     [categories, activeKeys],
   );
+
+  const salesHistory = useMemo(() => {
+    const accessible = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
+    return buildSalesHistory(accessible);
+  }, [persona]);
 
   function toggleCategory(key: string) {
     setActiveKeys((prev) =>
@@ -254,6 +263,18 @@ export function DailySalesEngine() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Entri Penjualan per Site</CardTitle>
+            <CardDescription>
+              Riwayat Daily Sales per lokasi dalam scope Anda — klik header untuk buka/tutup.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SalesEntryTable entries={salesHistory} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
