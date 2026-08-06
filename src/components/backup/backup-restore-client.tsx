@@ -25,6 +25,23 @@ export function BackupRestoreClient() {
   const [added, setAdded] = useState<BackupSnapshot[]>([]);
   const backups = useMemo(() => [...added, ...seeded], [added, seeded]);
 
+  type RestoreEvent = { id: string; backupId: string; scope: string; at: string; by: string };
+  const [restoreHistory, setRestoreHistory] = useState<RestoreEvent[]>([]);
+
+  function restoreBackup(b: BackupSnapshot) {
+    const now = new Date();
+    setRestoreHistory((prev) => [
+      {
+        id: `rst-${Date.now()}`,
+        backupId: b.id,
+        scope: b.scope,
+        at: now.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+        by: persona.roleLabel,
+      },
+      ...prev,
+    ]);
+  }
+
   const stats = useMemo(() => {
     const completed = backups.filter((b) => b.status === "completed");
     return {
@@ -145,7 +162,13 @@ export function BackupRestoreClient() {
                                 <DownloadCloud className="h-3.5 w-3.5" />
                                 Unduh
                               </Button>
-                              <Button size="sm" variant="outline" className="h-7" disabled={!canManage}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7"
+                                disabled={!canManage}
+                                onClick={() => restoreBackup(b)}
+                              >
                                 <RotateCcw className="h-3.5 w-3.5" />
                                 Restore
                               </Button>
@@ -160,6 +183,47 @@ export function BackupRestoreClient() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Riwayat Restore</CardTitle>
+            <CardDescription>Catatan pemulihan data dari snapshot backup pada sesi ini.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {restoreHistory.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Belum ada aktivitas restore.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Waktu</th>
+                      <th className="px-3 py-2 text-left font-medium">Backup ID</th>
+                      <th className="px-3 py-2 text-left font-medium">Scope</th>
+                      <th className="px-3 py-2 text-left font-medium">Oleh</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {restoreHistory.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2 font-medium tabular-nums">{r.at}</td>
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.backupId}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.scope}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.by}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant="success">Dipulihkan</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
