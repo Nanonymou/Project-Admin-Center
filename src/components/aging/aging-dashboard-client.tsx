@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, FileText, Info, Wallet } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -92,6 +93,18 @@ export function AgingDashboardClient() {
   }, [outstanding]);
 
   const overduePct = summary.totalAmount > 0 ? (summary.byBucket[">90"].amount / summary.totalAmount) * 100 : 0;
+
+  const chartData = useMemo(
+    () =>
+      projectAging.map((r) => ({
+        project: r.code,
+        "0-30": r.buckets["0-30"],
+        "31-60": r.buckets["31-60"],
+        "61-90": r.buckets["61-90"],
+        ">90": r.buckets[">90"],
+      })),
+    [projectAging],
+  );
   const avgAge = useMemo(() => weightedAverageAge(outstanding), [outstanding]);
 
   const [selectedBucket, setSelectedBucket] = useState<MockInvoice["agingBucket"] | null>(null);
@@ -183,6 +196,37 @@ export function AgingDashboardClient() {
             </div>
           </CardContent>
         </Card>
+
+        {chartData.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Perbandingan Nilai Aging per Project</CardTitle>
+              <CardDescription>Batang bertumpuk — kontribusi tiap bucket aging per project.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
+                    <XAxis dataKey="project" tick={{ fontSize: 11 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      stroke="hsl(215 16% 47%)"
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v: number) => (v >= 1_000_000 ? `${Math.round(v / 1_000_000)}jt` : `${Math.round(v / 1000)}rb`)}
+                    />
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {BUCKET_ORDER.map((b) => (
+                      <Bar key={b} dataKey={b} stackId="a" fill={BUCKET_COLOR[b]} radius={b === ">90" ? [3, 3, 0, 0] : undefined} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
