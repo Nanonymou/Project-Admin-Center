@@ -1,9 +1,10 @@
-import { and, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
   dailyTransactions,
   type DailyTransaction,
+  type DailyTransactionLine,
   type NewDailyTransactionLine,
 } from "@/db/schema";
 
@@ -301,6 +302,72 @@ export async function unlockDailyTransaction(
     .where(and(eq(dailyTransactions.id, id), eq(dailyTransactions.status, "locked")))
     .returning();
   return row ?? null;
+}
+
+/** Fetch a daily transaction header together with its line items, or null. */
+export async function getDailyTransactionWithLines(
+  id: string,
+): Promise<{ header: DailyTransaction; lines: DailyTransactionLine[] } | null> {
+  const header = await getDailyTransactionById(id);
+  if (!header) return null;
+  const lines = await db
+    .select()
+    .from(dailyTransactionLines)
+    .where(eq(dailyTransactionLines.transactionId, id));
+  return { header, lines };
+}
+
+/**
+ * Update a daily submission header and replace its line items atomically. Only a
+ * transaction that is not yet locked may be edited; returns the updated header,
+ * or null when the id does not exist or is locked.
+ */
+export async function updateDailySubmission(
+  id: string,
+  input: DailySubmissionInput,
+): Promise<DailyTransaction | null> {
+  return db.transaction(async (tx) => {
+    const [header] = await tx
+      .update(dailyTransactions)
+      .set({
+        trxDate: input.trxDate,
+        area: input.area,
+        subtotal: input.subtotal,
+        tax: input.tax,
+        total: input.total,
+        isLate: input.isLate,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(dailyTransactions.id, id), ne(dailyTransactions.status, "locked")))
+      .returning();
+    if (!header) return null;
+
+    await tx.delete(dailyTransactionLines).where(eq(dailyTransactionLines.transactionId, id));
+    if (input.lines.length) {
+      const rows: NewDailyTransactionLine[] = input.lines.map((l) => ({
+        transactionId: id,
+        projectId: input.projectId,
+        locationId: input.locationId,
+        categoryKey: l.categoryKey,
+        label: l.label,
+        qty: l.qty ?? "1",
+        unitPrice: l.unitPrice ?? l.amount,
+        amount: l.amount,
+        isDeduction: l.isDeduction ?? false,
+      }));
+      await tx.insert(dailyTransactionLines).values(rows);
+    }
+    return header;
+  });
+}
+
+/** Delete a daily transaction (lines cascade). Returns true when a row was removed. */
+export async function deleteDailyTransaction(id: string): Promise<boolean> {
+  const rows = await db
+    .delete(dailyTransactions)
+    .where(eq(dailyTransactions.id, id))
+    .returning({ id: dailyTransactions.id });
+  return rows.length > 0;
 }
 
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
