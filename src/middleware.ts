@@ -74,5 +74,7 @@ export const config = {
     "/api/sales-comparison/:path*",
     "/api/cost-comparison/:path*",
     "/api/master/:path*",
+    "/api/periods/:path*",
+    "/api/lock-period/:path*",
   ],
 };
