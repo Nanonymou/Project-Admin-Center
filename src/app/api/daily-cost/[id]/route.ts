@@ -127,7 +127,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     if (loaded.existing.status === "locked") {
       return NextResponse.json({ error: "Transaksi terkunci tidak dapat dihapus." }, { status: 409 });
     }
-    const removed = await deleteDailyTransaction(id);
+    const removed = await deleteDailyTransaction(id, persona.name);
     revalidateKpi();
     return NextResponse.json({ source: "db", deleted: removed });
   } catch {

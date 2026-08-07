@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { invoiceBySite, invoices, type Invoice, type NewInvoice } from "@/db/schema";
 
@@ -18,6 +18,8 @@ export type InvoiceFilter = {
 function buildWhere(filter: InvoiceFilter, base?: SQL): SQL | undefined {
   const conds: SQL[] = [];
   if (base) conds.push(base);
+  // Soft delete: recycled invoices are excluded from every read.
+  conds.push(isNull(invoices.deletedAt));
   // Multi-tenancy: never query without a project filter unless Executive scope.
   if (filter.scope !== "executive") {
     if (!filter.projectId) {
@@ -121,9 +123,17 @@ export async function updateInvoice(
   return row ?? null;
 }
 
-/** Delete an invoice by id. Returns true when a row was removed. */
-export async function deleteInvoice(id: string): Promise<boolean> {
-  const rows = await db.delete(invoices).where(eq(invoices.id, id)).returning({ id: invoices.id });
+/**
+ * Soft-delete an invoice — marks it recycled (deleted_at) instead of removing
+ * it, so it can be restored from the Recycle Bin. Returns true when a live row
+ * was recycled.
+ */
+export async function deleteInvoice(id: string, actor?: string): Promise<boolean> {
+  const rows = await db
+    .update(invoices)
+    .set({ deletedAt: new Date(), deletedBy: actor, updatedAt: new Date() })
+    .where(and(eq(invoices.id, id), isNull(invoices.deletedAt)))
+    .returning({ id: invoices.id });
   return rows.length > 0;
 }
 

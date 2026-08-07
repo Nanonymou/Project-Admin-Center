@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lt, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lt, lte, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
@@ -26,6 +26,8 @@ export type DashboardAggregate = {
 
 function buildWhere(filter: DashboardFilter): SQL | undefined {
   const conds: SQL[] = [];
+  // Soft delete: recycled rows are excluded from every read.
+  conds.push(isNull(dailyTransactions.deletedAt));
   // Multi-tenancy: never query without a project filter unless Executive scope.
   if (filter.scope !== "executive") {
     if (!filter.projectId) {
@@ -463,11 +465,16 @@ export async function updateDailySubmission(
   });
 }
 
-/** Delete a daily transaction (lines cascade). Returns true when a row was removed. */
-export async function deleteDailyTransaction(id: string): Promise<boolean> {
+/**
+ * Soft-delete a daily transaction — marks it recycled (deleted_at) instead of
+ * removing it, so it can be restored from the Recycle Bin. Returns true when a
+ * live row was recycled.
+ */
+export async function deleteDailyTransaction(id: string, actor?: string): Promise<boolean> {
   const rows = await db
-    .delete(dailyTransactions)
-    .where(eq(dailyTransactions.id, id))
+    .update(dailyTransactions)
+    .set({ deletedAt: new Date(), deletedBy: actor, updatedAt: new Date() })
+    .where(and(eq(dailyTransactions.id, id), isNull(dailyTransactions.deletedAt)))
     .returning({ id: dailyTransactions.id });
   return rows.length > 0;
 }

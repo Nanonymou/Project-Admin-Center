@@ -115,7 +115,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   try {
     const loaded = await loadAndAuthorize(id, persona);
     if (!loaded.ok) return NextResponse.json({ error: loaded.message }, { status: loaded.status });
-    const removed = await deleteInvoice(id);
+    const removed = await deleteInvoice(id, persona.name);
     revalidateKpi();
     return NextResponse.json({ source: "db", deleted: removed });
   } catch {
