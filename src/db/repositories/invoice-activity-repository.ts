@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { invoiceActivities, type InvoiceActivity } from "@/db/schema";
 
@@ -39,6 +39,15 @@ function buildWhere(filter: ActivityFilter): SQL | undefined {
  * Repository Pattern: all DB access to the invoice_activities table flows
  * through this module; multi-tenancy is enforced in `buildWhere`.
  */
+/** Full audit trail for a single invoice, chronological (oldest first). */
+export async function listInvoiceActivities(invoiceId: string): Promise<InvoiceActivity[]> {
+  return db
+    .select()
+    .from(invoiceActivities)
+    .where(eq(invoiceActivities.invoiceId, invoiceId))
+    .orderBy(asc(invoiceActivities.createdAt));
+}
+
 export async function listAggregateActivities(filter: ActivityFilter): Promise<InvoiceActivity[]> {
   const where = buildWhere(filter);
   const limit = Math.min(Math.max(filter.limit ?? 200, 1), 1000);
