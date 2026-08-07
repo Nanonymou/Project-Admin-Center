@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { isNull, sql } from "drizzle-orm";
 import { pgView } from "drizzle-orm/pg-core";
 import { invoices } from "./invoices";
 
@@ -19,6 +19,7 @@ export const invoiceBySite = pgView("invoice_by_site").as((qb) =>
       amount: sql<string>`coalesce(sum(${invoices.amount}), 0)`.as("amount"),
     })
     .from(invoices)
+    .where(isNull(invoices.deletedAt))
     .groupBy(invoices.projectId, invoices.locationId, invoices.status, invoices.agingBucket),
 );
 

@@ -348,7 +348,11 @@ export async function listDailySubmissions(
  * project_id/location_id so the caller can enforce scope before mutating.
  */
 export async function getDailyTransactionById(id: string): Promise<DailyTransaction | null> {
-  const [row] = await db.select().from(dailyTransactions).where(eq(dailyTransactions.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(dailyTransactions)
+    .where(and(eq(dailyTransactions.id, id), isNull(dailyTransactions.deletedAt)))
+    .limit(1);
   return row ?? null;
 }
 

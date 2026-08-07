@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { invoiceBySite, invoices, type Invoice, type NewInvoice } from "@/db/schema";
+import { invoices, type Invoice, type NewInvoice } from "@/db/schema";
 
 export type InvoiceFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -71,23 +71,25 @@ export type InvoiceRollupRow = {
 };
 
 /**
- * Per-site invoice rollup (count + amount by status and aging bucket), read from
- * the invoice_by_site view. Tenant-scoped: a tenant query requires a projectId.
+ * Per-site invoice rollup (count + amount by status and aging bucket). Aggregated
+ * directly from the invoices table through `buildWhere` so soft-deleted rows are
+ * excluded (the invoice_by_site view cannot expose deleted_at for filtering).
+ * Tenant-scoped: a tenant query requires a projectId.
  */
 export async function listInvoiceRollup(filter: InvoiceFilter): Promise<InvoiceRollupRow[]> {
-  const conds: SQL[] = [];
-  if (filter.scope !== "executive") {
-    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped invoice queries");
-    conds.push(eq(invoiceBySite.projectId, filter.projectId));
-  } else if (filter.projectId) {
-    conds.push(eq(invoiceBySite.projectId, filter.projectId));
-  }
-  if (filter.locationId) conds.push(eq(invoiceBySite.locationId, filter.locationId));
-
+  const where = buildWhere(filter);
   const rows = await db
-    .select()
-    .from(invoiceBySite)
-    .where(conds.length ? and(...conds) : undefined);
+    .select({
+      projectId: invoices.projectId,
+      locationId: invoices.locationId,
+      status: invoices.status,
+      agingBucket: invoices.agingBucket,
+      count: count(),
+      amount: sql<string>`coalesce(sum(${invoices.amount}), 0)`,
+    })
+    .from(invoices)
+    .where(where)
+    .groupBy(invoices.projectId, invoices.locationId, invoices.status, invoices.agingBucket);
   return rows.map((r) => ({
     projectId: r.projectId,
     locationId: r.locationId,
@@ -100,7 +102,11 @@ export async function listInvoiceRollup(filter: InvoiceFilter): Promise<InvoiceR
 
 /** Fetch a single invoice by id, or null. */
 export async function getInvoiceById(id: string): Promise<Invoice | null> {
-  const [row] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  const [row] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.id, id), isNull(invoices.deletedAt)))
+    .limit(1);
   return row ?? null;
 }
 
