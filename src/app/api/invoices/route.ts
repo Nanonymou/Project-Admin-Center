@@ -126,11 +126,12 @@ export async function POST(req: NextRequest) {
   }
 
   const deduction = Number.isFinite(Number(body.deduction)) ? Number(body.deduction) : 0;
+  const bbm = Number.isFinite(Number(body.bbm)) ? Number(body.bbm) : 0;
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const issuedDate = typeof body.issuedDate === "string" ? body.issuedDate : undefined;
   const pic = typeof body.pic === "string" ? body.pic : undefined;
   const overdueDays = overdueDaysOf(dueDate);
-  const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, overdueDays });
+  const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, bbm, overdueDays });
 
   const STATUSES: NewInvoice["status"][] = ["on_time", "at_risk", "overdue", "settled"];
   const STAGES: NewInvoice["stage"][] = [

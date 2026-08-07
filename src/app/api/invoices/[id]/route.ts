@@ -77,10 +77,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     // Recompute financials when the taxable inputs change.
     const subtotal = Number(body.subtotal);
     const deduction = Number(body.deduction);
-    if (Number.isFinite(subtotal) || Number.isFinite(deduction)) {
+    const bbm = Number(body.bbm);
+    if (Number.isFinite(subtotal) || Number.isFinite(deduction) || Number.isFinite(bbm)) {
       const base = Number.isFinite(subtotal) ? subtotal : Number(existing.subtotal);
       const ded = Number.isFinite(deduction) ? deduction : Number(existing.deduction);
-      const calc = computeInvoice({ projectCode: existing.projectId, subtotal: base, deduction: ded });
+      const calc = computeInvoice({
+        projectCode: existing.projectId,
+        subtotal: base,
+        deduction: ded,
+        bbm: Number.isFinite(bbm) ? bbm : 0,
+      });
       patch.subtotal = calc.subtotal.toFixed(2);
       patch.deduction = calc.deduction.toFixed(2);
       patch.tax = calc.taxAmount.toFixed(2);
