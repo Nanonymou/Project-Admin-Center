@@ -85,5 +85,6 @@ export const config = {
     "/api/recycle-bin/:path*",
     "/api/users/:path*",
     "/api/storage/:path*",
+    "/api/import-export/:path*",
   ],
 };
