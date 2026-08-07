@@ -30,11 +30,26 @@ export function RecycleBinClient() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [restoreConfirm, setRestoreConfirm] = useState<DeletedItem | "bulk" | null>(null);
+  const [purgeConfirm, setPurgeConfirm] = useState<DeletedItem | "bulk" | null>(null);
+  const [ackPurge, setAckPurge] = useState(false);
 
   function confirmRestore() {
     if (restoreConfirm === "bulk") bulkAction("restore");
     else if (restoreConfirm) restore(restoreConfirm);
     setRestoreConfirm(null);
+  }
+
+  function openPurge(target: DeletedItem | "bulk") {
+    setPurgeConfirm(target);
+    setAckPurge(false);
+  }
+
+  function confirmPurge() {
+    if (!ackPurge) return;
+    if (purgeConfirm === "bulk") bulkAction("purge");
+    else if (purgeConfirm) purge(purgeConfirm);
+    setPurgeConfirm(null);
+    setAckPurge(false);
   }
 
   function toggleSelect(id: string) {
@@ -176,7 +191,7 @@ export function RecycleBinClient() {
                     <RotateCcw className="h-3.5 w-3.5" />
                     Pulihkan
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-rose-600 hover:text-rose-700" onClick={() => bulkAction("purge")}>
+                  <Button size="sm" variant="ghost" className="h-7 text-rose-600 hover:text-rose-700" onClick={() => openPurge("bulk")}>
                     <Trash2 className="h-3.5 w-3.5" />
                     Hapus Permanen
                   </Button>
@@ -260,7 +275,7 @@ export function RecycleBinClient() {
                               <RotateCcw className="h-3.5 w-3.5" />
                               Pulihkan
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-7 text-rose-600 hover:text-rose-700" disabled={!canManage} onClick={() => purge(it)}>
+                            <Button size="sm" variant="ghost" className="h-7 text-rose-600 hover:text-rose-700" disabled={!canManage} onClick={() => openPurge(it)}>
                               <Trash2 className="h-3.5 w-3.5" />
                               Hapus
                             </Button>
@@ -315,6 +330,41 @@ export function RecycleBinClient() {
         <p className="text-sm text-muted-foreground">
           Data akan dikembalikan ke lokasi asalnya dan keluar dari Recycle Bin.
         </p>
+      </Dialog>
+
+      <Dialog
+        open={purgeConfirm !== null}
+        onClose={() => setPurgeConfirm(null)}
+        title="Hapus Permanen"
+        description={
+          purgeConfirm === "bulk"
+            ? `${selected.size} item akan dihapus permanen`
+            : purgeConfirm
+              ? purgeConfirm.label
+              : undefined
+        }
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPurgeConfirm(null)}>
+              Batal
+            </Button>
+            <Button size="sm" variant="destructive" disabled={!ackPurge} onClick={confirmPurge}>
+              <Trash2 className="h-4 w-4" />
+              Hapus Permanen
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+            <Trash2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>Tindakan ini <b>permanen</b> dan tidak dapat dibatalkan. Data akan hilang sepenuhnya.</span>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={ackPurge} onChange={(e) => setAckPurge(e.target.checked)} className="h-4 w-4" />
+            Saya memahami dan ingin menghapus permanen.
+          </label>
+        </div>
       </Dialog>
     </div>
   );
