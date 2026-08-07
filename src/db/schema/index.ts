@@ -1,5 +1,6 @@
 export * from "./columns";
 export * from "./daily-transactions";
+export * from "./daily-margin-view";
 export * from "./invoices";
 export * from "./approvals";
 export * from "./deadlines";
