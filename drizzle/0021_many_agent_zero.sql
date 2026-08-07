@@ -1,0 +1,1 @@
+CREATE VIEW "public"."approval_by_site" AS (select "project_id", "location_id", "subject_type", "current_stage", "status", count(*) as "count" from "approvals" group by "approvals"."project_id", "approvals"."location_id", "approvals"."subject_type", "approvals"."current_stage", "approvals"."status");
