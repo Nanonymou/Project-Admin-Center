@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAttachmentById } from "@/db/repositories/invoice-attachment-repository";
 import { getTransactionAttachmentById } from "@/db/repositories/transaction-attachment-repository";
 import { requirePersona } from "@/lib/server/rbac";
+import { classifyPreview, isPreviewable } from "@/lib/server/file-types";
 import { canAccessLocation } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: "File belum tersedia untuk lampiran ini." }, { status: 409 });
     }
 
+    const previewType = classifyPreview(attachment.fileType);
+    const previewable = isPreviewable(attachment.fileType);
+    // A preview request for a non-previewable type is rejected; download is fine.
+    if (!download && !previewable) {
+      return NextResponse.json(
+        { error: "Tipe file tidak dapat dipratinjau.", fileType: attachment.fileType, previewType },
+        { status: 415 },
+      );
+    }
     return NextResponse.json({
       source,
       id: attachment.id,
@@ -78,6 +88,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       fileType: attachment.fileType,
       sizeBytes: attachment.sizeBytes,
       mode: download ? "download" : "preview",
+      previewable,
+      previewType,
       previewUrl: attachment.storageKey,
       downloadUrl: attachment.storageKey,
     });

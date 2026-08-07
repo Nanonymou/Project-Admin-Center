@@ -6,6 +6,7 @@ import {
 } from "@/db/repositories/transaction-attachment-repository";
 import type { NewTransactionAttachment } from "@/db/schema";
 import { requirePersona } from "@/lib/server/rbac";
+import { isAllowedUpload } from "@/lib/server/file-types";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const sizeBytes = Number.isFinite(Number(body.sizeBytes)) ? Number(body.sizeBytes) : 0;
   if (sizeBytes > MAX_SIZE) {
     return NextResponse.json({ error: "Ukuran lampiran melebihi 10 MB." }, { status: 413 });
+  }
+  if (!isAllowedUpload(typeof body.fileType === "string" ? body.fileType : undefined)) {
+    return NextResponse.json({ error: "Tipe file tidak didukung." }, { status: 415 });
   }
 
   try {
