@@ -25,10 +25,14 @@ export async function POST(req: NextRequest) {
 
   const daysRaw = Number(req.nextUrl.searchParams.get("days"));
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 180) : undefined;
+  const projectCodes = (req.nextUrl.searchParams.get("project") ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   try {
     const master = await seedMasterCategories();
-    const result = await seedDatabase({ days });
+    const result = await seedDatabase({ days, projectCodes: projectCodes.length ? projectCodes : undefined });
     revalidateKpi();
     return NextResponse.json({ ok: true, master, ...result });
   } catch (err) {

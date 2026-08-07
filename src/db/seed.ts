@@ -15,6 +15,11 @@ export type SeedOptions = {
   days?: number;
   /** Deterministic base seed for reproducible data (default 42). */
   seed?: number;
+  /**
+   * Restrict seeding to these project codes (e.g. ["PHKT"]). Config-driven — the
+   * sites are still discovered from SITE_KPI, just filtered. Omit to seed all.
+   */
+  projectCodes?: string[];
 };
 
 export type SeedResult = {
@@ -49,6 +54,8 @@ function round2(n: number): number {
 export async function seedDatabase(opts: SeedOptions = {}): Promise<SeedResult> {
   const days = opts.days ?? 60;
   const base = opts.seed ?? 42;
+  const allow = opts.projectCodes && opts.projectCodes.length ? new Set(opts.projectCodes) : null;
+  const sites = allow ? SITE_KPI.filter((s) => allow.has(s.projectCode)) : SITE_KPI;
 
   const headers: NewDailyTransaction[] = [];
   // Lines are keyed to their header by array index alignment after insert, so we
@@ -56,7 +63,7 @@ export async function seedDatabase(opts: SeedOptions = {}): Promise<SeedResult> 
   const stagedLines: NewDailyTransactionLine[][] = [];
 
   let counter = 0;
-  for (const site of SITE_KPI) {
+  for (const site of sites) {
     const services = getServiceCategories(site.projectCode);
     const costs = getCostCategories(site.projectCode);
     const tax = getTaxConfig(site.projectCode);
@@ -151,5 +158,5 @@ export async function seedDatabase(opts: SeedOptions = {}): Promise<SeedResult> 
     }
   }
 
-  return { sites: SITE_KPI.length, days, headers: headers.length, lines: allLines.length };
+  return { sites: sites.length, days, headers: headers.length, lines: allLines.length };
 }
