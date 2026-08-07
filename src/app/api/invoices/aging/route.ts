@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
   const projectId = sp.get("projectId") ?? undefined;
   const locationId = sp.get("locationId") ?? undefined;
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
+  // Workspace selection: `sites=loc1,loc2` narrows to the chosen workspaces.
+  const siteSet = new Set((sp.get("sites") ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const inSiteSet = (loc: string) => siteSet.size === 0 || siteSet.has(loc);
   const filter: InvoiceFilter = { projectId, locationId, scope };
 
   const auth = requirePersona(req.headers);
@@ -47,7 +50,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = (await listInvoiceRollup(filter)).filter(
-      (r) => r.status !== "settled" && canAccessLocation(persona, r.locationId, r.projectId),
+      (r) =>
+        r.status !== "settled" &&
+        canAccessLocation(persona, r.locationId, r.projectId) &&
+        inSiteSet(r.locationId),
     );
     const buckets = emptyBuckets();
     for (const r of rows) {
@@ -60,6 +66,7 @@ export async function GET(req: NextRequest) {
     let sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) sites = sites.filter((s) => s.projectCode === projectId);
     if (locationId) sites = sites.filter((s) => s.locationId === locationId);
+    sites = sites.filter((s) => inSiteSet(s.locationId));
     const buckets = emptyBuckets();
     for (const s of sites) {
       const detail = SITE_DETAILS[s.locationId];
