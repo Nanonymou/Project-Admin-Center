@@ -14,6 +14,7 @@ export * from "./sales-by-site-view";
 export * from "./master-categories";
 export * from "./master-areas";
 export * from "./master-timeframes";
+export * from "./sla-targets";
 export * from "./invoices";
 export * from "./invoice-by-site-view";
 export * from "./approvals";

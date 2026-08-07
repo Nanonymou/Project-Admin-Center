@@ -267,6 +267,13 @@
       "when": 1786129101739,
       "tag": "0037_even_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786129885588,
+      "tag": "0038_sturdy_zodiak",
+      "breakpoints": true
     }
   ]
 }
