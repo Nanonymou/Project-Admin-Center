@@ -12,7 +12,7 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
-import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { daysBetween, SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { buildPeriodLocks } from "@/lib/mock/lock-period";
@@ -84,14 +84,20 @@ export function ComplianceMonitoringClient() {
     [filteredSites],
   );
 
-  // Daily submission pattern per location (last 14 days) — deterministic mock.
+  // Daily submission pattern per location over the selected date range (H+1
+  // window), so the date filter actually drives what the compliance strip shows.
+  const windowDays = useMemo(
+    () => Math.min(31, Math.max(7, daysBetween(filters.from, filters.to))),
+    [filters.from, filters.to],
+  );
   const dailyCompliance = useMemo(() => {
+    const end = new Date(`${filters.to}T00:00:00`);
     return filteredSites.map((s) => {
       let seed = 0;
       for (const ch of s.locationId) seed += ch.charCodeAt(0);
       const days: { label: string; submitted: boolean }[] = [];
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date();
+      for (let i = windowDays - 1; i >= 0; i--) {
+        const d = new Date(end);
         d.setDate(d.getDate() - i);
         const submitted = Math.abs(Math.sin(seed + i * 1.7)) > 0.24;
         days.push({ label: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }), submitted });
@@ -104,7 +110,7 @@ export function ComplianceMonitoringClient() {
         pct: (submittedCount / days.length) * 100,
       };
     });
-  }, [filteredSites]);
+  }, [filteredSites, filters.to, windowDays]);
 
   // Approval SLA compliance per location — % of invoices within their stage SLA.
   const approvalSla = useMemo(() => {
@@ -188,8 +194,10 @@ export function ComplianceMonitoringClient() {
         {dailyCompliance.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Ringkasan Kepatuhan Harian (14 Hari)</CardTitle>
-              <CardDescription>Hijau = submit tepat waktu · merah = terlewat, per lokasi.</CardDescription>
+              <CardTitle>Ringkasan Kepatuhan Harian ({windowDays} Hari)</CardTitle>
+              <CardDescription>
+                Hijau = submit tepat waktu · merah = terlewat, per lokasi. Rentang mengikuti filter tanggal.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
