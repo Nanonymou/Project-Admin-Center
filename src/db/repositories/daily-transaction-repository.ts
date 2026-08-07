@@ -1,4 +1,4 @@
-import { and, count, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
@@ -254,6 +254,28 @@ export async function aggregateSubmissionStatusBySite(
 }
 
 export type DailyTransactionStatusValue = DailyTransaction["status"];
+
+/**
+ * List daily-transaction submission history for a given kind (defaults to cost),
+ * newest transaction date first. Used by the "Riwayat Submit" view. Multi-tenancy
+ * enforced by `buildWhere`; `limit` is clamped.
+ */
+export async function listDailySubmissions(
+  filter: DashboardFilter,
+  kind: "sales" | "cost" = "cost",
+  limit = 200,
+): Promise<DailyTransaction[]> {
+  const where = buildWhere(filter);
+  const kindCond = eq(dailyTransactions.kind, kind);
+  const combined = where ? and(where, kindCond) : kindCond;
+  const capped = Math.min(Math.max(limit, 1), 1000);
+  return db
+    .select()
+    .from(dailyTransactions)
+    .where(combined)
+    .orderBy(desc(dailyTransactions.trxDate), desc(dailyTransactions.submittedAt))
+    .limit(capped);
+}
 
 /**
  * Fetch a single daily transaction by id (or null). The row carries
