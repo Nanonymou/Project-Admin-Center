@@ -1,6 +1,11 @@
-import { and, count, eq, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { approvals } from "@/db/schema";
+import {
+  approvalHistory,
+  approvals,
+  type Approval,
+  type ApprovalHistoryEntry,
+} from "@/db/schema";
 
 export type ApprovalFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -93,6 +98,39 @@ export async function aggregateApprovalStageFunnel(filter: ApprovalFilter): Prom
     .groupBy(approvals.currentStage);
 
   return rows.map((r) => ({ stage: r.stage, count: Number(r.count) }));
+}
+
+export type ApprovalTimeline = {
+  approval: Approval;
+  history: ApprovalHistoryEntry[];
+};
+
+/**
+ * Detailed approval timelines for the filtered scope — each approval (subject)
+ * with its full, chronologically ordered stage history. Typically called with a
+ * location filter for the per-site timeline view. History is fetched in one
+ * batched query (inArray) to avoid an N+1 per approval.
+ */
+export async function listApprovalTimelines(filter: ApprovalFilter): Promise<ApprovalTimeline[]> {
+  const where = buildWhere(filter);
+  const rows = await db.select().from(approvals).where(where).orderBy(desc(approvals.updatedAt));
+  if (!rows.length) return [];
+
+  const ids = rows.map((r) => r.id);
+  const hist = await db
+    .select()
+    .from(approvalHistory)
+    .where(inArray(approvalHistory.approvalId, ids))
+    .orderBy(asc(approvalHistory.createdAt));
+
+  const byApproval = new Map<string, ApprovalHistoryEntry[]>();
+  for (const h of hist) {
+    const list = byApproval.get(h.approvalId);
+    if (list) list.push(h);
+    else byApproval.set(h.approvalId, [h]);
+  }
+
+  return rows.map((a) => ({ approval: a, history: byApproval.get(a.id) ?? [] }));
 }
 
 /** Overall approval progress summary folded from the per-site rows. */
