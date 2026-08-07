@@ -76,3 +76,30 @@ export function authorizeRanking(
   }
   return { ok: true };
 }
+
+/**
+ * Authorization for the aggregate approval/activity timeline. Combines the base
+ * dashboard scope checks (executive requires Leader/Super Admin; project and
+ * location filters must be inside the persona's scope) with an explicit
+ * cross-site guard: a site-scoped persona must target a specific project or
+ * location they own and may never request the portfolio-wide timeline. Callers
+ * still post-filter rows by `canAccessLocation` as defence in depth.
+ */
+export function authorizeTimeline(
+  persona: Persona,
+  filter: { projectId?: string; locationId?: string; scope?: "tenant" | "executive" },
+): AuthzResult {
+  const base = authorizeDashboard(persona, filter);
+  if (!base.ok) return base;
+
+  const isSiteScoped = persona.scope.locations.length > 0;
+  const isCrossSite = filter.scope === "executive" || (!filter.projectId && !filter.locationId);
+  if (isSiteScoped && isCrossSite) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Timeline lintas site hanya untuk Leader/Super Admin — pilih site Anda.",
+    };
+  }
+  return { ok: true };
+}

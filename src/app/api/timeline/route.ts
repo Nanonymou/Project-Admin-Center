@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { listAggregateActivities, type ActivityFilter } from "@/db/repositories/invoice-activity-repository";
-import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
+import { authorizeTimeline, requirePersona } from "@/lib/server/rbac";
 import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
-  const authz = authorizeDashboard(persona, filter);
+  const authz = authorizeTimeline(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }
