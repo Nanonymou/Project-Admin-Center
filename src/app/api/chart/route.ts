@@ -5,6 +5,7 @@ import {
   type PeriodGranularity,
 } from "@/db/repositories/daily-transaction-repository";
 import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
@@ -18,12 +19,13 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
+  const period = parsePeriod(sp);
   const granularity: PeriodGranularity = sp.get("granularity") === "month" ? "month" : "day";
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
-    from: sp.get("from") ?? undefined,
-    to: sp.get("to") ?? undefined,
+    from: period.from,
+    to: period.to,
     scope: (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive"),
   };
 

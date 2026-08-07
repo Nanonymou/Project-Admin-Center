@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { aggregateDashboard, type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
 import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { parsePeriod } from "@/lib/server/period";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +14,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
+  const period = parsePeriod(sp);
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
-    from: sp.get("from") ?? undefined,
-    to: sp.get("to") ?? undefined,
+    from: period.from,
+    to: period.to,
     scope: (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive"),
   };
 

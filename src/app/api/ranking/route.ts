@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { aggregateKpisBySite, type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
 import { rankList, isRankMetric, type RankMetric } from "@/lib/server/services/ranking-service";
 import { authorizeRanking, requirePersona } from "@/lib/server/rbac";
+import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 
@@ -14,12 +15,13 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
+  const period = parsePeriod(sp);
   const metric: RankMetric = isRankMetric(sp.get("metric")) ? (sp.get("metric") as RankMetric) : "sales";
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
-    from: sp.get("from") ?? undefined,
-    to: sp.get("to") ?? undefined,
+    from: period.from,
+    to: period.to,
     scope: (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive"),
   };
 
