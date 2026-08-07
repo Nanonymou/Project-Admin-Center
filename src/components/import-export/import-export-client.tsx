@@ -84,6 +84,16 @@ export function ImportExportClient() {
   };
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
+  const [exportKindState, setExportKindState] = useState<DataKind | null>(null);
+  const [exportFormat, setExportFormat] = useState<"csv" | "json">("csv");
+  const [exportFilter, setExportFilter] = useState("");
+
+  const exportRows = exportKindState
+    ? exportKindState.sampleRows.filter((r) =>
+        exportFilter.trim() ? r.join(" ").toLowerCase().includes(exportFilter.trim().toLowerCase()) : true,
+      )
+    : [];
+
   function logJob(kind: string, direction: "export" | "import", file: string, rows: number) {
     setJobs((prev) => [
       {
@@ -99,10 +109,26 @@ export function ImportExportClient() {
     ]);
   }
 
-  function exportKind(kind: DataKind) {
-    const file = `${kind.key}.csv`;
-    downloadTextFile(file, toCsv([kind.headers, ...kind.sampleRows]));
-    logJob(kind.label, "export", file, kind.sampleRows.length);
+  function openExport(kind: DataKind) {
+    setExportKindState(kind);
+    setExportFormat("csv");
+    setExportFilter("");
+  }
+
+  function confirmExport() {
+    if (!exportKindState) return;
+    const kind = exportKindState;
+    if (exportFormat === "csv") {
+      const file = `${kind.key}.csv`;
+      downloadTextFile(file, toCsv([kind.headers, ...exportRows]));
+      logJob(kind.label, "export", file, exportRows.length);
+    } else {
+      const objects = exportRows.map((r) => Object.fromEntries(kind.headers.map((h, i) => [h, r[i]])));
+      const file = `${kind.key}.json`;
+      downloadTextFile(file, JSON.stringify(objects, null, 2), "application/json;charset=utf-8");
+      logJob(kind.label, "export", file, exportRows.length);
+    }
+    setExportKindState(null);
   }
 
   async function importKind(kind: DataKind, file: File) {
@@ -157,9 +183,9 @@ export function ImportExportClient() {
                   <CardDescription>Kolom: {kind.headers.join(", ")}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => exportKind(kind)}>
+                  <Button size="sm" variant="outline" onClick={() => openExport(kind)}>
                     <Download className="h-4 w-4" />
-                    Ekspor CSV
+                    Ekspor
                   </Button>
                   <input
                     ref={(el) => {
@@ -230,6 +256,86 @@ export function ImportExportClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={exportKindState !== null}
+        onClose={() => setExportKindState(null)}
+        title="Ekspor Data"
+        description={exportKindState ? exportKindState.label : undefined}
+        className="max-w-2xl"
+        footer={
+          exportKindState && (
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setExportKindState(null)}>
+                Batal
+              </Button>
+              <Button size="sm" disabled={exportRows.length === 0} onClick={confirmExport}>
+                <Download className="h-4 w-4" />
+                Unduh {exportFormat.toUpperCase()} ({exportRows.length})
+              </Button>
+            </div>
+          )
+        }
+      >
+        {exportKindState && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Format</span>
+              {(["csv", "json"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setExportFormat(f)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] font-medium",
+                    exportFormat === f ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  {f.toUpperCase()}
+                </button>
+              ))}
+              <input
+                type="search"
+                value={exportFilter}
+                onChange={(e) => setExportFilter(e.target.value)}
+                placeholder="Filter baris…"
+                className="ml-auto h-7 w-40 rounded-md border bg-background px-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {exportKindState.headers.map((h) => (
+                      <th key={h} className="px-2 py-1.5 text-left font-medium">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {exportRows.length === 0 && (
+                    <tr>
+                      <td colSpan={exportKindState.headers.length} className="px-2 py-4 text-center text-muted-foreground">
+                        Tidak ada baris cocok filter.
+                      </td>
+                    </tr>
+                  )}
+                  {exportRows.map((r, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      {exportKindState!.headers.map((_, ci) => (
+                        <td key={ci} className="px-2 py-1.5 tabular-nums">{String(r[ci] ?? "—")}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {exportRows.length} dari {exportKindState.sampleRows.length} baris akan diekspor.
+            </p>
+          </div>
+        )}
+      </Dialog>
 
       <Dialog
         open={importResult !== null}
