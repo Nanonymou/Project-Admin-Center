@@ -99,6 +99,13 @@
       "when": 1786108370985,
       "tag": "0013_huge_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786108581850,
+      "tag": "0014_quick_red_skull",
+      "breakpoints": true
     }
   ]
 }
