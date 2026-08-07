@@ -9,6 +9,7 @@ import {
 import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
+import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
 import { canAccessLocation } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +89,12 @@ export async function POST(req: NextRequest) {
     }
     if (await isPeriodLocked(source.projectId, source.locationId, targetDate)) {
       return NextResponse.json({ error: "Periode target terkunci." }, { status: 409 });
+    }
+    if (isInputClosedForDate(source.projectId, targetDate)) {
+      return NextResponse.json(
+        { error: "Periode target sudah melewati cut-off — input ditutup." },
+        { status: 409 },
+      );
     }
 
     const withLines = await getDailyTransactionWithLines(source.id);

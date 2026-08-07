@@ -3,6 +3,7 @@ import { createDailySubmission } from "@/db/repositories/daily-transaction-repos
 import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
+import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
 import { canAccessLocation } from "@/lib/personas";
 import { parseCsv } from "@/lib/csv";
 import { prepareDailySalesSubmission } from "@/lib/server/services/daily-sales-submission-service";
@@ -95,6 +96,10 @@ export async function POST(req: NextRequest) {
     });
     if (!prepared.ok) {
       results.push({ trxDate, ok: false, error: prepared.errors.map((e) => e.message).join("; ") });
+      continue;
+    }
+    if (isInputClosedForDate(projectId, trxDate)) {
+      results.push({ trxDate, ok: false, error: "Melewati cut-off — input ditutup." });
       continue;
     }
     try {

@@ -1,4 +1,12 @@
-import { getCutOffDate, getInvoicePeriodType, daysUntilCutOff } from "@/lib/mock/cutoff-config";
+import {
+  getCutOffDate,
+  getInvoicePeriodRange,
+  getInvoicePeriodType,
+  daysUntilCutOff,
+} from "@/lib/mock/cutoff-config";
+
+/** H+1 grace: input remains open until one day after the period's cut-off. */
+const CUTOFF_GRACE_MS = 1 * 86_400_000;
 
 export type InputPolicyStatus = {
   projectCode: string;
@@ -60,4 +68,19 @@ export function evaluateInputForDate(
   if (diff < 0) return { allowed: false, late: false, reason: "Tanggal di masa depan." };
   if (diff > 1) return { allowed: true, late: true, reason: "Melewati batas H+1 (terlambat)." };
   return { allowed: true, late: false, reason: "Dalam batas H+1." };
+}
+
+/**
+ * Whether input for a transaction date is closed because the date's invoice
+ * period has passed its cut-off (plus the H+1 grace). Config-driven per project:
+ * the period containing `trxDate` ends on its cut-off date; once `ref` is more
+ * than one day past that, the period is closed for input. Reopening a period
+ * (via the period-management API) is enforced separately at the DB layer.
+ */
+export function isInputClosedForDate(projectCode: string, trxDate: string, ref = new Date()): boolean {
+  const anchor = new Date(`${trxDate}T00:00:00Z`);
+  if (Number.isNaN(anchor.getTime())) return false;
+  const range = getInvoicePeriodRange(projectCode, anchor, 0);
+  const cutoff = new Date(`${range.to}T00:00:00Z`).getTime();
+  return ref.getTime() > cutoff + CUTOFF_GRACE_MS;
 }
