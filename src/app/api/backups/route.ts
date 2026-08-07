@@ -1,5 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { listBackups, listRestoreHistory, type BackupFilter } from "@/db/repositories/backup-repository";
+import {
+  createBackup,
+  listBackups,
+  listRestoreHistory,
+  type BackupFilter,
+} from "@/db/repositories/backup-repository";
+import type { NewBackup } from "@/db/schema";
 import { requirePersona } from "@/lib/server/rbac";
 import { buildBackups } from "@/lib/mock/backups";
 
@@ -33,5 +39,59 @@ export async function GET(req: NextRequest) {
     let backups = buildBackups(12);
     if (status) backups = backups.filter((b) => b.status === status);
     return NextResponse.json({ source: "mock", filter, backups, restores: [] });
+  }
+}
+
+/**
+ * POST /api/backups
+ * Body: { projectId?, kind?, label? }
+ * Creates a timestamped database backup record. The label and storage key are
+ * stamped with the creation time when not provided. Super Admin only.
+ */
+export async function POST(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+  if (persona.role !== "super_admin") {
+    return NextResponse.json({ error: "Backup & Restore hanya untuk Super Admin." }, { status: 403 });
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    // Empty body is fine — all fields are optional.
+  }
+
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  const projectId = typeof body.projectId === "string" ? body.projectId : undefined;
+  const kind = body.kind === "incremental" ? "incremental" : "full";
+  const label =
+    typeof body.label === "string" && body.label.trim()
+      ? body.label.trim()
+      : `Backup ${projectId ?? "ALL"} ${now.toISOString().slice(0, 19).replace("T", " ")}`;
+
+  const values: NewBackup = {
+    projectId,
+    label,
+    kind,
+    status: "completed",
+    storageKey: `backups/${projectId ?? "all"}/${stamp}.dump`,
+    createdBy: persona.name,
+    completedAt: now,
+  };
+
+  try {
+    const backup = await createBackup(values);
+    return NextResponse.json({ source: "db", backup }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({
+      source: "mock",
+      simulated: true,
+      message: "Backup dicatat secara simulasi (database tidak tersedia).",
+      detail: err instanceof Error ? err.message : String(err),
+      backup: { ...values, id: stamp, createdAt: now.toISOString() },
+    });
   }
 }
