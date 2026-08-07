@@ -122,3 +122,43 @@ export async function aggregateKpisBySite(filter: DashboardFilter): Promise<Site
     .map((e) => ({ ...e, profit: e.sales - e.cost }))
     .sort((a, b) => b.profit - a.profit);
 }
+
+export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
+export type PeriodGranularity = "day" | "month";
+
+/**
+ * Time-series aggregation for interactive charts — sales/cost/profit bucketed
+ * by day or month across the filtered range.
+ */
+export async function aggregateByPeriod(
+  filter: DashboardFilter,
+  granularity: PeriodGranularity = "day",
+): Promise<PeriodPoint[]> {
+  const where = buildWhere(filter);
+  const fmt = granularity === "month" ? "YYYY-MM" : "YYYY-MM-DD";
+  const bucket = sql<string>`to_char(${dailyTransactions.trxDate}, ${fmt})`;
+
+  const rows = await db
+    .select({
+      period: bucket,
+      kind: dailyTransactions.kind,
+      total: sql<string>`coalesce(sum(${dailyTransactions.total}), 0)`,
+    })
+    .from(dailyTransactions)
+    .where(where)
+    .groupBy(bucket, dailyTransactions.kind)
+    .orderBy(bucket);
+
+  const map = new Map<string, PeriodPoint>();
+  for (const r of rows) {
+    const entry = map.get(r.period) ?? { period: r.period, sales: 0, cost: 0, profit: 0 };
+    const value = Number(r.total);
+    if (r.kind === "sales") entry.sales += value;
+    else entry.cost += value;
+    map.set(r.period, entry);
+  }
+
+  return Array.from(map.values())
+    .map((e) => ({ ...e, profit: e.sales - e.cost }))
+    .sort((a, b) => (a.period < b.period ? -1 : 1));
+}
