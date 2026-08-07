@@ -11,3 +11,4 @@ export * from "./deadlines";
 export * from "./cutoff-monitoring";
 export * from "./lock-periods";
 export * from "./invoice-activities";
+export * from "./invoice-attachments";
