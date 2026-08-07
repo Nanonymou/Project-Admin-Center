@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Clock, Gauge, Info, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -69,36 +69,60 @@ export function SlaApprovalClient() {
     [filteredSites],
   );
 
-  const overall = useMemo(() => {
-    const within = approvals.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
-    const avg = approvals.length ? approvals.reduce((s, a) => s + a.timeInStageDays, 0) / approvals.length : 0;
-    return {
-      compliance: approvals.length ? (within / approvals.length) * 100 : 100,
-      breaches: approvals.length - within,
-      avg,
-      atRisk: approvals.filter((a) => a.status === "at_risk").length,
-    };
+  // Per-site compliance summary (over all sites in scope).
+  const bySite = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; count: number; within: number }>();
+    for (const a of approvals) {
+      const e = map.get(a.locationId) ?? { id: a.locationId, label: `${a.projectCode} · ${a.locationName}`, count: 0, within: 0 };
+      e.count += 1;
+      if (a.timeInStageDays <= a.slaTargetDays) e.within += 1;
+      map.set(a.locationId, e);
+    }
+    return Array.from(map.values())
+      .map((e) => ({ ...e, compliance: e.count ? (e.within / e.count) * 100 : 100 }))
+      .sort((a, b) => a.compliance - b.compliance);
   }, [approvals]);
+
+  const [siteFilter, setSiteFilter] = useState<string | "all">("all");
+  useEffect(() => {
+    if (siteFilter !== "all" && !bySite.some((s) => s.id === siteFilter)) setSiteFilter("all");
+  }, [bySite, siteFilter]);
+
+  const scopedApprovals = useMemo(
+    () => (siteFilter === "all" ? approvals : approvals.filter((a) => a.locationId === siteFilter)),
+    [approvals, siteFilter],
+  );
+
+  const overall = useMemo(() => {
+    const within = scopedApprovals.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
+    const avg = scopedApprovals.length ? scopedApprovals.reduce((s, a) => s + a.timeInStageDays, 0) / scopedApprovals.length : 0;
+    return {
+      compliance: scopedApprovals.length ? (within / scopedApprovals.length) * 100 : 100,
+      breaches: scopedApprovals.length - within,
+      avg,
+      atRisk: scopedApprovals.filter((a) => a.status === "at_risk").length,
+    };
+  }, [scopedApprovals]);
 
   const byStage = useMemo(
     () =>
       APPROVAL_STAGES.map((stage) => {
-        const items = approvals.filter((a) => a.stage === stage);
+        const items = scopedApprovals.filter((a) => a.stage === stage);
         const within = items.filter((a) => a.timeInStageDays <= a.slaTargetDays).length;
         const avg = items.length ? items.reduce((s, a) => s + a.timeInStageDays, 0) / items.length : 0;
         const sla = items.length ? items[0].slaTargetDays : 0;
         return { stage, count: items.length, avg, sla, compliance: items.length ? (within / items.length) * 100 : 100 };
       }).filter((s) => s.count > 0),
-    [approvals],
+    [scopedApprovals],
   );
 
   const worstBreaches = useMemo(
     () =>
-      approvals
+      scopedApprovals
         .filter((a) => a.timeInStageDays > a.slaTargetDays)
         .sort((a, b) => b.timeInStageDays - b.slaTargetDays - (a.timeInStageDays - a.slaTargetDays))
         .slice(0, 8),
-    [approvals],
+    [scopedApprovals],
   );
 
   return (
@@ -133,9 +157,58 @@ export function SlaApprovalClient() {
           <KpiCard label="Berisiko" value={overall.atRisk} format="number" icon={Gauge} tone="warning" />
         </section>
 
+        {bySite.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>Compliance per Site</CardTitle>
+                <CardDescription>Klik site untuk memfilter analisis SLA di bawah.</CardDescription>
+              </div>
+              {siteFilter !== "all" && (
+                <button type="button" onClick={() => setSiteFilter("all")} className="text-[11px] font-medium text-primary hover:underline">
+                  Reset filter
+                </button>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {bySite.map((s) => {
+                  const active = siteFilter === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSiteFilter(active ? "all" : s.id)}
+                      className={cn(
+                        "rounded-md border p-3 text-left transition-shadow hover:shadow-sm",
+                        active && "border-primary ring-1 ring-primary",
+                      )}
+                      aria-pressed={active}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="truncate text-xs font-medium">{s.label}</span>
+                        <Badge variant={s.compliance >= 80 ? "success" : s.compliance >= 60 ? "warning" : "danger"}>
+                          {s.compliance.toFixed(0)}%
+                        </Badge>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={cn("h-full rounded-full", s.compliance >= 80 ? "bg-emerald-500" : s.compliance >= 60 ? "bg-amber-500" : "bg-rose-500")}
+                          style={{ width: `${s.compliance}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{s.within}/{s.count} dalam SLA</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>SLA per Tahap</CardTitle>
+            <CardTitle>SLA per Tahap{siteFilter !== "all" ? " (site terpilih)" : ""}</CardTitle>
             <CardDescription>Waktu rata-rata vs target SLA & tingkat kepatuhan tiap tahap.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
