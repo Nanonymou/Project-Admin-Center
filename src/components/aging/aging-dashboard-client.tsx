@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { AlertTriangle, FileText, Info, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, ArrowUpRight, FileText, Info, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -14,6 +15,7 @@ import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS, type MockInvoice } from "@/lib/mock/site-detail";
 import { buildOutstandingInvoicesFor, summarizeOutstanding } from "@/lib/mock/outstanding";
+import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { weightedAverageAge } from "@/lib/aging";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -92,6 +94,16 @@ export function AgingDashboardClient() {
   const overduePct = summary.totalAmount > 0 ? (summary.byBucket[">90"].amount / summary.totalAmount) * 100 : 0;
   const avgAge = useMemo(() => weightedAverageAge(outstanding), [outstanding]);
 
+  const [selectedBucket, setSelectedBucket] = useState<MockInvoice["agingBucket"] | null>(null);
+  const bucketInvoices = useMemo(
+    () =>
+      (selectedBucket ? outstanding.filter((i) => i.agingBucket === selectedBucket) : outstanding)
+        .slice()
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 15),
+    [outstanding, selectedBucket],
+  );
+
   return (
     <div>
       <PageHeader
@@ -140,15 +152,26 @@ export function AgingDashboardClient() {
               {BUCKET_ORDER.map((b) => {
                 const data = summary.byBucket[b];
                 const pct = summary.totalAmount > 0 ? (data.amount / summary.totalAmount) * 100 : 0;
+                const active = selectedBucket === b;
                 return (
-                  <div key={b} className="rounded-md border p-3" style={{ borderColor: BUCKET_COLOR[b] }}>
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setSelectedBucket(active ? null : b)}
+                    className={cn(
+                      "rounded-md border p-3 text-left transition-shadow hover:shadow-sm",
+                      active && "ring-2 ring-offset-1",
+                    )}
+                    style={{ borderColor: BUCKET_COLOR[b], ...(active ? ({ "--tw-ring-color": BUCKET_COLOR[b] } as React.CSSProperties) : {}) }}
+                    aria-pressed={active}
+                  >
                     <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                       <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: BUCKET_COLOR[b] }} />
                       Aging {b}
                     </div>
                     <div className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(data.amount)}</div>
                     <div className="text-[11px] text-muted-foreground">{data.count} invoice · {pct.toFixed(0)}%</div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -157,6 +180,77 @@ export function AgingDashboardClient() {
                 const pct = summary.totalAmount > 0 ? (summary.byBucket[b].amount / summary.totalAmount) * 100 : 0;
                 return <div key={b} style={{ width: `${pct}%`, backgroundColor: BUCKET_COLOR[b] }} />;
               })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Invoice per Kategori Aging</CardTitle>
+              <CardDescription>
+                {selectedBucket ? `Bucket ${selectedBucket}` : "Semua bucket"} · klik kartu di atas untuk memfilter.
+              </CardDescription>
+            </div>
+            {selectedBucket && (
+              <button
+                type="button"
+                onClick={() => setSelectedBucket(null)}
+                className="text-[11px] font-medium text-primary hover:underline"
+              >
+                Reset filter
+              </button>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <th className="px-3 py-2 text-left font-medium">Invoice</th>
+                    <th className="px-3 py-2 text-left font-medium">Site</th>
+                    <th className="px-3 py-2 text-left font-medium">Aging</th>
+                    <th className="px-3 py-2 text-left font-medium">Due</th>
+                    <th className="px-3 py-2 text-right font-medium">Nilai</th>
+                    <th className="px-3 py-2 text-right font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bucketInvoices.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Tidak ada invoice pada kategori ini.
+                      </td>
+                    </tr>
+                  )}
+                  {bucketInvoices.map((inv) => (
+                    <tr key={inv.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <Link href={invoiceHref(inv.invoiceNumber)} className="font-medium tabular-nums text-primary hover:underline">
+                          {inv.invoiceNumber}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{inv.projectCode} · {inv.locationName}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium text-white"
+                          style={{ backgroundColor: BUCKET_COLOR[inv.agingBucket] }}
+                        >
+                          {inv.agingBucket}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{inv.dueDate}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(inv.amount)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <Link href={invoiceHref(inv.invoiceNumber)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                          Detail
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
