@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  aggregateByPeriod,
-  aggregateSalesCostBySite,
-  type DashboardFilter,
-} from "@/db/repositories/daily-transaction-repository";
-import { aggregateOutstanding, type InvoiceFilter } from "@/db/repositories/invoice-repository";
+import { type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
+import { type InvoiceFilter } from "@/db/repositories/invoice-repository";
+import { cachedByPeriod, cachedOutstanding, cachedSalesCostBySite } from "@/lib/server/kpi-cache";
 import { buildKpiSummary } from "@/lib/server/services/kpi-summary-service";
 import { computeKpiStatus, computeMonthlyTotals } from "@/lib/server/services/kpi-status-service";
 import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
@@ -41,13 +38,13 @@ export async function GET(req: NextRequest) {
   const target = getMarginTarget(projectId);
 
   try {
-    const sites = (await aggregateSalesCostBySite(filter)).filter((s) =>
+    const sites = (await cachedSalesCostBySite(filter)).filter((s) =>
       canAccessLocation(persona, s.locationId, s.projectId),
     );
     const invoiceFilter: InvoiceFilter = { projectId, locationId, scope };
-    const outstanding = await aggregateOutstanding(invoiceFilter);
+    const outstanding = await cachedOutstanding(invoiceFilter);
     const summary = buildKpiSummary(sites, outstanding);
-    const monthly = computeMonthlyTotals(await aggregateByPeriod(filter, "month"));
+    const monthly = computeMonthlyTotals(await cachedByPeriod(filter, "month"));
     return NextResponse.json({
       source: "db",
       filter,
