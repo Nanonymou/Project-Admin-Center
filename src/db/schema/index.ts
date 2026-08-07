@@ -6,6 +6,7 @@ export * from "./daily-closing-history";
 export * from "./transaction-attachments";
 export * from "./daily-margin-view";
 export * from "./margin-by-month-view";
+export * from "./project-performance-view";
 export * from "./cost-by-site-view";
 export * from "./cost-by-month-view";
 export * from "./cost-by-area-view";
