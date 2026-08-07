@@ -24,5 +24,6 @@ export * from "./cutoff-monitoring";
 export * from "./lock-periods";
 export * from "./periods";
 export * from "./audit-logs";
+export * from "./backups";
 export * from "./invoice-activities";
 export * from "./invoice-attachments";

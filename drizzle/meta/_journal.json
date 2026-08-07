@@ -218,6 +218,13 @@
       "when": 1786115979697,
       "tag": "0030_nasty_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786116319493,
+      "tag": "0031_green_multiple_man",
+      "breakpoints": true
     }
   ]
 }
