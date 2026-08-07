@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { type DashboardFilter, type SiteKpiAggregate } from "@/db/repositories/daily-transaction-repository";
 import { cachedByPeriod, cachedSalesCostBySite } from "@/lib/server/kpi-cache";
 import { computeKpiStatus } from "@/lib/server/services/kpi-status-service";
-import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { getMarginModel, getMarginTarget, marginModelLabel } from "@/lib/mock/margin-model";
@@ -102,7 +102,9 @@ export async function GET(req: NextRequest) {
     scope,
   };
 
-  const persona = getPersonaFromHeaders(req.headers);
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
   const authz = authorizeDashboard(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });

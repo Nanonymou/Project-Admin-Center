@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { type DashboardFilter, type PeriodPoint } from "@/db/repositories/daily-transaction-repository";
 import { cachedByPeriod, cachedSalesCostBySite } from "@/lib/server/kpi-cache";
-import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { getMarginModel } from "@/lib/mock/margin-model";
@@ -43,7 +43,9 @@ export async function GET(req: NextRequest) {
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
   const filter: DashboardFilter = { projectId, locationId, from: period.from, to: period.to, scope };
 
-  const persona = getPersonaFromHeaders(req.headers);
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
   const authz = authorizeDashboard(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
