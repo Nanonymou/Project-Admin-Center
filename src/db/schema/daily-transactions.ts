@@ -36,6 +36,8 @@ export const dailyTransactions = pgTable(
     tenantIdx: index("daily_tx_tenant_idx").on(t.projectId, t.locationId),
     dateIdx: index("daily_tx_date_idx").on(t.trxDate),
     kindIdx: index("daily_tx_kind_idx").on(t.kind),
+    // Serves the KPI Utama Site aggregation: sales/cost per site over a period.
+    kpiIdx: index("daily_tx_kpi_idx").on(t.projectId, t.locationId, t.kind, t.trxDate),
   }),
 );
 

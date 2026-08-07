@@ -1,0 +1,2 @@
+CREATE INDEX "daily_tx_kpi_idx" ON "daily_transactions" USING btree ("project_id","location_id","kind","trx_date");--> statement-breakpoint
+CREATE INDEX "invoices_kpi_idx" ON "invoices" USING btree ("project_id","location_id","status");

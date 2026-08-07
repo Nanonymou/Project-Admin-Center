@@ -41,6 +41,8 @@ export const invoices = pgTable(
     statusIdx: index("invoices_status_idx").on(t.status),
     stageIdx: index("invoices_stage_idx").on(t.stage),
     dueIdx: index("invoices_due_idx").on(t.dueDate),
+    // Serves the KPI Utama Site aggregation: outstanding/collection per site.
+    kpiIdx: index("invoices_kpi_idx").on(t.projectId, t.locationId, t.status),
   }),
 );
 
