@@ -72,6 +72,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Configuration", href: "/master/config", icon: Settings2 },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
+      { label: "Import/Export", href: "/import-export", icon: Settings2 },
     ],
   },
 ];
