@@ -71,6 +71,13 @@
       "when": 1786095317767,
       "tag": "0009_tiny_marvel_apes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786107239578,
+      "tag": "0010_fuzzy_avengers",
+      "breakpoints": true
     }
   ]
 }
