@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   approvalBySite,
   approvalHistory,
+  approvalOverdueBySite,
   approvals,
   type Approval,
   type ApprovalHistoryEntry,
@@ -303,6 +304,39 @@ export async function listApprovalRollup(filter: ApprovalFilter): Promise<Approv
     currentStage: r.currentStage,
     status: r.status,
     count: Number(r.count),
+  }));
+}
+
+export type ApprovalOverdueRow = {
+  projectId: string;
+  locationId: string;
+  inProgress: number;
+  overdue: number;
+};
+
+/**
+ * Per-site overdue-approval counts read from the approval_overdue_by_site view.
+ * Tenant-scoped: a tenant query requires a projectId.
+ */
+export async function listApprovalOverdueBySite(filter: ApprovalFilter): Promise<ApprovalOverdueRow[]> {
+  const conds: SQL[] = [];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped approval queries");
+    conds.push(eq(approvalOverdueBySite.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(approvalOverdueBySite.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(approvalOverdueBySite.locationId, filter.locationId));
+
+  const rows = await db
+    .select()
+    .from(approvalOverdueBySite)
+    .where(conds.length ? and(...conds) : undefined);
+  return rows.map((r) => ({
+    projectId: r.projectId,
+    locationId: r.locationId,
+    inProgress: Number(r.inProgress),
+    overdue: Number(r.overdue),
   }));
 }
 
