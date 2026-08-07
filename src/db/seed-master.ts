@@ -1,8 +1,14 @@
 import { db } from "@/db";
-import { masterCategories, type NewMasterCategory } from "@/db/schema";
+import {
+  masterCategories,
+  masterTimeframes,
+  type NewMasterCategory,
+  type NewMasterTimeframe,
+} from "@/db/schema";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import { getCostCategories } from "@/lib/mock/cost-config";
+import { getApprovalTimeframes, timeframeProjectCodes } from "@/lib/mock/approval-timeframe-config";
 
 export type MasterSeedResult = { projects: number; rows: number };
 
@@ -72,6 +78,48 @@ export async function seedMasterCategories(): Promise<MasterSeedResult> {
           unit: row.unit,
           defaultPrice: row.defaultPrice,
           isDeduction: row.isDeduction,
+          active: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  return { projects: codes.length, rows: rows.length };
+}
+
+export type TimeframeSeedResult = { projects: number; rows: number };
+
+/**
+ * Seed the master approval-timeframe list from the per-project timeframe config.
+ * Idempotent per (project, subject type, stage). Config-driven — no project-named
+ * branches.
+ */
+export async function seedMasterTimeframes(): Promise<TimeframeSeedResult> {
+  const codes = timeframeProjectCodes();
+  const rows: NewMasterTimeframe[] = [];
+  for (const projectCode of codes) {
+    for (const subjectType of ["invoice", "daily_closing"] as const) {
+      for (const tf of getApprovalTimeframes(projectCode, subjectType)) {
+        rows.push({
+          projectCode,
+          subjectType,
+          stage: tf.stage,
+          slaDays: tf.slaDays,
+          orderIndex: tf.order,
+        });
+      }
+    }
+  }
+
+  for (const row of rows) {
+    await db
+      .insert(masterTimeframes)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [masterTimeframes.projectCode, masterTimeframes.subjectType, masterTimeframes.stage],
+        set: {
+          slaDays: row.slaDays,
+          orderIndex: row.orderIndex,
           active: true,
           updatedAt: new Date(),
         },
