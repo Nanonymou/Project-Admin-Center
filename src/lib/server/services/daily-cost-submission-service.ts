@@ -6,6 +6,7 @@ export type DailyCostSubmissionRequest = {
   locationId: string;
   trxDate: string; // YYYY-MM-DD
   area?: string;
+  areaId?: string;
   values: Record<string, number>; // categoryKey -> amount
   submittedBy: string;
 };
@@ -73,6 +74,7 @@ export function prepareDailyCostSubmission(
       kind: "cost",
       trxDate: req.trxDate,
       area: req.area,
+      areaId: req.areaId,
       subtotal: subtotal.toFixed(2),
       tax: "0.00",
       total: subtotal.toFixed(2),

@@ -15,6 +15,7 @@ export type DailySalesRequest = {
   locationId: string;
   trxDate: string; // YYYY-MM-DD
   area?: string;
+  areaId?: string;
   values: SalesEntryInput; // categoryKey -> { qty, price }
   submittedBy: string;
 };
@@ -102,6 +103,7 @@ export function prepareDailySalesSubmission(
       kind: "sales",
       trxDate: req.trxDate,
       area: req.area,
+      areaId: req.areaId,
       subtotal: round2(net).toFixed(2),
       tax: taxAmount.toFixed(2),
       total: round2(net + taxAmount).toFixed(2),

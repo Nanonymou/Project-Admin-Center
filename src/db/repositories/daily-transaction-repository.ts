@@ -150,6 +150,7 @@ export type DailySubmissionInput = {
   kind: "sales" | "cost";
   trxDate: string; // YYYY-MM-DD
   area?: string;
+  areaId?: string;
   subtotal: string;
   tax: string;
   total: string;
@@ -173,6 +174,7 @@ export async function createDailySubmission(input: DailySubmissionInput): Promis
         kind: input.kind,
         trxDate: input.trxDate,
         area: input.area,
+        areaId: input.areaId,
         status: "submitted",
         subtotal: input.subtotal,
         tax: input.tax,
@@ -335,6 +337,7 @@ export async function updateDailySubmission(
       .set({
         trxDate: input.trxDate,
         area: input.area,
+        areaId: input.areaId,
         subtotal: input.subtotal,
         tax: input.tax,
         total: input.total,

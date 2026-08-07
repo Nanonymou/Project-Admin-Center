@@ -71,6 +71,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const trxDate = typeof body.trxDate === "string" ? body.trxDate : existing.trxDate;
     const area = typeof body.area === "string" ? body.area : (existing.area ?? undefined);
+    const areaId = typeof body.areaId === "string" ? body.areaId : (existing.areaId ?? undefined);
     const values = (body.values && typeof body.values === "object" ? body.values : {}) as SalesEntryInput;
 
     const prepared = prepareDailySalesSubmission({
@@ -78,6 +79,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       locationId: existing.locationId,
       trxDate,
       area,
+      areaId,
       values,
       submittedBy: persona.name,
     });

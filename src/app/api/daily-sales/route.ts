@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
   const locationId = typeof body.locationId === "string" ? body.locationId : "";
   const trxDate = typeof body.trxDate === "string" ? body.trxDate : "";
   const area = typeof body.area === "string" ? body.area : undefined;
+  const areaId = typeof body.areaId === "string" ? body.areaId : undefined;
   const values = (body.values && typeof body.values === "object" ? body.values : {}) as SalesEntryInput;
 
   if (!projectId || !locationId || !trxDate) {
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest) {
     locationId,
     trxDate,
     area,
+    areaId,
     values,
     submittedBy: persona.name,
   });
