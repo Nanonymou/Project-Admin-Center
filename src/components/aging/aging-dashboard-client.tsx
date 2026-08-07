@@ -10,6 +10,7 @@ import { KpiCard } from "@/components/common/kpi-card";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useActiveSite } from "@/components/providers/active-site-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
@@ -30,7 +31,9 @@ const BUCKET_COLOR: Record<MockInvoice["agingBucket"], string> = {
 
 export function AgingDashboardClient() {
   const { persona } = usePersona();
+  const { activeWorkspace } = useActiveSite();
   const { filters, setFilters, reset } = useGlobalFilters();
+  const [syncWorkspace, setSyncWorkspace] = useState(false);
 
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
@@ -65,11 +68,12 @@ export function AgingDashboardClient() {
   const filteredSites = useMemo(
     () =>
       scopedSites.filter((s) => {
+        if (syncWorkspace && s.locationId !== activeWorkspace.locationId) return false;
         if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
         if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
         return true;
       }),
-    [scopedSites, filters.projects, filters.locations, selectedLocationIds],
+    [scopedSites, syncWorkspace, activeWorkspace.locationId, filters.projects, filters.locations, selectedLocationIds],
   );
 
   const outstanding = useMemo(
@@ -131,6 +135,23 @@ export function AgingDashboardClient() {
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>Aging dihitung dari invoice belum settled. Bucket &gt;90 hari berisiko tinggi macet.</span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2">
+          <label className="inline-flex items-center gap-2 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={syncWorkspace}
+              onChange={(e) => setSyncWorkspace(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Sinkron ke workspace aktif
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            {syncWorkspace
+              ? `Difokuskan ke ${activeWorkspace.projectCode} · ${activeWorkspace.locationName}`
+              : `Workspace aktif: ${activeWorkspace.projectCode} · ${activeWorkspace.locationName}`}
+          </span>
         </div>
 
         <ActivityFilterBar
