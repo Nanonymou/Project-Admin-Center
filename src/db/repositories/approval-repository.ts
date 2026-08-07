@@ -183,6 +183,20 @@ export async function recordApprovalTransition(
   });
 }
 
+/** Fetch a single approval with its chronological history, or null. */
+export async function getApprovalWithHistory(
+  id: string,
+): Promise<{ approval: Approval; history: ApprovalHistoryEntry[] } | null> {
+  const [approval] = await db.select().from(approvals).where(eq(approvals.id, id)).limit(1);
+  if (!approval) return null;
+  const history = await db
+    .select()
+    .from(approvalHistory)
+    .where(eq(approvalHistory.approvalId, id))
+    .orderBy(asc(approvalHistory.createdAt));
+  return { approval, history };
+}
+
 export type ApprovalActivityInput = {
   approvalId: string;
   actor: string;
