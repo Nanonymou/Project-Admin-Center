@@ -103,3 +103,29 @@ export function authorizeTimeline(
   }
   return { ok: true };
 }
+
+/**
+ * Authorization for SLA Approval Monitoring. Cross-site SLA monitoring (the
+ * portfolio-wide compliance view) is a Leader/Super Admin capability; a
+ * site-scoped Site Admin may only view the SLA status of a project or location
+ * inside their own scope and must target a specific site. Callers still
+ * post-filter rows by `canAccessLocation` as defence in depth.
+ */
+export function authorizeSla(
+  persona: Persona,
+  filter: { projectId?: string; locationId?: string; scope?: "tenant" | "executive" },
+): AuthzResult {
+  const base = authorizeDashboard(persona, filter);
+  if (!base.ok) return base;
+
+  const isSiteScoped = persona.scope.locations.length > 0;
+  const isCrossSite = filter.scope === "executive" || (!filter.projectId && !filter.locationId);
+  if (isSiteScoped && isCrossSite) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Monitoring SLA lintas site hanya untuk Leader/Super Admin — pilih site Anda.",
+    };
+  }
+  return { ok: true };
+}

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { ApprovalFilter } from "@/db/repositories/approval-repository";
-import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
+import { authorizeSla, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import {
   computeSlaBySite,
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
-  const authz = authorizeDashboard(persona, filter);
+  const authz = authorizeSla(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }
