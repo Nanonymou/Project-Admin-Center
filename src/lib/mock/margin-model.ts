@@ -19,3 +19,22 @@ export function getMarginModel(projectCode: string): MarginModel {
 export function marginModelLabel(model: MarginModel): string {
   return model === "per_location" ? "Per Location" : "Standard (Project-level)";
 }
+
+/**
+ * Target gross-margin percentage per project — the KPI health threshold used to
+ * flag a site's status (healthy/warning/critical). Config-driven, keyed by
+ * project code; unknown projects fall back to the default target.
+ */
+const DEFAULT_MARGIN_TARGET = 15;
+
+const PROJECT_MARGIN_TARGET: Record<string, number> = {
+  BUMA: 15,
+  POMALA: 15,
+  PHSS: 18,
+  PHKT: 18,
+};
+
+export function getMarginTarget(projectCode?: string): number {
+  if (!projectCode) return DEFAULT_MARGIN_TARGET;
+  return PROJECT_MARGIN_TARGET[projectCode] ?? DEFAULT_MARGIN_TARGET;
+}

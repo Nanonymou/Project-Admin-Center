@@ -1,16 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  aggregateByPeriod,
   aggregateSalesCostBySite,
   type DashboardFilter,
 } from "@/db/repositories/daily-transaction-repository";
 import { aggregateOutstanding, type InvoiceFilter } from "@/db/repositories/invoice-repository";
 import { buildKpiSummary } from "@/lib/server/services/kpi-summary-service";
+import { computeKpiStatus, computeMonthlyTotals } from "@/lib/server/services/kpi-status-service";
 import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
 import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
+import { getMarginTarget } from "@/lib/mock/margin-model";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { buildOutstandingInvoicesFor } from "@/lib/mock/outstanding";
+import { buildProfitTrendForRange } from "@/lib/mock/margin-data";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +38,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }
 
+  const target = getMarginTarget(projectId);
+
   try {
     const sites = (await aggregateSalesCostBySite(filter)).filter((s) =>
       canAccessLocation(persona, s.locationId, s.projectId),
     );
     const invoiceFilter: InvoiceFilter = { projectId, locationId, scope };
     const outstanding = await aggregateOutstanding(invoiceFilter);
-    return NextResponse.json({ source: "db", filter, summary: buildKpiSummary(sites, outstanding) });
+    const summary = buildKpiSummary(sites, outstanding);
+    const monthly = computeMonthlyTotals(await aggregateByPeriod(filter, "month"));
+    return NextResponse.json({
+      source: "db",
+      filter,
+      target,
+      status: computeKpiStatus(summary.marginPct, target),
+      summary,
+      monthly,
+    });
   } catch {
     let rows = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) rows = rows.filter((r) => r.projectCode === projectId);
@@ -65,6 +80,24 @@ export async function GET(req: NextRequest) {
       overdueAmount: overdueItems.reduce((s, i) => s + i.amount, 0),
     };
 
-    return NextResponse.json({ source: "mock", filter, summary: buildKpiSummary(sites, outstanding) });
+    const summary = buildKpiSummary(sites, outstanding);
+    const from = filter.from ?? new Date(Date.now() - 180 * 86_400_000).toISOString().slice(0, 10);
+    const to = filter.to ?? new Date().toISOString().slice(0, 10);
+    const monthly = computeMonthlyTotals(
+      buildProfitTrendForRange(rows, from, to).map((p) => ({
+        period: p.month,
+        sales: p.sales,
+        cost: p.cost,
+        profit: p.profit,
+      })),
+    );
+    return NextResponse.json({
+      source: "mock",
+      filter,
+      target,
+      status: computeKpiStatus(summary.marginPct, target),
+      summary,
+      monthly,
+    });
   }
 }
