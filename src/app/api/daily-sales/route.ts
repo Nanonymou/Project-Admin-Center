@@ -5,6 +5,7 @@ import {
   type DailyTransactionStatusValue,
   type DashboardFilter,
 } from "@/db/repositories/daily-transaction-repository";
+import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { parsePeriod } from "@/lib/server/period";
@@ -137,6 +138,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (await isPeriodLocked(projectId, locationId, prepared.input.trxDate)) {
+      return NextResponse.json(
+        { error: "Periode terkunci — entri tidak dapat disimpan." },
+        { status: 409 },
+      );
+    }
     const header = await createDailySubmission(prepared.input);
     revalidateKpi();
     return NextResponse.json({ source: "db", entry: header, isLate: prepared.isLate }, { status: 201 });

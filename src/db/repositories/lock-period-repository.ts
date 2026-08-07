@@ -13,6 +13,32 @@ export type SetLockInput = {
   reason?: string;
 };
 
+/**
+ * Whether a given transaction date falls inside a locked period for the site.
+ * Used to validate transaction mutations — a locked period rejects new/edited
+ * entries. A lock row with missing bounds does not match a specific date.
+ */
+export async function isPeriodLocked(
+  projectId: string,
+  locationId: string,
+  trxDate: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: lockPeriods.id })
+    .from(lockPeriods)
+    .where(
+      and(
+        eq(lockPeriods.projectId, projectId),
+        eq(lockPeriods.locationId, locationId),
+        eq(lockPeriods.locked, true),
+        lte(lockPeriods.periodStart, trxDate),
+        gte(lockPeriods.periodEnd, trxDate),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /** Fetch the lock row for a site + period, or null. */
 export async function getLockPeriod(
   projectId: string,

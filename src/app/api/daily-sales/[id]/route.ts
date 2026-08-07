@@ -5,6 +5,7 @@ import {
   getDailyTransactionWithLines,
   updateDailySubmission,
 } from "@/db/repositories/daily-transaction-repository";
+import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation, type Persona } from "@/lib/personas";
@@ -85,6 +86,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     });
     if (!prepared.ok) {
       return NextResponse.json({ error: "Validasi gagal.", errors: prepared.errors }, { status: 422 });
+    }
+
+    if (await isPeriodLocked(existing.projectId, existing.locationId, prepared.input.trxDate)) {
+      return NextResponse.json(
+        { error: "Periode terkunci — entri tidak dapat diubah." },
+        { status: 409 },
+      );
     }
 
     const updated = await updateDailySubmission(id, prepared.input);
