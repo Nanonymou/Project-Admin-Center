@@ -202,6 +202,57 @@ export async function createDailySubmission(input: DailySubmissionInput): Promis
   });
 }
 
+export type SiteSubmissionStatus = {
+  projectId: string;
+  locationId: string;
+  total: number;
+  draft: number;
+  submitted: number;
+  approved: number;
+  locked: number;
+  late: number;
+};
+
+/**
+ * Per-site submission status counts for daily transactions of a given kind
+ * (defaults to cost). Groups by site and folds the status enum plus the late
+ * flag into one row per site. Multi-tenancy enforced by `buildWhere`.
+ */
+export async function aggregateSubmissionStatusBySite(
+  filter: DashboardFilter,
+  kind: "sales" | "cost" = "cost",
+): Promise<SiteSubmissionStatus[]> {
+  const where = buildWhere(filter);
+  const kindCond = eq(dailyTransactions.kind, kind);
+  const combined = where ? and(where, kindCond) : kindCond;
+
+  const rows = await db
+    .select({
+      projectId: dailyTransactions.projectId,
+      locationId: dailyTransactions.locationId,
+      total: count(),
+      draft: sql<number>`count(*) filter (where ${dailyTransactions.status} = 'draft')`,
+      submitted: sql<number>`count(*) filter (where ${dailyTransactions.status} = 'submitted')`,
+      approved: sql<number>`count(*) filter (where ${dailyTransactions.status} = 'approved')`,
+      locked: sql<number>`count(*) filter (where ${dailyTransactions.status} = 'locked')`,
+      late: sql<number>`count(*) filter (where ${dailyTransactions.isLate} = true)`,
+    })
+    .from(dailyTransactions)
+    .where(combined)
+    .groupBy(dailyTransactions.projectId, dailyTransactions.locationId);
+
+  return rows.map((r) => ({
+    projectId: r.projectId,
+    locationId: r.locationId,
+    total: Number(r.total),
+    draft: Number(r.draft),
+    submitted: Number(r.submitted),
+    approved: Number(r.approved),
+    locked: Number(r.locked),
+    late: Number(r.late),
+  }));
+}
+
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
 export type PeriodGranularity = "day" | "month";
 
