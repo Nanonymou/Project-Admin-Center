@@ -28,6 +28,12 @@ export async function GET(req: NextRequest) {
   const period = parsePeriod(sp, undefined, projectId);
   const granularity = sp.get("granularity") === "day" ? "day" : "month";
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
+  // Multi-site selection: `sites=loc1,loc2` narrows the margin dashboard to a
+  // subset of locations, alongside the single `locationId` filter.
+  const siteSet = new Set(
+    (sp.get("sites") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  const inSiteSet = (loc: string) => siteSet.size === 0 || siteSet.has(loc);
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
@@ -44,8 +50,8 @@ export async function GET(req: NextRequest) {
   const target = getMarginTarget(projectId);
 
   try {
-    const sites = (await cachedSalesCostBySite(filter)).filter((s) =>
-      canAccessLocation(persona, s.locationId, s.projectId),
+    const sites = (await cachedSalesCostBySite(filter)).filter(
+      (s) => canAccessLocation(persona, s.locationId, s.projectId) && inSiteSet(s.locationId),
     );
     const perSite = sites
       .map((s) => {
@@ -74,6 +80,7 @@ export async function GET(req: NextRequest) {
     let rows = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) rows = rows.filter((r) => r.projectCode === projectId);
     if (filter.locationId) rows = rows.filter((r) => r.locationId === filter.locationId);
+    rows = rows.filter((r) => inSiteSet(r.locationId));
     if (filter.from && filter.to) rows = scaleSiteKpisByPeriod(rows, filter.from, filter.to);
 
     const perSite = buildMarginBySite(rows).map((m) => ({
