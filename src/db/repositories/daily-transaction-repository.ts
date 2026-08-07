@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, lt, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, isNull, lt, lte, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
@@ -467,6 +467,29 @@ export async function updateDailySubmission(
 
     return header;
   });
+}
+
+/** List soft-deleted (recycled) daily transactions for the filter, newest deletion first. */
+export async function listDeletedTransactions(filter: DashboardFilter): Promise<DailyTransaction[]> {
+  const conds: SQL[] = [isNotNull(dailyTransactions.deletedAt)];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped recycle queries");
+    conds.push(eq(dailyTransactions.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(dailyTransactions.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(dailyTransactions.locationId, filter.locationId));
+  return db.select().from(dailyTransactions).where(and(...conds)).orderBy(desc(dailyTransactions.deletedAt));
+}
+
+/** Restore a soft-deleted daily transaction (clears deleted_at). Returns true when restored. */
+export async function restoreDailyTransaction(id: string): Promise<boolean> {
+  const rows = await db
+    .update(dailyTransactions)
+    .set({ deletedAt: null, deletedBy: null, updatedAt: new Date() })
+    .where(and(eq(dailyTransactions.id, id), isNotNull(dailyTransactions.deletedAt)))
+    .returning({ id: dailyTransactions.id });
+  return rows.length > 0;
 }
 
 /**

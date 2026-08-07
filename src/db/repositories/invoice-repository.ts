@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { invoices, type Invoice, type NewInvoice } from "@/db/schema";
 
@@ -59,6 +59,29 @@ export async function listOutstandingInvoices(filter: InvoiceFilter): Promise<In
 export async function listInvoices(filter: InvoiceFilter): Promise<Invoice[]> {
   const where = buildWhere(filter);
   return db.select().from(invoices).where(where).orderBy(desc(invoices.dueDate));
+}
+
+/** List soft-deleted (recycled) invoices for the filter, newest deletion first. */
+export async function listDeletedInvoices(filter: InvoiceFilter): Promise<Invoice[]> {
+  const conds: SQL[] = [isNotNull(invoices.deletedAt)];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped recycle queries");
+    conds.push(eq(invoices.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(invoices.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(invoices.locationId, filter.locationId));
+  return db.select().from(invoices).where(and(...conds)).orderBy(desc(invoices.deletedAt));
+}
+
+/** Restore a soft-deleted invoice (clears deleted_at). Returns true when restored. */
+export async function restoreInvoice(id: string): Promise<boolean> {
+  const rows = await db
+    .update(invoices)
+    .set({ deletedAt: null, deletedBy: null, updatedAt: new Date() })
+    .where(and(eq(invoices.id, id), isNotNull(invoices.deletedAt)))
+    .returning({ id: invoices.id });
+  return rows.length > 0;
 }
 
 export type InvoiceRollupRow = {
