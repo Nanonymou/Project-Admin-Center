@@ -64,6 +64,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Projects", href: "/master/projects", icon: Building2 },
       { label: "Users & Roles", href: "/master/users", icon: Users },
+      { label: "User & Storage", href: "/user-monitoring", icon: Users },
       { label: "Approvals", href: "/master/approvals", icon: BadgeCheck },
       { label: "Manajemen Periode", href: "/period-status", icon: CalendarDays },
       { label: "Kebijakan Cut-Off", href: "/cutoff-policy", icon: CalendarDays },
