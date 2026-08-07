@@ -1,6 +1,12 @@
 import { and, desc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { periodHistory, periods, type NewPeriodHistoryEntry, type Period } from "@/db/schema";
+import {
+  periodHistory,
+  periods,
+  type NewPeriodHistoryEntry,
+  type Period,
+  type PeriodHistoryEntry,
+} from "@/db/schema";
 
 export type PeriodStatusValue = Period["status"];
 export type PeriodActionValue =
@@ -53,6 +59,39 @@ export async function getPeriodById(id: string): Promise<Period | null> {
 /** Append a period history entry. */
 export async function addPeriodHistory(entry: NewPeriodHistoryEntry): Promise<void> {
   await db.insert(periodHistory).values(entry);
+}
+
+export type PeriodHistoryFilter = {
+  periodId?: string;
+  projectId?: string;
+  locationId?: string;
+  limit?: number;
+  scope?: "tenant" | "executive";
+};
+
+/**
+ * List period history entries, newest first — for a single period or a site's
+ * recent lifecycle actions. Tenant-scoped: a query without a periodId and not in
+ * executive scope requires a projectId.
+ */
+export async function listPeriodHistory(filter: PeriodHistoryFilter): Promise<PeriodHistoryEntry[]> {
+  const conds: SQL[] = [];
+  if (filter.periodId) conds.push(eq(periodHistory.periodId, filter.periodId));
+  if (filter.scope !== "executive" && !filter.periodId) {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped history queries");
+    conds.push(eq(periodHistory.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(periodHistory.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(periodHistory.locationId, filter.locationId));
+
+  const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
+  return db
+    .select()
+    .from(periodHistory)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(periodHistory.createdAt))
+    .limit(limit);
 }
 
 export type SetCutoffInput = {
