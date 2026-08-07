@@ -6,6 +6,7 @@ import {
   type SalesEntryInput,
   type SalesValidationError,
 } from "@/lib/mock/service-config";
+import { getPriceFor } from "@/lib/mock/pricing-config";
 import { getTaxConfig } from "@/lib/mock/tax-config";
 import type { DailySubmissionInput, DailySubmissionLine } from "@/db/repositories/daily-transaction-repository";
 
@@ -59,10 +60,23 @@ export function prepareDailySalesSubmission(
   errors.push(...validateSalesEntry(categories, req.values));
   if (errors.length) return { ok: false, errors };
 
+  // Automatic price calculation: when a line omits a price (or sends 0), resolve
+  // the unit price from the config-driven master pricing for this project +
+  // location. Client-supplied prices are respected as overrides. All totals are
+  // then computed from these resolved values.
+  const resolved: SalesEntryInput = {};
+  for (const c of categories) {
+    const line = req.values[c.key];
+    const qty = line?.qty || 0;
+    if (qty <= 0) continue;
+    const price = line && line.price > 0 ? line.price : getPriceFor(req.projectId, req.locationId, c.key);
+    resolved[c.key] = { qty, price };
+  }
+
   const lines: DailySubmissionLine[] = categories
-    .filter((c) => (req.values[c.key]?.qty || 0) > 0)
+    .filter((c) => (resolved[c.key]?.qty || 0) > 0)
     .map((c) => {
-      const line = req.values[c.key];
+      const line = resolved[c.key];
       const amount = lineTotal(line);
       return {
         categoryKey: c.key,
@@ -74,7 +88,7 @@ export function prepareDailySalesSubmission(
       };
     });
 
-  const net = sumSalesEntry(categories, req.values);
+  const net = sumSalesEntry(categories, resolved);
   const tax = getTaxConfig(req.projectId);
   const taxAmount = round2(net * tax.rate);
   const isLate = daysBetween(req.trxDate, today) > 1;
