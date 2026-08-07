@@ -26,6 +26,16 @@ export function RecycleBinClient() {
   const [typeFilter, setTypeFilter] = useState<DeletedType | "all">("all");
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const items = useMemo(() => seeded.filter((i) => !removedIds.has(i.id)), [seeded, removedIds]);
   const filtered = useMemo(
@@ -48,6 +58,31 @@ export function RecycleBinClient() {
   function purge(it: DeletedItem) {
     setRemovedIds((prev) => new Set(prev).add(it.id));
     setNotice(`"${it.label}" dihapus permanen.`);
+  }
+
+  const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      if (filtered.every((i) => prev.has(i.id))) {
+        const next = new Set(prev);
+        filtered.forEach((i) => next.delete(i.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filtered.forEach((i) => next.add(i.id));
+      return next;
+    });
+  }
+  function bulkAction(kind: "restore" | "purge") {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setRemovedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    setNotice(`${ids.length} item ${kind === "restore" ? "dipulihkan" : "dihapus permanen"}.`);
+    setSelected(new Set());
   }
 
   const typeTabs: (DeletedType | "all")[] = ["all", "invoice", "daily_sales", "daily_cost", "user", "master"];
@@ -103,10 +138,33 @@ export function RecycleBinClient() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            {canManage && selected.size > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-primary/5 px-3 py-2">
+                <span className="text-xs font-medium">{selected.size} item dipilih</span>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="h-7" onClick={() => bulkAction("restore")}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Pulihkan
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-rose-600 hover:text-rose-700" onClick={() => bulkAction("purge")}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Hapus Permanen
+                  </Button>
+                  <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] text-muted-foreground hover:underline">
+                    Batal pilih
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    {canManage && (
+                      <th className="w-8 px-3 py-2">
+                        <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Pilih semua" className="h-4 w-4" />
+                      </th>
+                    )}
                     <th className="px-3 py-2 text-left font-medium">Item</th>
                     <th className="px-3 py-2 text-left font-medium">Tipe</th>
                     <th className="px-3 py-2 text-left font-medium">Dihapus</th>
@@ -118,7 +176,7 @@ export function RecycleBinClient() {
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={canManage ? 7 : 6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Recycle bin kosong untuk filter ini.
                       </td>
                     </tr>
@@ -128,7 +186,18 @@ export function RecycleBinClient() {
                     const expanded = expandedId === it.id;
                     return (
                     <Fragment key={it.id}>
-                      <tr className="border-b last:border-0 hover:bg-muted/30">
+                      <tr className={cn("border-b last:border-0 hover:bg-muted/30", selected.has(it.id) && "bg-primary/5")}>
+                        {canManage && (
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(it.id)}
+                              onChange={() => toggleSelect(it.id)}
+                              aria-label={`Pilih ${it.label}`}
+                              className="h-4 w-4"
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -170,7 +239,7 @@ export function RecycleBinClient() {
                       </tr>
                       {expanded && (
                         <tr className="border-b bg-muted/20">
-                          <td colSpan={6} className="px-3 py-3">
+                          <td colSpan={canManage ? 7 : 6} className="px-3 py-3">
                             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                               <Meta label="ID Asli" value={it.originalId} />
                               <Meta label="Alasan Hapus" value={it.reason} />
