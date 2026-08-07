@@ -30,25 +30,58 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Monitoring user hanya untuk Leader/Super Admin." }, { status: 403 });
   }
 
+  // Filters: free-text search (name/role), role, status, and location scope.
+  const sp = req.nextUrl.searchParams;
+  const q = (sp.get("q") ?? "").trim().toLowerCase();
+  const roleFilter = sp.get("role") ?? undefined;
+  const statusFilter = sp.get("status") ?? undefined;
+  const locationId = sp.get("locationId") ?? undefined;
+
+  const matchesPersona = (p: (typeof PERSONAS)[number]) => {
+    if (roleFilter && p.role !== roleFilter) return false;
+    if (q && !`${p.name} ${p.roleLabel} ${p.role}`.toLowerCase().includes(q)) return false;
+    // Location filter: keep users whose scope covers the location (empty scope =
+    // all locations, so they always match).
+    if (locationId && p.scope.locations.length > 0 && !p.scope.locations.includes(locationId)) {
+      return false;
+    }
+    return true;
+  };
+
   try {
     const activity = await latestActivityPerPersona();
     const byPersona = new Map(activity.map((a) => [a.personaId, a]));
-    const users = PERSONAS.map((p) => {
-      const a = byPersona.get(p.id);
-      return {
-        id: p.id,
-        name: p.name,
-        role: p.role,
-        roleLabel: p.roleLabel,
-        lastSeen: a?.lastSeen ?? null,
-        lastAction: a?.lastAction ?? null,
-        activityCount: a?.count ?? 0,
-        status: statusFor(a?.lastSeen),
-      };
+    const users = PERSONAS.filter(matchesPersona)
+      .map((p) => {
+        const a = byPersona.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          role: p.role,
+          roleLabel: p.roleLabel,
+          lastSeen: a?.lastSeen ?? null,
+          lastAction: a?.lastAction ?? null,
+          activityCount: a?.count ?? 0,
+          status: statusFor(a?.lastSeen),
+        };
+      })
+      .filter((u) => !statusFilter || u.status === statusFilter);
+    return NextResponse.json({
+      source: "db",
+      filter: { q, role: roleFilter, status: statusFilter, locationId },
+      count: users.length,
+      users,
     });
-    return NextResponse.json({ source: "db", count: users.length, users });
   } catch {
-    const users = buildUsers(PERSONAS.length + 6);
-    return NextResponse.json({ source: "mock", count: users.length, users });
+    let users = buildUsers(PERSONAS.length + 6);
+    if (roleFilter) users = users.filter((u) => u.role === roleFilter);
+    if (statusFilter) users = users.filter((u) => u.status === statusFilter);
+    if (q) users = users.filter((u) => u.name.toLowerCase().includes(q));
+    return NextResponse.json({
+      source: "mock",
+      filter: { q, role: roleFilter, status: statusFilter, locationId },
+      count: users.length,
+      users,
+    });
   }
 }
