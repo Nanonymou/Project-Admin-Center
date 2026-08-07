@@ -71,5 +71,8 @@ export const config = {
     "/api/daily-cost/:path*",
     "/api/top-performance/:path*",
     "/api/cutoff-monitoring/:path*",
+    "/api/sales-comparison/:path*",
+    "/api/cost-comparison/:path*",
+    "/api/master/:path*",
   ],
 };
