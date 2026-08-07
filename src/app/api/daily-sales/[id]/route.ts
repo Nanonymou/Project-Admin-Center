@@ -42,7 +42,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (!canAccessLocation(auth.persona, result.header.locationId, result.header.projectId)) {
       return NextResponse.json({ error: "Tidak ada akses ke transaksi ini." }, { status: 403 });
     }
-    return NextResponse.json({ source: "db", ...result });
+    const periodLocked = await isPeriodLocked(
+      result.header.projectId,
+      result.header.locationId,
+      result.header.trxDate,
+    );
+    return NextResponse.json({
+      source: "db",
+      ...result,
+      locked: result.header.status === "locked",
+      periodLocked,
+    });
   } catch {
     return NextResponse.json({ error: "Database tidak tersedia." }, { status: 503 });
   }

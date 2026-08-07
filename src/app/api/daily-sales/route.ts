@@ -58,7 +58,8 @@ export async function GET(req: NextRequest) {
     const rows = (await listDailySubmissions(filter, "sales", limit, status)).filter(
       (r) => canAccessLocation(persona, r.locationId, r.projectId) && inSiteSet(r.locationId),
     );
-    return NextResponse.json({ source: "db", filter, status, count: rows.length, entries: rows });
+    const entries = rows.map((r) => ({ ...r, locked: r.status === "locked" }));
+    return NextResponse.json({ source: "db", filter, status, count: entries.length, entries });
   } catch {
     let sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) sites = sites.filter((s) => s.projectCode === projectId);
