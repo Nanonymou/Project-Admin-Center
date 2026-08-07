@@ -78,5 +78,9 @@ export const config = {
     "/api/lock-period/:path*",
     "/api/backups/:path*",
     "/api/audit-logs/:path*",
+    "/api/compliance/:path*",
+    "/api/cutoff-policy/:path*",
+    "/api/attachments/:path*",
+    "/api/project-performance/:path*",
   ],
 };

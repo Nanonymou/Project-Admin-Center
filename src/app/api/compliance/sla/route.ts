@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { listApprovalOverdueBySite, type ApprovalFilter } from "@/db/repositories/approval-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
+import { parsePeriod } from "@/lib/server/period";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
@@ -45,8 +46,12 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
   const locationId = sp.get("locationId") ?? undefined;
+  const period = parsePeriod(sp, undefined, projectId);
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
   const filter: ApprovalFilter = { projectId, locationId, scope };
+  // Date window is accepted for filter parity across compliance endpoints and
+  // echoed back; approval SLA state itself is evaluated point-in-time.
+  const dateWindow = { from: period.from, to: period.to, label: period.label };
 
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
       overdue: r.overdue,
       slaComplianceRate: r.inProgress > 0 ? round2(((r.inProgress - r.overdue) / r.inProgress) * 100) : 100,
     }));
-    return NextResponse.json({ source: "db", filter, overall: overallOf(sites), sites });
+    return NextResponse.json({ source: "db", filter, dateWindow, overall: overallOf(sites), sites });
   } catch {
     let scoped = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) scoped = scoped.filter((s) => s.projectCode === projectId);
@@ -82,6 +87,6 @@ export async function GET(req: NextRequest) {
       avgTimeInStage: round2(a.avgTimeInStage),
       worstBreachDays: a.worstBreachDays,
     }));
-    return NextResponse.json({ source: "mock", filter, overall: overallOf(sites), sites });
+    return NextResponse.json({ source: "mock", filter, dateWindow, overall: overallOf(sites), sites });
   }
 }
