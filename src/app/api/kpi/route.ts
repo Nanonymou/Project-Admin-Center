@@ -29,7 +29,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const sites = await aggregateKpisBySite(filter);
+    const all = await aggregateKpisBySite(filter);
+    // Enforce persona scope on the result set — a persona never sees a site
+    // outside their project/location scope even on a cross-site query.
+    const sites = all.filter((s) => canAccessLocation(persona, s.locationId, s.projectId));
     return NextResponse.json({ source: "db", filter, sites });
   } catch {
     // Mock fallback scoped to the persona's accessible sites.
