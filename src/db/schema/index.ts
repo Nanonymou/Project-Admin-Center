@@ -7,4 +7,5 @@ export * from "./master-areas";
 export * from "./invoices";
 export * from "./approvals";
 export * from "./deadlines";
+export * from "./cutoff-monitoring";
 export * from "./invoice-activities";
