@@ -83,5 +83,7 @@ export const config = {
     "/api/attachments/:path*",
     "/api/project-performance/:path*",
     "/api/recycle-bin/:path*",
+    "/api/users/:path*",
+    "/api/storage/:path*",
   ],
 };
