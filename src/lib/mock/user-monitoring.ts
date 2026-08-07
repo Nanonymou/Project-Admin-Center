@@ -51,6 +51,29 @@ function seedOf(s: string) {
   return Math.abs(h);
 }
 
+export type ProjectStorage = {
+  code: string;
+  name: string;
+  usedMb: number;
+  quotaMb: number;
+  files: number;
+};
+
+/** Deterministic storage usage per project. */
+export function buildStorageByProject(): ProjectStorage[] {
+  const projects = [
+    { code: "BUMA", name: "BUMA Tabang", quotaMb: 4096 },
+    { code: "POMALA", name: "POMALA", quotaMb: 2048 },
+    { code: "PHSS", name: "PHSS", quotaMb: 3072 },
+    { code: "PHKT", name: "PHKT", quotaMb: 2048 },
+  ];
+  return projects.map((p) => {
+    const seed = seedOf(p.code);
+    const usedMb = Math.round((p.quotaMb * (0.35 + (seed % 55) / 100)) * 10) / 10;
+    return { code: p.code, name: p.name, usedMb, quotaMb: p.quotaMb, files: 200 + (seed % 1800) };
+  });
+}
+
 export function buildUsers(count = 12): MonitoredUser[] {
   const out: MonitoredUser[] = [];
   for (let i = 0; i < count; i++) {

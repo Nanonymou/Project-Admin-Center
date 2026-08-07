@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   buildUsers,
+  buildStorageByProject,
   USER_ROLE_LABEL,
   USER_STATUS_META,
   type UserStatus,
@@ -37,6 +38,7 @@ export function UserMonitoringClient() {
   );
 
   const maxStorage = Math.max(1, ...users.map((u) => u.storageMb));
+  const projectStorage = useMemo(() => buildStorageByProject(), []);
 
   return (
     <div>
@@ -60,6 +62,36 @@ export function UserMonitoringClient() {
           <KpiCard label="Total Storage" value={`${formatNumber(Math.round(stats.storageMb))} MB`} format="text" icon={HardDrive} tone="info" />
           <KpiCard label="Total Upload" value={stats.uploads} format="number" icon={UploadCloud} tone="warning" />
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Storage per Project</CardTitle>
+            <CardDescription>Penggunaan penyimpanan lampiran terhadap kuota tiap project.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {projectStorage.map((p) => {
+                const pct = (p.usedMb / p.quotaMb) * 100;
+                const tone = pct >= 85 ? "bg-rose-500" : pct >= 65 ? "bg-amber-500" : "bg-emerald-500";
+                return (
+                  <div key={p.code} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{p.code}</span>
+                      <span className="text-[11px] text-muted-foreground">{p.files} file</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className={cn("h-full rounded-full", tone)} style={{ width: `${Math.min(100, pct)}%` }} />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+                      <span>{formatNumber(Math.round(p.usedMb))} / {formatNumber(p.quotaMb)} MB</span>
+                      <span className={cn(pct >= 85 && "text-rose-600 font-medium")}>{pct.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
