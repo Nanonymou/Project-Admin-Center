@@ -92,6 +92,13 @@
       "when": 1786107724666,
       "tag": "0012_great_blackheart",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786108370985,
+      "tag": "0013_huge_dazzler",
+      "breakpoints": true
     }
   ]
 }
