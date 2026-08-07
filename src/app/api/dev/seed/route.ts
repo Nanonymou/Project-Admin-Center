@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { seedDatabase } from "@/db/seed";
+import { seedMasterCategories } from "@/db/seed-master";
 import { requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 
@@ -26,9 +27,10 @@ export async function POST(req: NextRequest) {
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 180) : undefined;
 
   try {
+    const master = await seedMasterCategories();
     const result = await seedDatabase({ days });
     revalidateKpi();
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, master, ...result });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
