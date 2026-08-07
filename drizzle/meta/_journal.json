@@ -127,6 +127,13 @@
       "when": 1786110678576,
       "tag": "0017_solid_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786111074221,
+      "tag": "0018_moaning_mathemanic",
+      "breakpoints": true
     }
   ]
 }

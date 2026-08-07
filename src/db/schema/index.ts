@@ -1,6 +1,7 @@
 export * from "./columns";
 export * from "./daily-transactions";
 export * from "./daily-transaction-logs";
+export * from "./transaction-attachments";
 export * from "./daily-margin-view";
 export * from "./cost-by-site-view";
 export * from "./cost-by-month-view";
