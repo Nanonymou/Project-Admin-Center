@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HardDrive, Info, UploadCloud, Users } from "lucide-react";
+import { HardDrive, Info, MapPin, Search, UploadCloud, Users } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -21,11 +21,21 @@ export function UserMonitoringClient() {
   const { persona } = usePersona();
   const users = useMemo(() => buildUsers(), []);
   const [statusFilter, setStatusFilter] = useState<UserStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [scopeFilter, setScopeFilter] = useState("all");
 
-  const filtered = useMemo(
-    () => (statusFilter === "all" ? users : users.filter((u) => u.status === statusFilter)),
-    [users, statusFilter],
-  );
+  const scopes = useMemo(() => Array.from(new Set(users.map((u) => u.scope))).sort(), [users]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      if (statusFilter !== "all" && u.status !== statusFilter) return false;
+      if (scopeFilter !== "all" && u.scope !== scopeFilter) return false;
+      if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !u.scope.toLowerCase().includes(q))
+        return false;
+      return true;
+    });
+  }, [users, statusFilter, scopeFilter, search]);
 
   const stats = useMemo(
     () => ({
@@ -99,7 +109,30 @@ export function UserMonitoringClient() {
               <CardTitle>Daftar User</CardTitle>
               <CardDescription>Status aktivitas, sesi, dan penggunaan storage per user.</CardDescription>
             </div>
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari user…"
+                  className="h-7 w-40 rounded-md border bg-background pl-7 pr-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="relative">
+                <MapPin className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <select
+                  value={scopeFilter}
+                  onChange={(e) => setScopeFilter(e.target.value)}
+                  className="h-7 rounded-md border bg-background pl-7 pr-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="all">Semua lokasi</option>
+                  {scopes.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
               {(["all", "active", "idle", "offline"] as const).map((s) => (
                 <button
                   key={s}
