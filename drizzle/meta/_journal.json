@@ -120,6 +120,13 @@
       "when": 1786109794855,
       "tag": "0016_wonderful_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786110678576,
+      "tag": "0017_solid_impossible_man",
+      "breakpoints": true
     }
   ]
 }
