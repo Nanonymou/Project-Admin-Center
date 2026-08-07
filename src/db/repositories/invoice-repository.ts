@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { invoices, type Invoice, type NewInvoice } from "@/db/schema";
+import { invoiceBySite, invoices, type Invoice, type NewInvoice } from "@/db/schema";
 
 export type InvoiceFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -57,6 +57,43 @@ export async function listOutstandingInvoices(filter: InvoiceFilter): Promise<In
 export async function listInvoices(filter: InvoiceFilter): Promise<Invoice[]> {
   const where = buildWhere(filter);
   return db.select().from(invoices).where(where).orderBy(desc(invoices.dueDate));
+}
+
+export type InvoiceRollupRow = {
+  projectId: string;
+  locationId: string;
+  status: string;
+  agingBucket: string;
+  count: number;
+  amount: number;
+};
+
+/**
+ * Per-site invoice rollup (count + amount by status and aging bucket), read from
+ * the invoice_by_site view. Tenant-scoped: a tenant query requires a projectId.
+ */
+export async function listInvoiceRollup(filter: InvoiceFilter): Promise<InvoiceRollupRow[]> {
+  const conds: SQL[] = [];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped invoice queries");
+    conds.push(eq(invoiceBySite.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(invoiceBySite.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(invoiceBySite.locationId, filter.locationId));
+
+  const rows = await db
+    .select()
+    .from(invoiceBySite)
+    .where(conds.length ? and(...conds) : undefined);
+  return rows.map((r) => ({
+    projectId: r.projectId,
+    locationId: r.locationId,
+    status: r.status,
+    agingBucket: r.agingBucket,
+    count: Number(r.count),
+    amount: Number(r.amount),
+  }));
 }
 
 /** Fetch a single invoice by id, or null. */
