@@ -57,6 +57,13 @@
       "when": 1786093953771,
       "tag": "0007_common_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786095167651,
+      "tag": "0008_wise_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }
