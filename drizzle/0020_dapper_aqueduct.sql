@@ -1,0 +1,1 @@
+CREATE VIEW "public"."invoice_by_site" AS (select "project_id", "location_id", "status", "aging_bucket", count(*) as "count", coalesce(sum("amount"), 0) as "amount" from "invoices" group by "invoices"."project_id", "invoices"."location_id", "invoices"."status", "invoices"."aging_bucket");

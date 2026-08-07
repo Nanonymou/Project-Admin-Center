@@ -10,6 +10,7 @@ export * from "./sales-by-site-view";
 export * from "./master-categories";
 export * from "./master-areas";
 export * from "./invoices";
+export * from "./invoice-by-site-view";
 export * from "./approvals";
 export * from "./deadlines";
 export * from "./cutoff-monitoring";
