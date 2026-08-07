@@ -86,5 +86,6 @@ export const config = {
     "/api/users/:path*",
     "/api/storage/:path*",
     "/api/import-export/:path*",
+    "/api/sla/:path*",
   ],
 };

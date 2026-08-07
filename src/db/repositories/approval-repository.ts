@@ -354,6 +354,75 @@ export async function listApprovalOverdueBySite(filter: ApprovalFilter): Promise
   }));
 }
 
+export type SiteSlaBuckets = {
+  projectId: string;
+  locationId: string;
+  subjectType: "invoice" | "daily_closing";
+  total: number;
+  completed: number;
+  inProgress: number;
+  onTime: number;
+  atRisk: number;
+  breached: number;
+};
+
+/**
+ * Per-site SLA buckets for one subject type. In-progress approvals are
+ * classified against their `due_date` and the resolved SLA window:
+ *  - breached: past due beyond the breach-grace window,
+ *  - atRisk:   within `atRiskWindowDays` of the due date (or just inside grace),
+ *  - onTime:   further than the at-risk window from the due date, or no due date.
+ * Completed approvals are counted separately. Multi-tenancy is enforced via
+ * `buildWhere`; the caller must pass `filter.subjectType`.
+ */
+export async function aggregateApprovalSlaBySite(
+  filter: ApprovalFilter,
+  opts: { atRiskWindowDays: number; breachGraceDays: number },
+): Promise<SiteSlaBuckets[]> {
+  if (!filter.subjectType) throw new Error("subjectType is required for SLA aggregation");
+  const where = buildWhere(filter);
+  const today = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const addDays = (base: Date, n: number) => {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d;
+  };
+  const breachCutoff = iso(addDays(today, -Math.max(0, opts.breachGraceDays)));
+  const atRiskUpper = iso(addDays(today, Math.max(0, opts.atRiskWindowDays)));
+  const open = sql`${approvals.status} <> 'completed'`;
+
+  const rows = await db
+    .select({
+      projectId: approvals.projectId,
+      locationId: approvals.locationId,
+      total: count(),
+      completed: sql<number>`count(*) filter (where ${approvals.status} = 'completed')`,
+      breached: sql<number>`count(*) filter (where ${open} and ${approvals.dueDate} < ${breachCutoff})`,
+      atRisk: sql<number>`count(*) filter (where ${open} and ${approvals.dueDate} >= ${breachCutoff} and ${approvals.dueDate} <= ${atRiskUpper})`,
+      onTime: sql<number>`count(*) filter (where ${open} and (${approvals.dueDate} is null or ${approvals.dueDate} > ${atRiskUpper}))`,
+    })
+    .from(approvals)
+    .where(where)
+    .groupBy(approvals.projectId, approvals.locationId);
+
+  return rows.map((r) => {
+    const total = Number(r.total);
+    const completed = Number(r.completed);
+    return {
+      projectId: r.projectId,
+      locationId: r.locationId,
+      subjectType: filter.subjectType!,
+      total,
+      completed,
+      inProgress: total - completed,
+      onTime: Number(r.onTime),
+      atRisk: Number(r.atRisk),
+      breached: Number(r.breached),
+    };
+  });
+}
+
 /** Overall approval progress summary folded from the per-site rows. */
 export function foldApprovalProgress(sites: SiteApprovalProgress[]) {
   let total = 0;
