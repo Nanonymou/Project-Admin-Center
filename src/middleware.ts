@@ -76,5 +76,7 @@ export const config = {
     "/api/master/:path*",
     "/api/periods/:path*",
     "/api/lock-period/:path*",
+    "/api/backups/:path*",
+    "/api/audit-logs/:path*",
   ],
 };

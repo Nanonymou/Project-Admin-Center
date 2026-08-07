@@ -22,8 +22,8 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
-  if (persona.role !== "super_admin") {
-    return NextResponse.json({ error: "Backup & Restore hanya untuk Super Admin." }, { status: 403 });
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Backup & Restore hanya untuk Leader/Super Admin." }, { status: 403 });
   }
 
   const sp = req.nextUrl.searchParams;
@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
-  if (persona.role !== "super_admin") {
-    return NextResponse.json({ error: "Backup & Restore hanya untuk Super Admin." }, { status: 403 });
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Backup & Restore hanya untuk Leader/Super Admin." }, { status: 403 });
   }
 
   let body: Record<string, unknown> = {};
