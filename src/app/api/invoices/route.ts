@@ -38,6 +38,11 @@ export async function GET(req: NextRequest) {
   const stage = sp.get("stage") ?? undefined;
   const agingBucket = sp.get("agingBucket") ?? undefined;
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
+  // Multi-site selection: `sites=loc1,loc2` narrows to a subset of locations.
+  const siteSet = new Set(
+    (sp.get("sites") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  const inSiteSet = (loc: string) => siteSet.size === 0 || siteSet.has(loc);
   const filter: InvoiceFilter = { projectId, locationId, status, stage, agingBucket, scope };
 
   const auth = requirePersona(req.headers);
@@ -49,14 +54,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = (await listInvoices(filter)).filter((r) =>
-      canAccessLocation(persona, r.locationId, r.projectId),
+    const rows = (await listInvoices(filter)).filter(
+      (r) => canAccessLocation(persona, r.locationId, r.projectId) && inSiteSet(r.locationId),
     );
     return NextResponse.json({ source: "db", filter, count: rows.length, invoices: rows });
   } catch {
     let sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) sites = sites.filter((s) => s.projectCode === projectId);
     if (locationId) sites = sites.filter((s) => s.locationId === locationId);
+    sites = sites.filter((s) => inSiteSet(s.locationId));
     let invoices = sites.flatMap((s) => {
       const detail = SITE_DETAILS[s.locationId];
       if (!detail) return [];
