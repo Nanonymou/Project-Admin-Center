@@ -148,19 +148,32 @@ export function SlaApprovalClient() {
                     <th className="px-3 py-2 text-right font-medium">Rata-rata</th>
                     <th className="px-3 py-2 text-right font-medium">Target SLA</th>
                     <th className="px-3 py-2 text-left font-medium">Compliance</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byStage.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Tidak ada invoice dalam alur approval untuk scope ini.
                       </td>
                     </tr>
                   )}
-                  {byStage.map((s) => (
+                  {byStage.map((s) => {
+                    const status =
+                      s.compliance >= 80
+                        ? { label: "Sehat", variant: "success" as const, dot: "bg-emerald-500" }
+                        : s.compliance >= 60
+                          ? { label: "Perhatian", variant: "warning" as const, dot: "bg-amber-500" }
+                          : { label: "Kritis", variant: "danger" as const, dot: "bg-rose-500" };
+                    return (
                     <tr key={s.stage} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="px-3 py-2 font-medium">{s.stage}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <span className={cn("h-2 w-2 rounded-full", status.dot)} />
+                          {s.stage}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{s.count}</td>
                       <td className={cn("px-3 py-2 text-right tabular-nums", s.avg > s.sla && "text-rose-600 font-medium")}>
                         {s.avg.toFixed(1)} hari
@@ -177,8 +190,12 @@ export function SlaApprovalClient() {
                           <span className="text-[11px] tabular-nums text-muted-foreground">{s.compliance.toFixed(0)}%</span>
                         </div>
                       </td>
+                      <td className="px-3 py-2">
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
