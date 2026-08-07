@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   createDailySubmission,
   listDailySubmissions,
+  type DailyTransactionStatusValue,
   type DashboardFilter,
 } from "@/db/repositories/daily-transaction-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
@@ -26,6 +27,16 @@ export async function GET(req: NextRequest) {
   const limitRaw = Number(sp.get("limit"));
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 200;
   const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
+  // Lock/status filter and multi-site selection.
+  const STATUSES = ["draft", "submitted", "approved", "locked"] as const;
+  const statusRaw = sp.get("status");
+  const status = STATUSES.includes(statusRaw as DailyTransactionStatusValue)
+    ? (statusRaw as DailyTransactionStatusValue)
+    : undefined;
+  const siteSet = new Set(
+    (sp.get("sites") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  const inSiteSet = (locationId: string) => siteSet.size === 0 || siteSet.has(locationId);
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
@@ -43,15 +54,16 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = (await listDailySubmissions(filter, "sales", limit)).filter((r) =>
-      canAccessLocation(persona, r.locationId, r.projectId),
+    const rows = (await listDailySubmissions(filter, "sales", limit, status)).filter(
+      (r) => canAccessLocation(persona, r.locationId, r.projectId) && inSiteSet(r.locationId),
     );
-    return NextResponse.json({ source: "db", filter, count: rows.length, entries: rows });
+    return NextResponse.json({ source: "db", filter, status, count: rows.length, entries: rows });
   } catch {
     let sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (projectId) sites = sites.filter((s) => s.projectCode === projectId);
     if (filter.locationId) sites = sites.filter((s) => s.locationId === filter.locationId);
-    const entries = sites.flatMap((s) => {
+    sites = sites.filter((s) => inSiteSet(s.locationId));
+    let entries = sites.flatMap((s) => {
       const detail = SITE_DETAILS[s.locationId];
       if (!detail) return [];
       return detail.daily30d
@@ -61,11 +73,13 @@ export async function GET(req: NextRequest) {
           projectCode: s.projectCode,
           locationId: s.locationId,
           trxDate: d.iso,
-          status: "approved",
+          status: "approved" as const,
           total: d.sales,
         }));
     });
-    return NextResponse.json({ source: "mock", filter, count: entries.length, entries });
+    // Lock/status filter applied to the synthesized mock rows (all "approved").
+    if (status) entries = entries.filter((e) => e.status === status);
+    return NextResponse.json({ source: "mock", filter, status, count: entries.length, entries });
   }
 }
 

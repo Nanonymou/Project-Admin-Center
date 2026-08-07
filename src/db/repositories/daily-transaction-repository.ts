@@ -265,10 +265,13 @@ export async function listDailySubmissions(
   filter: DashboardFilter,
   kind: "sales" | "cost" = "cost",
   limit = 200,
+  status?: DailyTransactionStatusValue,
 ): Promise<DailyTransaction[]> {
   const where = buildWhere(filter);
-  const kindCond = eq(dailyTransactions.kind, kind);
-  const combined = where ? and(where, kindCond) : kindCond;
+  const conds: SQL[] = [eq(dailyTransactions.kind, kind)];
+  if (where) conds.push(where);
+  if (status) conds.push(eq(dailyTransactions.status, status));
+  const combined = and(...conds);
   const capped = Math.min(Math.max(limit, 1), 1000);
   return db
     .select()
