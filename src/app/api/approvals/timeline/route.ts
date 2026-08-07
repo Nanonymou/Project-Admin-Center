@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { listApprovalTimelines, type ApprovalFilter } from "@/db/repositories/approval-repository";
+import { type ApprovalFilter } from "@/db/repositories/approval-repository";
+import { cachedApprovalTimelines } from "@/lib/server/approval-cache";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const timelines = (await listApprovalTimelines(filter)).filter((t) =>
+    const timelines = (await cachedApprovalTimelines(filter)).filter((t) =>
       canAccessLocation(persona, t.approval.locationId, t.approval.projectId),
     );
     return NextResponse.json({ source: "db", filter, count: timelines.length, timelines });

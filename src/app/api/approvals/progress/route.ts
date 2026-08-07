@@ -1,10 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  aggregateApprovalProgressBySite,
-  aggregateApprovalStageFunnel,
-  foldApprovalProgress,
-  type ApprovalFilter,
-} from "@/db/repositories/approval-repository";
+import { foldApprovalProgress, type ApprovalFilter } from "@/db/repositories/approval-repository";
+import { cachedApprovalProgressBySite, cachedApprovalStageFunnel } from "@/lib/server/approval-cache";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -41,10 +37,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const perSite = (await aggregateApprovalProgressBySite(filter)).filter((s) =>
+    const perSite = (await cachedApprovalProgressBySite(filter)).filter((s) =>
       canAccessLocation(persona, s.locationId, s.projectId),
     );
-    const funnel = await aggregateApprovalStageFunnel(filter);
+    const funnel = await cachedApprovalStageFunnel(filter);
     return NextResponse.json({
       source: "db",
       filter,

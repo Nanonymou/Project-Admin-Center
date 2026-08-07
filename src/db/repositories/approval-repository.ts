@@ -100,6 +100,87 @@ export async function aggregateApprovalStageFunnel(filter: ApprovalFilter): Prom
   return rows.map((r) => ({ stage: r.stage, count: Number(r.count) }));
 }
 
+export type ApprovalAction = "submit" | "approve" | "reject" | "return" | "reassign";
+export type ApprovalStatusValue = Approval["status"];
+
+export type ApprovalTransitionInput = {
+  approvalId: string;
+  toStage: string;
+  action: ApprovalAction;
+  actor: string;
+  note?: string;
+  assignedTo?: string;
+  /** Optional explicit status; otherwise derived from the action. */
+  status?: ApprovalStatusValue;
+};
+
+export type ApprovalTransitionResult = {
+  approval: Approval;
+  entry: ApprovalHistoryEntry;
+};
+
+/** Derive the workflow status from the action when no explicit status is given. */
+function statusForAction(action: ApprovalAction): ApprovalStatusValue {
+  switch (action) {
+    case "reject":
+      return "rejected";
+    case "return":
+      return "returned";
+    default:
+      return "in_progress";
+  }
+}
+
+/**
+ * Record an approval transition atomically: advance the subject to `toStage`,
+ * update its status/assignee, and append an immutable history entry capturing
+ * who did what. Wrapped in a transaction so the stage change and its audit row
+ * are always consistent. The caller is responsible for authorization; tenancy is
+ * copied from the existing approval onto the history row.
+ */
+export async function recordApprovalTransition(
+  input: ApprovalTransitionInput,
+): Promise<ApprovalTransitionResult> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, input.approvalId))
+      .limit(1);
+    if (!current) throw new Error(`approval ${input.approvalId} not found`);
+
+    const fromStage = current.currentStage;
+    const status = input.status ?? statusForAction(input.action);
+
+    const [updated] = await tx
+      .update(approvals)
+      .set({
+        currentStage: input.toStage,
+        status,
+        assignedTo: input.assignedTo ?? current.assignedTo,
+        updatedAt: new Date(),
+      })
+      .where(eq(approvals.id, input.approvalId))
+      .returning();
+
+    const [entry] = await tx
+      .insert(approvalHistory)
+      .values({
+        approvalId: current.id,
+        projectId: current.projectId,
+        locationId: current.locationId,
+        fromStage,
+        toStage: input.toStage,
+        action: input.action,
+        actor: input.actor,
+        note: input.note,
+      })
+      .returning();
+
+    return { approval: updated, entry };
+  });
+}
+
 export type ApprovalTimeline = {
   approval: Approval;
   history: ApprovalHistoryEntry[];
