@@ -84,6 +84,18 @@ export async function getDeletedInvoiceById(id: string): Promise<Invoice | null>
   return row ?? null;
 }
 
+/**
+ * Permanently delete a recycled invoice. Only rows already soft-deleted may be
+ * purged; a live invoice is never hard-deleted here.
+ */
+export async function purgeInvoice(id: string): Promise<boolean> {
+  const rows = await db
+    .delete(invoices)
+    .where(and(eq(invoices.id, id), isNotNull(invoices.deletedAt)))
+    .returning({ id: invoices.id });
+  return rows.length > 0;
+}
+
 /** Restore a soft-deleted invoice (clears deleted_at). Returns true when restored. */
 export async function restoreInvoice(id: string): Promise<boolean> {
   const rows = await db

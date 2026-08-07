@@ -492,6 +492,18 @@ export async function getDeletedTransactionById(id: string): Promise<DailyTransa
   return row ?? null;
 }
 
+/**
+ * Permanently delete a recycled daily transaction (lines cascade). Only rows
+ * already soft-deleted may be purged; a live row is never hard-deleted here.
+ */
+export async function purgeDailyTransaction(id: string): Promise<boolean> {
+  const rows = await db
+    .delete(dailyTransactions)
+    .where(and(eq(dailyTransactions.id, id), isNotNull(dailyTransactions.deletedAt)))
+    .returning({ id: dailyTransactions.id });
+  return rows.length > 0;
+}
+
 /** Restore a soft-deleted daily transaction (clears deleted_at). Returns true when restored. */
 export async function restoreDailyTransaction(id: string): Promise<boolean> {
   const rows = await db
