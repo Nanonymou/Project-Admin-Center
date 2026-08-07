@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { upsertMasterCategory } from "@/db/repositories/master-category-repository";
 import { upsertMasterTimeframe } from "@/db/repositories/master-timeframe-repository";
 import { upsertMasterArea } from "@/db/repositories/master-area-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessProject } from "@/lib/personas";
 import { parseCsv } from "@/lib/csv";
@@ -103,6 +104,14 @@ export async function POST(req: NextRequest) {
         errors.push(rowErr instanceof Error ? rowErr.message : String(rowErr));
       }
     }
+    await writeAuditLog({
+      projectId,
+      category: "master",
+      action: "import",
+      actor: persona.name,
+      entityType: type,
+      detail: `Impor master ${type}: ${imported}/${data.length} baris.`,
+    }).catch(() => {});
     return NextResponse.json({ source: "db", type, imported, total: data.length, errors });
   } catch (err) {
     return NextResponse.json(

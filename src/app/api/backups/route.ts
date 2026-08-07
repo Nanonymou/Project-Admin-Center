@@ -6,6 +6,7 @@ import {
   type BackupFilter,
 } from "@/db/repositories/backup-repository";
 import type { NewBackup } from "@/db/schema";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { buildBackups } from "@/lib/mock/backups";
 
@@ -84,6 +85,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const backup = await createBackup(values);
+    await writeAuditLog({
+      projectId: projectId ?? null,
+      category: "backup",
+      action: "create",
+      actor: persona.name,
+      entityType: "backup",
+      entityId: backup.id,
+      detail: `Backup "${backup.label}" (${kind}) dibuat.`,
+    }).catch(() => {});
     return NextResponse.json({ source: "db", backup }, { status: 201 });
   } catch (err) {
     return NextResponse.json({

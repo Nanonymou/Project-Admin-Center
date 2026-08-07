@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRestore, getBackupById } from "@/db/repositories/backup-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       note,
       completedAt: new Date(),
     });
+    await writeAuditLog({
+      projectId: backup.projectId ?? null,
+      category: "restore",
+      action: "restore",
+      actor: persona.name,
+      entityType: "backup",
+      entityId: backup.id,
+      detail: `Restore dari backup "${backup.label}".`,
+    }).catch(() => {});
     return NextResponse.json({ source: "db", restore, backup }, { status: 201 });
   } catch (err) {
     return NextResponse.json({
