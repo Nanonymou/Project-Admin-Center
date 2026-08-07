@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { invoices, type Invoice } from "@/db/schema";
+import { invoices, type Invoice, type NewInvoice } from "@/db/schema";
 
 export type InvoiceFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -51,6 +51,43 @@ export async function listOutstandingInvoices(filter: InvoiceFilter): Promise<In
   const where = buildWhere(filter, outstanding);
 
   return db.select().from(invoices).where(where).orderBy(desc(invoices.dueDate));
+}
+
+/** List invoices for the filtered scope (all statuses), newest due date first. */
+export async function listInvoices(filter: InvoiceFilter): Promise<Invoice[]> {
+  const where = buildWhere(filter);
+  return db.select().from(invoices).where(where).orderBy(desc(invoices.dueDate));
+}
+
+/** Fetch a single invoice by id, or null. */
+export async function getInvoiceById(id: string): Promise<Invoice | null> {
+  const [row] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  return row ?? null;
+}
+
+/** Create an invoice. */
+export async function createInvoice(values: NewInvoice): Promise<Invoice> {
+  const [row] = await db.insert(invoices).values(values).returning();
+  return row;
+}
+
+/** Patch an invoice by id. Returns the updated row, or null when not found. */
+export async function updateInvoice(
+  id: string,
+  patch: Partial<NewInvoice>,
+): Promise<Invoice | null> {
+  const [row] = await db
+    .update(invoices)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(invoices.id, id))
+    .returning();
+  return row ?? null;
+}
+
+/** Delete an invoice by id. Returns true when a row was removed. */
+export async function deleteInvoice(id: string): Promise<boolean> {
+  const rows = await db.delete(invoices).where(eq(invoices.id, id)).returning({ id: invoices.id });
+  return rows.length > 0;
 }
 
 export type OutstandingAggregate = {
