@@ -1,0 +1,1 @@
+CREATE VIEW "public"."approval_overdue_by_site" AS (select "project_id", "location_id", count(*) filter (where "status" <> 'completed') as "in_progress", count(*) filter (where "status" <> 'completed' and "due_date" < current_date) as "overdue" from "approvals" group by "approvals"."project_id", "approvals"."location_id");

@@ -17,6 +17,7 @@ export * from "./invoices";
 export * from "./invoice-by-site-view";
 export * from "./approvals";
 export * from "./approval-by-site-view";
+export * from "./approval-overdue-view";
 export * from "./deadlines";
 export * from "./cutoff-monitoring";
 export * from "./lock-periods";
