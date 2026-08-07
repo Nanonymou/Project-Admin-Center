@@ -14,6 +14,7 @@ import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS, type MockInvoice } from "@/lib/mock/site-detail";
 import { buildOutstandingInvoicesFor, summarizeOutstanding } from "@/lib/mock/outstanding";
+import { weightedAverageAge } from "@/lib/aging";
 import { cn, formatCurrency } from "@/lib/utils";
 
 const BUCKET_ORDER: MockInvoice["agingBucket"][] = ["0-30", "31-60", "61-90", ">90"];
@@ -89,6 +90,7 @@ export function AgingDashboardClient() {
   }, [outstanding]);
 
   const overduePct = summary.totalAmount > 0 ? (summary.byBucket[">90"].amount / summary.totalAmount) * 100 : 0;
+  const avgAge = useMemo(() => weightedAverageAge(outstanding), [outstanding]);
 
   return (
     <div>
@@ -123,9 +125,15 @@ export function AgingDashboardClient() {
         </section>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Distribusi Aging</CardTitle>
-            <CardDescription>Nilai outstanding per bucket umur piutang.</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Distribusi Aging</CardTitle>
+              <CardDescription>Nilai outstanding per bucket umur piutang.</CardDescription>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Rata-rata Umur</div>
+              <div className="text-lg font-semibold tabular-nums">{avgAge.toFixed(0)} hari</div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
