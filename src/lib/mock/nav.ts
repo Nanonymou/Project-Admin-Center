@@ -52,6 +52,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Outstanding Invoice", href: "/outstanding", icon: FileText },
       { label: "Invoice Aging", href: "/aging", icon: FileText },
       { label: "Approval Progress", href: "/approvals", icon: BadgeCheck },
+      { label: "SLA Approval", href: "/sla", icon: BadgeCheck },
       { label: "Kalender Deadline", href: "/calendar", icon: CalendarDays },
       { label: "Cut-Off & Pengiriman", href: "/cutoff", icon: CalendarDays },
       { label: "Compliance Monitoring", href: "/compliance", icon: BadgeCheck },
