@@ -482,6 +482,16 @@ export async function listDeletedTransactions(filter: DashboardFilter): Promise<
   return db.select().from(dailyTransactions).where(and(...conds)).orderBy(desc(dailyTransactions.deletedAt));
 }
 
+/** Fetch a soft-deleted daily transaction by id (for the recycle-bin restore check). */
+export async function getDeletedTransactionById(id: string): Promise<DailyTransaction | null> {
+  const [row] = await db
+    .select()
+    .from(dailyTransactions)
+    .where(and(eq(dailyTransactions.id, id), isNotNull(dailyTransactions.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Restore a soft-deleted daily transaction (clears deleted_at). Returns true when restored. */
 export async function restoreDailyTransaction(id: string): Promise<boolean> {
   const rows = await db

@@ -74,6 +74,16 @@ export async function listDeletedInvoices(filter: InvoiceFilter): Promise<Invoic
   return db.select().from(invoices).where(and(...conds)).orderBy(desc(invoices.deletedAt));
 }
 
+/** Fetch a soft-deleted invoice by id (for the recycle-bin restore check). */
+export async function getDeletedInvoiceById(id: string): Promise<Invoice | null> {
+  const [row] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.id, id), isNotNull(invoices.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Restore a soft-deleted invoice (clears deleted_at). Returns true when restored. */
 export async function restoreInvoice(id: string): Promise<boolean> {
   const rows = await db
