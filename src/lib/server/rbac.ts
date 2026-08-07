@@ -13,6 +13,18 @@ export function getPersonaFromHeaders(headers: Headers): Persona {
 export type AuthzResult = { ok: true } | { ok: false; status: number; message: string };
 
 /**
+ * Require an authenticated persona. A missing `x-persona-id` header is treated
+ * as unauthenticated (401), distinct from an authenticated-but-forbidden 403.
+ */
+export function requirePersona(
+  headers: Headers,
+): { ok: true; persona: Persona } | { ok: false; status: 401; message: string } {
+  const id = headers.get("x-persona-id");
+  if (!id) return { ok: false, status: 401, message: "Autentikasi diperlukan (x-persona-id)." };
+  return { ok: true, persona: getPersonaById(id) };
+}
+
+/**
  * Enforce role & scope authorization for a dashboard query.
  * - Executive (cross-project) scope requires Leader/Super Admin.
  * - A project filter must be inside the persona's project scope.

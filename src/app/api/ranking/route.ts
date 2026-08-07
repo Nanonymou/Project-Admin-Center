@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { aggregateKpisBySite, type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
 import { rankList, isRankMetric, type RankMetric } from "@/lib/server/services/ranking-service";
-import { authorizeRanking, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { authorizeRanking, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 
@@ -23,7 +23,11 @@ export async function GET(req: NextRequest) {
     scope: (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive"),
   };
 
-  const persona = getPersonaFromHeaders(req.headers);
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+  const persona = auth.persona;
   const authz = authorizeRanking(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
