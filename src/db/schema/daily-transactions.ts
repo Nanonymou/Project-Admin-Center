@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, date, index, numeric, pgEnum, pgTable, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { auditColumns, tenancyColumns } from "./columns";
 
 /** Kind of daily transaction — the same generic table serves sales and cost. */
@@ -30,6 +30,15 @@ export const dailyTransactions = pgTable(
     subtotal: numeric("subtotal", { precision: 18, scale: 2 }).default("0").notNull(),
     tax: numeric("tax", { precision: 18, scale: 2 }).default("0").notNull(),
     total: numeric("total", { precision: 18, scale: 2 }).default("0").notNull(),
+    // Submission workflow tracking — who submitted/approved and when. `isLate`
+    // flags a submission that missed the H+1 input rule (computed at submit
+    // time from the project's cut-off config).
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    submittedBy: varchar("submitted_by", { length: 128 }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: varchar("approved_by", { length: 128 }),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    isLate: boolean("is_late").default(false).notNull(),
     ...auditColumns,
   },
   (t) => ({
