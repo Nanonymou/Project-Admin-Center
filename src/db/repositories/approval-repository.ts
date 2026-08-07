@@ -182,6 +182,59 @@ export async function recordApprovalTransition(
   });
 }
 
+export type ApprovalActivityInput = {
+  approvalId: string;
+  actor: string;
+  note?: string;
+  /** Optional reassignment of the current PIC. */
+  assignedTo?: string;
+};
+
+/**
+ * Append an activity entry to an approval without advancing its stage — used for
+ * comments and reassignments. Records a history row at the current stage (action
+ * "reassign") and, when `assignedTo` is provided, updates the PIC. Returns the
+ * approval and the new history entry, or null when the approval does not exist.
+ */
+export async function recordApprovalActivity(
+  input: ApprovalActivityInput,
+): Promise<ApprovalTransitionResult | null> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, input.approvalId))
+      .limit(1);
+    if (!current) return null;
+
+    let approval = current;
+    if (input.assignedTo) {
+      const [updated] = await tx
+        .update(approvals)
+        .set({ assignedTo: input.assignedTo, updatedAt: new Date() })
+        .where(eq(approvals.id, input.approvalId))
+        .returning();
+      approval = updated;
+    }
+
+    const [entry] = await tx
+      .insert(approvalHistory)
+      .values({
+        approvalId: current.id,
+        projectId: current.projectId,
+        locationId: current.locationId,
+        fromStage: current.currentStage,
+        toStage: current.currentStage,
+        action: "reassign",
+        actor: input.actor,
+        note: input.note,
+      })
+      .returning();
+
+    return { approval, entry };
+  });
+}
+
 export type ApprovalTimeline = {
   approval: Approval;
   history: ApprovalHistoryEntry[];
