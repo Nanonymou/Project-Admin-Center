@@ -3,7 +3,7 @@ import { createDailySubmission } from "@/db/repositories/daily-transaction-repos
 import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
-import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
+import { validatePeriodInput } from "@/lib/server/guards/period-input-guard";
 import { canAccessLocation } from "@/lib/personas";
 import { prepareDailyCostSubmission } from "@/lib/server/services/daily-cost-submission-service";
 
@@ -70,12 +70,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Validasi gagal.", errors: prepared.errors }, { status: 422 });
   }
 
-  // Cut-off policy: input is closed once the date's period has passed its cut-off.
-  if (isInputClosedForDate(projectId, prepared.input.trxDate)) {
-    return NextResponse.json(
-      { error: "Periode sudah melewati cut-off — input ditutup." },
-      { status: 409 },
-    );
+  // H+1 / cut-off period-input guard.
+  const periodCheck = validatePeriodInput(projectId, prepared.input.trxDate);
+  if (!periodCheck.ok) {
+    return NextResponse.json({ error: periodCheck.error }, { status: periodCheck.status });
   }
 
   try {
