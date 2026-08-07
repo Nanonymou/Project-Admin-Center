@@ -76,3 +76,49 @@ export async function aggregateDashboard(filter: DashboardFilter): Promise<Dashb
     byStatus,
   };
 }
+
+export type SiteKpiAggregate = {
+  projectId: string;
+  locationId: string;
+  sales: number;
+  cost: number;
+  profit: number;
+  transactions: number;
+};
+
+/**
+ * Aggregate KPIs grouped per site (project + location). Used by the
+ * "KPI Seluruh Site" endpoint for Leader/Super Admin cross-site views.
+ */
+export async function aggregateKpisBySite(filter: DashboardFilter): Promise<SiteKpiAggregate[]> {
+  const where = buildWhere(filter);
+
+  const rows = await db
+    .select({
+      projectId: dailyTransactions.projectId,
+      locationId: dailyTransactions.locationId,
+      kind: dailyTransactions.kind,
+      total: sql<string>`coalesce(sum(${dailyTransactions.total}), 0)`,
+      count: count(),
+    })
+    .from(dailyTransactions)
+    .where(where)
+    .groupBy(dailyTransactions.projectId, dailyTransactions.locationId, dailyTransactions.kind);
+
+  const map = new Map<string, SiteKpiAggregate>();
+  for (const r of rows) {
+    const key = `${r.projectId}::${r.locationId}`;
+    const entry =
+      map.get(key) ??
+      { projectId: r.projectId, locationId: r.locationId, sales: 0, cost: 0, profit: 0, transactions: 0 };
+    const value = Number(r.total);
+    if (r.kind === "sales") entry.sales += value;
+    else entry.cost += value;
+    entry.transactions += Number(r.count);
+    map.set(key, entry);
+  }
+
+  return Array.from(map.values())
+    .map((e) => ({ ...e, profit: e.sales - e.cost }))
+    .sort((a, b) => b.profit - a.profit);
+}
