@@ -17,6 +17,16 @@ export async function listTransactionAttachments(
     .orderBy(asc(transactionAttachments.createdAt));
 }
 
+/** Fetch a single transaction attachment by id, or null. */
+export async function getTransactionAttachmentById(id: string): Promise<TransactionAttachment | null> {
+  const [row] = await db
+    .select()
+    .from(transactionAttachments)
+    .where(eq(transactionAttachments.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Register a new transaction attachment (metadata + storage key). */
 export async function addTransactionAttachment(
   values: NewTransactionAttachment,
