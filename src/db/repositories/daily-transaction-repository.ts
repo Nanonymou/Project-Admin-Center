@@ -373,6 +373,37 @@ export async function deleteDailyTransaction(id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+export type CategoryTotal = { categoryKey: string; label: string; amount: number };
+
+/**
+ * Sales (or cost) totals grouped by category, summed from the line items joined
+ * to headers of the given kind. Used by the dashboard's category breakdown.
+ * Multi-tenancy is enforced through the header filter in `buildWhere`.
+ */
+export async function aggregateByCategory(
+  filter: DashboardFilter,
+  kind: "sales" | "cost" = "sales",
+): Promise<CategoryTotal[]> {
+  const where = buildWhere(filter);
+  const kindCond = eq(dailyTransactions.kind, kind);
+  const combined = where ? and(where, kindCond) : kindCond;
+
+  const rows = await db
+    .select({
+      categoryKey: dailyTransactionLines.categoryKey,
+      label: sql<string>`max(${dailyTransactionLines.label})`,
+      amount: sql<string>`coalesce(sum(${dailyTransactionLines.amount}), 0)`,
+    })
+    .from(dailyTransactionLines)
+    .innerJoin(dailyTransactions, eq(dailyTransactionLines.transactionId, dailyTransactions.id))
+    .where(combined)
+    .groupBy(dailyTransactionLines.categoryKey);
+
+  return rows
+    .map((r) => ({ categoryKey: r.categoryKey, label: r.label, amount: Number(r.amount) }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
 export type PeriodGranularity = "day" | "month";
 
