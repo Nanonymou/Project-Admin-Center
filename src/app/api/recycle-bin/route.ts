@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Recycle Bin hanya untuk Leader/Super Admin." }, { status: 403 });
+  }
   const authz = authorizeDashboard(persona, { projectId, locationId, scope });
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });

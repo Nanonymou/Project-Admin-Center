@@ -21,8 +21,11 @@ export async function POST(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
-  if (persona.role === "viewer") {
-    return NextResponse.json({ error: "Viewer tidak dapat memulihkan data." }, { status: 403 });
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json(
+      { error: "Hanya Leader/Super Admin yang dapat memulihkan data." },
+      { status: 403 },
+    );
   }
 
   let body: Record<string, unknown>;

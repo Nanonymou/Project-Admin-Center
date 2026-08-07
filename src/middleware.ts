@@ -82,5 +82,6 @@ export const config = {
     "/api/cutoff-policy/:path*",
     "/api/attachments/:path*",
     "/api/project-performance/:path*",
+    "/api/recycle-bin/:path*",
   ],
 };
