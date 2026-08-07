@@ -1,0 +1,2 @@
+ALTER TABLE "daily_transactions" ADD COLUMN "area_id" uuid;--> statement-breakpoint
+ALTER TABLE "daily_transactions" ADD CONSTRAINT "daily_transactions_area_id_master_areas_id_fk" FOREIGN KEY ("area_id") REFERENCES "public"."master_areas"("id") ON DELETE set null ON UPDATE no action;

@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import { boolean, date, index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { auditColumns, tenancyColumns } from "./columns";
+import { masterAreas } from "./master-areas";
 
 /** Kind of daily transaction — the same generic table serves sales and cost. */
 export const dailyTransactionKind = pgEnum("daily_transaction_kind", ["sales", "cost"]);
@@ -25,7 +26,10 @@ export const dailyTransactions = pgTable(
     ...tenancyColumns,
     kind: dailyTransactionKind("kind").notNull(),
     trxDate: date("trx_date").notNull(),
+    // Free-text area label (kept for display / mock data); `areaId` links to the
+    // master_areas row when the entry is created against a managed area.
     area: varchar("area", { length: 128 }),
+    areaId: uuid("area_id").references(() => masterAreas.id, { onDelete: "set null" }),
     status: dailyTransactionStatus("status").default("draft").notNull(),
     subtotal: numeric("subtotal", { precision: 18, scale: 2 }).default("0").notNull(),
     tax: numeric("tax", { precision: 18, scale: 2 }).default("0").notNull(),
@@ -76,8 +80,12 @@ export const dailyTransactionLines = pgTable(
   }),
 );
 
-export const dailyTransactionsRelations = relations(dailyTransactions, ({ many }) => ({
+export const dailyTransactionsRelations = relations(dailyTransactions, ({ one, many }) => ({
   lines: many(dailyTransactionLines),
+  area: one(masterAreas, {
+    fields: [dailyTransactions.areaId],
+    references: [masterAreas.id],
+  }),
 }));
 
 export const dailyTransactionLinesRelations = relations(dailyTransactionLines, ({ one }) => ({
