@@ -1,6 +1,6 @@
 import { and, asc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { masterCategories, type MasterCategory } from "@/db/schema";
+import { masterCategories, type MasterCategory, type NewMasterCategory } from "@/db/schema";
 
 export type MasterCategoryFilter = {
   projectCode: string;
@@ -24,4 +24,23 @@ export async function listMasterCategories(
     .from(masterCategories)
     .where(and(...conds))
     .orderBy(asc(masterCategories.kind), asc(masterCategories.categoryKey));
+}
+
+/** Upsert a master category by (projectCode, kind, categoryKey). */
+export async function upsertMasterCategory(values: NewMasterCategory): Promise<void> {
+  await db
+    .insert(masterCategories)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [masterCategories.projectCode, masterCategories.kind, masterCategories.categoryKey],
+      set: {
+        label: values.label,
+        subCategory: values.subCategory,
+        unit: values.unit,
+        defaultPrice: values.defaultPrice,
+        isDeduction: values.isDeduction,
+        active: true,
+        updatedAt: new Date(),
+      },
+    });
 }
