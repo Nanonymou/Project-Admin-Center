@@ -271,6 +271,52 @@ export async function aggregateSubmissionStatusBySite(
 export type DailyTransactionStatusValue = DailyTransaction["status"];
 
 /**
+ * Approve or reject a submitted daily transaction. Approving moves it to
+ * "approved" (recording approver + timestamp); rejecting reopens it to "draft".
+ * Locked transactions are not affected. Writes a change-log entry atomically.
+ * Returns the updated row, or null when not found / locked.
+ */
+export async function setDailyTransactionApproval(
+  id: string,
+  approve: boolean,
+  actor: string,
+): Promise<DailyTransaction | null> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(dailyTransactions)
+      .where(eq(dailyTransactions.id, id))
+      .limit(1);
+    if (!current || current.status === "locked") return null;
+
+    const nextStatus: DailyTransactionStatusValue = approve ? "approved" : "draft";
+    const [row] = await tx
+      .update(dailyTransactions)
+      .set({
+        status: nextStatus,
+        approvedAt: approve ? new Date() : null,
+        approvedBy: approve ? actor : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(dailyTransactions.id, id))
+      .returning();
+
+    await tx.insert(dailyTransactionLogs).values({
+      transactionId: id,
+      projectId: current.projectId,
+      locationId: current.locationId,
+      action: approve ? "approve" : "reject",
+      actor,
+      fromStatus: current.status,
+      toStatus: nextStatus,
+      detail: approve ? "Entri disetujui." : "Entri dikembalikan (reject).",
+    });
+
+    return row;
+  });
+}
+
+/**
  * List daily-transaction submission history for a given kind (defaults to cost),
  * newest transaction date first. Used by the "Riwayat Submit" view. Multi-tenancy
  * enforced by `buildWhere`; `limit` is clamped.
