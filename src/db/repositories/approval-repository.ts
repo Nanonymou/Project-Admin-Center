@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  approvalBySite,
   approvalHistory,
   approvals,
   type Approval,
@@ -212,6 +213,44 @@ export async function listApprovalTimelines(filter: ApprovalFilter): Promise<App
   }
 
   return rows.map((a) => ({ approval: a, history: byApproval.get(a.id) ?? [] }));
+}
+
+export type ApprovalRollupRow = {
+  projectId: string;
+  locationId: string;
+  subjectType: string;
+  currentStage: string;
+  status: string;
+  count: number;
+};
+
+/**
+ * Per-site approval rollup (count by subject type, stage, and status) read from
+ * the approval_by_site view. Tenant-scoped: a tenant query requires a projectId.
+ */
+export async function listApprovalRollup(filter: ApprovalFilter): Promise<ApprovalRollupRow[]> {
+  const conds: SQL[] = [];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped approval queries");
+    conds.push(eq(approvalBySite.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(approvalBySite.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(approvalBySite.locationId, filter.locationId));
+  if (filter.subjectType) conds.push(eq(approvalBySite.subjectType, filter.subjectType));
+
+  const rows = await db
+    .select()
+    .from(approvalBySite)
+    .where(conds.length ? and(...conds) : undefined);
+  return rows.map((r) => ({
+    projectId: r.projectId,
+    locationId: r.locationId,
+    subjectType: r.subjectType,
+    currentStage: r.currentStage,
+    status: r.status,
+    count: Number(r.count),
+  }));
 }
 
 /** Overall approval progress summary folded from the per-site rows. */
