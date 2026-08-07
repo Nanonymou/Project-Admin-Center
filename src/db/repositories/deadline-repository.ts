@@ -42,3 +42,12 @@ export async function listDeadlines(filter: DeadlineFilter): Promise<Deadline[]>
   const where = buildWhere(filter);
   return db.select().from(deadlines).where(where).orderBy(asc(deadlines.dueDate));
 }
+
+/**
+ * Fetch a single deadline by id. Returns null when not found. Scope enforcement
+ * is left to the caller (the row carries project_id/location_id for the check).
+ */
+export async function getDeadlineById(id: string): Promise<Deadline | null> {
+  const [row] = await db.select().from(deadlines).where(eq(deadlines.id, id)).limit(1);
+  return row ?? null;
+}
