@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { aggregateDashboard, type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
+import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,13 @@ export async function GET(req: NextRequest) {
     to: sp.get("to") ?? undefined,
     scope: (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive"),
   };
+
+  // Role & scope authorization (RBAC simulation via x-persona-id header).
+  const persona = getPersonaFromHeaders(req.headers);
+  const authz = authorizeDashboard(persona, filter);
+  if (!authz.ok) {
+    return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
+  }
 
   try {
     const data = await aggregateDashboard(filter);
