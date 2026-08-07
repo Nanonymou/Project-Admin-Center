@@ -94,17 +94,17 @@ export function AgingDashboardClient() {
 
   const overduePct = summary.totalAmount > 0 ? (summary.byBucket[">90"].amount / summary.totalAmount) * 100 : 0;
 
-  const chartData = useMemo(
-    () =>
-      projectAging.map((r) => ({
-        project: r.code,
-        "0-30": r.buckets["0-30"],
-        "31-60": r.buckets["31-60"],
-        "61-90": r.buckets["61-90"],
-        ">90": r.buckets[">90"],
-      })),
-    [projectAging],
-  );
+  const [chartDim, setChartDim] = useState<"project" | "location">("project");
+  const chartData = useMemo(() => {
+    const map = new Map<string, Record<MockInvoice["agingBucket"], number>>();
+    for (const inv of outstanding) {
+      const key = chartDim === "project" ? inv.projectCode : inv.locationName;
+      const row = map.get(key) ?? { "0-30": 0, "31-60": 0, "61-90": 0, ">90": 0 };
+      row[inv.agingBucket] += inv.amount;
+      map.set(key, row);
+    }
+    return Array.from(map.entries()).map(([label, buckets]) => ({ label, ...buckets }));
+  }, [outstanding, chartDim]);
   const avgAge = useMemo(() => weightedAverageAge(outstanding), [outstanding]);
 
   const [selectedBucket, setSelectedBucket] = useState<MockInvoice["agingBucket"] | null>(null);
@@ -199,16 +199,35 @@ export function AgingDashboardClient() {
 
         {chartData.length > 0 && (
           <Card>
-            <CardHeader>
-              <CardTitle>Perbandingan Nilai Aging per Project</CardTitle>
-              <CardDescription>Batang bertumpuk — kontribusi tiap bucket aging per project.</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>Perbandingan Nilai Aging</CardTitle>
+                <CardDescription>Batang bertumpuk — kontribusi tiap bucket aging.</CardDescription>
+              </div>
+              <div className="flex items-center gap-1 text-xs">
+                {(["project", "location"] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setChartDim(d)}
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-[11px] font-medium",
+                      chartDim === d
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent",
+                    )}
+                  >
+                    {d === "project" ? "Per Project" : "Per Lokasi"}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-                    <XAxis dataKey="project" tick={{ fontSize: 11 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(215 16% 47%)" tickLine={false} axisLine={false} />
                     <YAxis
                       tick={{ fontSize: 10 }}
                       stroke="hsl(215 16% 47%)"
