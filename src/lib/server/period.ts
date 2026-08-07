@@ -1,3 +1,5 @@
+import { getInvoicePeriodRange } from "@/lib/mock/cutoff-config";
+
 export type ResolvedPeriod = { from?: string; to?: string; label: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -9,11 +11,18 @@ function iso(d: Date): string {
 /**
  * Resolve dashboard period parameters from a query string.
  * Priority: `period` preset > explicit `from`/`to` > unbounded.
- * Presets: 7d, 30d, 90d, this-month, last-month, ytd.
+ * Calendar presets: 7d, 30d, 90d, this-month, last-month, ytd.
+ * Cut-off-period presets (`current-period`, `last-period`) resolve against the
+ * project's invoice cut-off window (§16.A) and therefore require `projectCode`;
+ * without it they degrade to the default 30-day window.
  */
-export function parsePeriod(sp: URLSearchParams, ref = new Date()): ResolvedPeriod {
+export function parsePeriod(
+  sp: URLSearchParams,
+  ref = new Date(),
+  projectCode?: string,
+): ResolvedPeriod {
   const preset = sp.get("period");
-  if (preset) return resolvePreset(preset, ref);
+  if (preset) return resolvePreset(preset, ref, projectCode);
 
   const fromRaw = sp.get("from");
   const toRaw = sp.get("to");
@@ -24,7 +33,14 @@ export function parsePeriod(sp: URLSearchParams, ref = new Date()): ResolvedPeri
   return { label: "Semua periode" };
 }
 
-function resolvePreset(preset: string, ref: Date): ResolvedPeriod {
+function resolvePreset(preset: string, ref: Date, projectCode?: string): ResolvedPeriod {
+  // Cut-off-aware periods are config-driven per project; they need a project.
+  if ((preset === "current-period" || preset === "last-period") && projectCode) {
+    const r = getInvoicePeriodRange(projectCode, ref, preset === "current-period" ? 0 : -1);
+    const label = preset === "current-period" ? "Periode berjalan" : "Periode lalu";
+    return { from: r.from, to: r.to, label: `${label} (${r.label})` };
+  }
+
   const to = new Date(ref);
   const from = new Date(ref);
   switch (preset) {

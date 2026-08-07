@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
-  const period = parsePeriod(sp);
+  const period = parsePeriod(sp, undefined, projectId);
   const granularity: PeriodGranularity = sp.get("granularity") === "month" ? "month" : "day";
   const filter: DashboardFilter = {
     projectId,

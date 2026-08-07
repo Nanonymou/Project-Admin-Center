@@ -31,6 +31,46 @@ export function getCutOffDate(projectCode: string, ref = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
 
+function isoLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export type InvoicePeriodRange = { from: string; to: string; label: string };
+
+/**
+ * Resolve the invoice-period window [from, to] for a project. `offset` shifts by
+ * whole periods: 0 = the period containing `ref`, -1 = the previous period, and
+ * so on. Driven entirely by the project's cut-off type (§16.A) — a "15-14"
+ * project's period spans the 15th to the 14th of the next month, while a
+ * "1-end" project's period is the calendar month. No project-named branches.
+ */
+export function getInvoicePeriodRange(
+  projectCode: string,
+  ref = new Date(),
+  offset = 0,
+): InvoicePeriodRange {
+  const type = getInvoicePeriodType(projectCode);
+  const d = new Date(ref);
+  let start: Date;
+  let end: Date;
+  if (type === "15-14") {
+    // The period containing `ref` opens on the 15th: this month's 15th when
+    // today is on/after the 15th, otherwise the previous month's 15th.
+    const baseMonth = d.getDate() >= 15 ? d.getMonth() : d.getMonth() - 1;
+    start = new Date(d.getFullYear(), baseMonth + offset, 15);
+    end = new Date(d.getFullYear(), baseMonth + offset + 1, 14);
+  } else {
+    start = new Date(d.getFullYear(), d.getMonth() + offset, 1);
+    end = new Date(d.getFullYear(), d.getMonth() + offset + 1, 0);
+  }
+  const fmt = (x: Date) =>
+    x.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  return { from: isoLocal(start), to: isoLocal(end), label: `${fmt(start)} – ${fmt(end)}` };
+}
+
 export function daysUntilCutOff(projectCode: string, ref = new Date()): number {
   const cutoff = getCutOffDate(projectCode, ref);
   const today = new Date(ref);

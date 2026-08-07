@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get("projectId") ?? undefined;
-  const period = parsePeriod(sp);
+  const period = parsePeriod(sp, undefined, projectId);
   const filter: DashboardFilter = {
     projectId,
     locationId: sp.get("locationId") ?? undefined,
