@@ -8,6 +8,7 @@ export * from "./daily-margin-view";
 export * from "./margin-by-month-view";
 export * from "./cost-by-site-view";
 export * from "./cost-by-month-view";
+export * from "./cost-by-area-view";
 export * from "./sales-by-site-view";
 export * from "./master-categories";
 export * from "./master-areas";
