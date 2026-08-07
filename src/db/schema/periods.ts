@@ -13,6 +13,7 @@ export const periodAction = pgEnum("period_action", [
   "lock",
   "unlock",
   "reopen",
+  "set_cutoff",
 ]);
 
 /**

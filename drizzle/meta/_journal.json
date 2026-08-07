@@ -162,6 +162,13 @@
       "when": 1786112722447,
       "tag": "0022_rapid_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786113116322,
+      "tag": "0023_strange_santa_claus",
+      "breakpoints": true
     }
   ]
 }

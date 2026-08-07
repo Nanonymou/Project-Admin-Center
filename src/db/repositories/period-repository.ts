@@ -9,7 +9,8 @@ export type PeriodActionValue =
   | "close"
   | "lock"
   | "unlock"
-  | "reopen";
+  | "reopen"
+  | "set_cutoff";
 
 export type PeriodFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -52,6 +53,59 @@ export async function getPeriodById(id: string): Promise<Period | null> {
 /** Append a period history entry. */
 export async function addPeriodHistory(entry: NewPeriodHistoryEntry): Promise<void> {
   await db.insert(periodHistory).values(entry);
+}
+
+export type SetCutoffInput = {
+  projectId: string;
+  locationId: string;
+  periodLabel: string;
+  periodType?: string;
+  periodStart?: string;
+  periodEnd: string; // the cut-off date
+  actor: string;
+  note?: string;
+};
+
+/**
+ * Set (or override) a period's cut-off window without changing its lifecycle
+ * status, recording a "set_cutoff" history entry. Upserts the period; on an
+ * existing row only the window is updated, the status is preserved.
+ */
+export async function setPeriodCutoff(input: SetCutoffInput): Promise<Period> {
+  return db.transaction(async (tx) => {
+    const [period] = await tx
+      .insert(periods)
+      .values({
+        projectId: input.projectId,
+        locationId: input.locationId,
+        periodLabel: input.periodLabel,
+        periodType: input.periodType,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        createdBy: input.actor,
+      })
+      .onConflictDoUpdate({
+        target: [periods.projectId, periods.locationId, periods.periodLabel],
+        set: {
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    await tx.insert(periodHistory).values({
+      periodId: period.id,
+      projectId: input.projectId,
+      locationId: input.locationId,
+      action: "set_cutoff",
+      actor: input.actor,
+      note: input.note ?? `Cut-off diset ke ${input.periodEnd}.`,
+    });
+
+    return period;
+  });
 }
 
 export type SetPeriodStatusInput = {

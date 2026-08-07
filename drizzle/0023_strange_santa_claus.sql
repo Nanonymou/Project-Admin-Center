@@ -1,0 +1,1 @@
+ALTER TYPE "public"."period_action" ADD VALUE 'set_cutoff';
