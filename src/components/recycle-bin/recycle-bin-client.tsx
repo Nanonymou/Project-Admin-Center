@@ -8,6 +8,7 @@ import { KpiCard } from "@/components/common/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   buildDeletedItems,
@@ -28,6 +29,13 @@ export function RecycleBinClient() {
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [restoreConfirm, setRestoreConfirm] = useState<DeletedItem | "bulk" | null>(null);
+
+  function confirmRestore() {
+    if (restoreConfirm === "bulk") bulkAction("restore");
+    else if (restoreConfirm) restore(restoreConfirm);
+    setRestoreConfirm(null);
+  }
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -164,7 +172,7 @@ export function RecycleBinClient() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-primary/5 px-3 py-2">
                 <span className="text-xs font-medium">{selected.size} item dipilih</span>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" className="h-7" onClick={() => bulkAction("restore")}>
+                  <Button size="sm" variant="outline" className="h-7" onClick={() => setRestoreConfirm("bulk")}>
                     <RotateCcw className="h-3.5 w-3.5" />
                     Pulihkan
                   </Button>
@@ -248,7 +256,7 @@ export function RecycleBinClient() {
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="inline-flex items-center gap-2">
-                            <Button size="sm" variant="outline" className="h-7" disabled={!canManage} onClick={() => restore(it)}>
+                            <Button size="sm" variant="outline" className="h-7" disabled={!canManage} onClick={() => setRestoreConfirm(it)}>
                               <RotateCcw className="h-3.5 w-3.5" />
                               Pulihkan
                             </Button>
@@ -280,6 +288,34 @@ export function RecycleBinClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={restoreConfirm !== null}
+        onClose={() => setRestoreConfirm(null)}
+        title="Pulihkan Data"
+        description={
+          restoreConfirm === "bulk"
+            ? `${selected.size} item akan dipulihkan`
+            : restoreConfirm
+              ? restoreConfirm.label
+              : undefined
+        }
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRestoreConfirm(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={confirmRestore}>
+              <RotateCcw className="h-4 w-4" />
+              Pulihkan
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Data akan dikembalikan ke lokasi asalnya dan keluar dari Recycle Bin.
+        </p>
+      </Dialog>
     </div>
   );
 }
