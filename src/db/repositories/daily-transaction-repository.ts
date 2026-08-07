@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, lte, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
@@ -318,6 +318,32 @@ export async function unlockDailyTransaction(
     .set({ status: reopenTo, lockedAt: null, updatedAt: new Date() })
     .where(and(eq(dailyTransactions.id, id), eq(dailyTransactions.status, "locked")))
     .returning();
+  return row ?? null;
+}
+
+/**
+ * Find the most recent daily transaction for a site of the given kind, strictly
+ * before `beforeDate` when provided. Used by "salin kemarin" to locate the last
+ * entry to copy forward. Returns null when there is none.
+ */
+export async function findLatestTransaction(
+  projectId: string,
+  locationId: string,
+  kind: "sales" | "cost",
+  beforeDate?: string,
+): Promise<DailyTransaction | null> {
+  const conds: SQL[] = [
+    eq(dailyTransactions.projectId, projectId),
+    eq(dailyTransactions.locationId, locationId),
+    eq(dailyTransactions.kind, kind),
+  ];
+  if (beforeDate) conds.push(lt(dailyTransactions.trxDate, beforeDate));
+  const [row] = await db
+    .select()
+    .from(dailyTransactions)
+    .where(and(...conds))
+    .orderBy(desc(dailyTransactions.trxDate))
+    .limit(1);
   return row ?? null;
 }
 
