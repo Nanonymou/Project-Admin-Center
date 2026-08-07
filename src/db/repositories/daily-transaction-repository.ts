@@ -407,6 +407,37 @@ export async function aggregateByCategory(
     .sort((a, b) => b.amount - a.amount);
 }
 
+export type AreaTotal = { area: string; sales: number; transactions: number };
+
+/**
+ * Sales totals grouped by sales area, for the given kind (defaults to sales).
+ * Rows with no area are bucketed under "(Tanpa Area)". Multi-tenancy enforced by
+ * the header filter in `buildWhere`.
+ */
+export async function aggregateSalesByArea(
+  filter: DashboardFilter,
+  kind: "sales" | "cost" = "sales",
+): Promise<AreaTotal[]> {
+  const where = buildWhere(filter);
+  const kindCond = eq(dailyTransactions.kind, kind);
+  const combined = where ? and(where, kindCond) : kindCond;
+  const areaExpr = sql<string>`coalesce(${dailyTransactions.area}, '(Tanpa Area)')`;
+
+  const rows = await db
+    .select({
+      area: areaExpr,
+      sales: sql<string>`coalesce(sum(${dailyTransactions.total}), 0)`,
+      transactions: count(),
+    })
+    .from(dailyTransactions)
+    .where(combined)
+    .groupBy(areaExpr);
+
+  return rows
+    .map((r) => ({ area: r.area, sales: Number(r.sales), transactions: Number(r.transactions) }))
+    .sort((a, b) => b.sales - a.sales);
+}
+
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
 export type PeriodGranularity = "day" | "month";
 
