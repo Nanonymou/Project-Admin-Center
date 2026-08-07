@@ -225,6 +225,13 @@
       "when": 1786116319493,
       "tag": "0031_green_multiple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786117288794,
+      "tag": "0032_curly_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

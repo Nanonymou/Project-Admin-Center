@@ -27,3 +27,4 @@ export * from "./audit-logs";
 export * from "./backups";
 export * from "./invoice-activities";
 export * from "./invoice-attachments";
+export * from "./all-attachments-view";
