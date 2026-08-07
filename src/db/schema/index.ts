@@ -3,6 +3,7 @@ export * from "./daily-transactions";
 export * from "./daily-transaction-logs";
 export * from "./transaction-attachments";
 export * from "./daily-margin-view";
+export * from "./margin-by-month-view";
 export * from "./cost-by-site-view";
 export * from "./cost-by-month-view";
 export * from "./sales-by-site-view";
