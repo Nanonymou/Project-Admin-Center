@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, lte, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailyTransactionLines,
+  dailyTransactionLogs,
   dailyTransactions,
   type DailyTransaction,
   type DailyTransactionLine,
@@ -201,6 +202,17 @@ export async function createDailySubmission(input: DailySubmissionInput): Promis
       await tx.insert(dailyTransactionLines).values(rows);
     }
 
+    // Change-log: record the submission so the entry's history is auditable.
+    await tx.insert(dailyTransactionLogs).values({
+      transactionId: header.id,
+      projectId: input.projectId,
+      locationId: input.locationId,
+      action: "submit",
+      actor: input.submittedBy,
+      toStatus: "submitted",
+      detail: `Entri ${input.kind} ${input.trxDate} disubmit.`,
+    });
+
     return header;
   });
 }
@@ -363,6 +375,18 @@ export async function updateDailySubmission(
       }));
       await tx.insert(dailyTransactionLines).values(rows);
     }
+
+    // Change-log: record the edit for the entry's history.
+    await tx.insert(dailyTransactionLogs).values({
+      transactionId: id,
+      projectId: input.projectId,
+      locationId: input.locationId,
+      action: "edit",
+      actor: input.submittedBy,
+      toStatus: header.status,
+      detail: `Entri ${input.kind} ${input.trxDate} diubah.`,
+    });
+
     return header;
   });
 }
