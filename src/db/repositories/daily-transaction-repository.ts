@@ -253,6 +253,34 @@ export async function aggregateSubmissionStatusBySite(
   }));
 }
 
+export type DailyTransactionStatusValue = DailyTransaction["status"];
+
+/**
+ * Fetch a single daily transaction by id (or null). The row carries
+ * project_id/location_id so the caller can enforce scope before mutating.
+ */
+export async function getDailyTransactionById(id: string): Promise<DailyTransaction | null> {
+  const [row] = await db.select().from(dailyTransactions).where(eq(dailyTransactions.id, id)).limit(1);
+  return row ?? null;
+}
+
+/**
+ * Unlock a locked daily transaction — reopen it to `submitted` and clear the
+ * lock timestamp so a site can correct it. Returns the updated row, or null when
+ * the id does not exist. Only transactions currently `locked` are changed.
+ */
+export async function unlockDailyTransaction(
+  id: string,
+  reopenTo: DailyTransactionStatusValue = "submitted",
+): Promise<DailyTransaction | null> {
+  const [row] = await db
+    .update(dailyTransactions)
+    .set({ status: reopenTo, lockedAt: null, updatedAt: new Date() })
+    .where(and(eq(dailyTransactions.id, id), eq(dailyTransactions.status, "locked")))
+    .returning();
+  return row ?? null;
+}
+
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
 export type PeriodGranularity = "day" | "month";
 
