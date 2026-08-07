@@ -2,6 +2,15 @@ import { and, desc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { periodHistory, periods, type NewPeriodHistoryEntry, type Period } from "@/db/schema";
 
+export type PeriodStatusValue = Period["status"];
+export type PeriodActionValue =
+  | "open"
+  | "start_closing"
+  | "close"
+  | "lock"
+  | "unlock"
+  | "reopen";
+
 export type PeriodFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
   projectId?: string;
@@ -43,4 +52,60 @@ export async function getPeriodById(id: string): Promise<Period | null> {
 /** Append a period history entry. */
 export async function addPeriodHistory(entry: NewPeriodHistoryEntry): Promise<void> {
   await db.insert(periodHistory).values(entry);
+}
+
+export type SetPeriodStatusInput = {
+  projectId: string;
+  locationId: string;
+  periodLabel: string;
+  periodType?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  status: PeriodStatusValue;
+  action: PeriodActionValue;
+  actor: string;
+  note?: string;
+};
+
+/**
+ * Transition a period to a new status (upsert) and append a matching history
+ * entry, atomically. Returns the updated period row.
+ */
+export async function setPeriodStatus(input: SetPeriodStatusInput): Promise<Period> {
+  return db.transaction(async (tx) => {
+    const [period] = await tx
+      .insert(periods)
+      .values({
+        projectId: input.projectId,
+        locationId: input.locationId,
+        periodLabel: input.periodLabel,
+        periodType: input.periodType,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        status: input.status,
+        createdBy: input.actor,
+      })
+      .onConflictDoUpdate({
+        target: [periods.projectId, periods.locationId, periods.periodLabel],
+        set: {
+          status: input.status,
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    await tx.insert(periodHistory).values({
+      periodId: period.id,
+      projectId: input.projectId,
+      locationId: input.locationId,
+      action: input.action,
+      actor: input.actor,
+      note: input.note,
+    });
+
+    return period;
+  });
 }
