@@ -70,6 +70,41 @@ export async function addDailyClosingHistory(entry: NewDailyClosingHistoryEntry)
   await db.insert(dailyClosingHistory).values(entry);
 }
 
+export type ClosingHistoryFilter = {
+  closingId?: string;
+  projectId?: string;
+  locationId?: string;
+  limit?: number;
+  scope?: "tenant" | "executive";
+};
+
+/**
+ * List closing history entries, newest first — for a single closing or a site's
+ * recent status changes. Tenant-scoped: a query without a closingId and not in
+ * executive scope requires a projectId.
+ */
+export async function listClosingHistory(
+  filter: ClosingHistoryFilter,
+): Promise<DailyClosingHistoryEntry[]> {
+  const conds: SQL[] = [];
+  if (filter.closingId) conds.push(eq(dailyClosingHistory.closingId, filter.closingId));
+  if (filter.scope !== "executive" && !filter.closingId) {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped history queries");
+    conds.push(eq(dailyClosingHistory.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(dailyClosingHistory.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(dailyClosingHistory.locationId, filter.locationId));
+
+  const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
+  return db
+    .select()
+    .from(dailyClosingHistory)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(dailyClosingHistory.createdAt))
+    .limit(limit);
+}
+
 export type ClosingStatusValue = DailyClosing["status"];
 export type ClosingActionValue = "open" | "submit" | "approve" | "reject" | "lock" | "reopen";
 
