@@ -1,0 +1,1 @@
+CREATE INDEX "invoices_aging_idx" ON "invoices" USING btree ("project_id","location_id","aging_bucket","due_date");

@@ -43,6 +43,8 @@ export const invoices = pgTable(
     dueIdx: index("invoices_due_idx").on(t.dueDate),
     // Serves the KPI Utama Site aggregation: outstanding/collection per site.
     kpiIdx: index("invoices_kpi_idx").on(t.projectId, t.locationId, t.status),
+    // Serves the Invoice Aging Dashboard: aging buckets per site ordered by due date.
+    agingIdx: index("invoices_aging_idx").on(t.projectId, t.locationId, t.agingBucket, t.dueDate),
   }),
 );
 

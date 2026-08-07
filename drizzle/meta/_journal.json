@@ -232,6 +232,13 @@
       "when": 1786117288794,
       "tag": "0032_curly_supreme_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786126814002,
+      "tag": "0033_natural_komodo",
+      "breakpoints": true
     }
   ]
 }
