@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { RotateCcw, Trash2, Trash } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, RotateCcw, Trash2, Trash } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -25,6 +25,7 @@ export function RecycleBinClient() {
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<DeletedType | "all">("all");
   const [notice, setNotice] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const items = useMemo(() => seeded.filter((i) => !removedIds.has(i.id)), [seeded, removedIds]);
   const filtered = useMemo(
@@ -124,11 +125,27 @@ export function RecycleBinClient() {
                   )}
                   {filtered.map((it) => {
                     const meta = DELETED_TYPE_META[it.type];
+                    const expanded = expandedId === it.id;
                     return (
-                      <tr key={it.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <Fragment key={it.id}>
+                      <tr className="border-b last:border-0 hover:bg-muted/30">
                         <td className="px-3 py-2">
-                          <div className="font-medium">{it.label}</div>
-                          <div className="text-[11px] text-muted-foreground">{it.detail}</div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedId(expanded ? null : it.id)}
+                            className="flex items-start gap-1.5 text-left"
+                            aria-expanded={expanded}
+                          >
+                            {expanded ? (
+                              <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            )}
+                            <span>
+                              <span className="block font-medium">{it.label}</span>
+                              <span className="block text-[11px] text-muted-foreground">{it.detail}</span>
+                            </span>
+                          </button>
                         </td>
                         <td className="px-3 py-2">
                           <Badge variant={meta.variant}>{meta.label}</Badge>
@@ -151,6 +168,19 @@ export function RecycleBinClient() {
                           </div>
                         </td>
                       </tr>
+                      {expanded && (
+                        <tr className="border-b bg-muted/20">
+                          <td colSpan={6} className="px-3 py-3">
+                            <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                              <Meta label="ID Asli" value={it.originalId} />
+                              <Meta label="Alasan Hapus" value={it.reason} />
+                              <Meta label="Tanggal Pembersihan" value={it.purgeDate} />
+                              <Meta label="Scope" value={`${it.projectCode} · ${it.locationName}`} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                     );
                   })}
                 </tbody>
@@ -159,6 +189,15 @@ export function RecycleBinClient() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium">{value}</div>
     </div>
   );
 }

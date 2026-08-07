@@ -3,6 +3,7 @@ export type DeletedType = "invoice" | "daily_sales" | "daily_cost" | "user" | "m
 
 export type DeletedItem = {
   id: string;
+  originalId: string;
   type: DeletedType;
   label: string;
   detail: string;
@@ -10,6 +11,8 @@ export type DeletedItem = {
   locationName: string;
   deletedAt: string;
   deletedBy: string;
+  reason: string;
+  purgeDate: string;
   daysUntilPurge: number;
 };
 
@@ -48,8 +51,13 @@ export function buildDeletedItems(count = 14): DeletedItem[] {
       user: `user${100 + (seed % 400)}@catering.id`,
       master: `Konfigurasi ${["Harga", "Area", "Kategori"][seed % 3]}`,
     };
+    const reasons = ["Duplikat entri", "Salah input", "Permintaan koreksi", "Data uji coba"];
+    const daysUntilPurge = Math.max(1, 30 - (seed % 25));
+    const purge = new Date();
+    purge.setDate(purge.getDate() + daysUntilPurge);
     out.push({
       id: `del-${i}`,
+      originalId: `${type.toUpperCase()}-${1000 + (seed % 9000)}`,
       type,
       label: labels[type],
       detail: `${project} · ${location}`,
@@ -57,7 +65,9 @@ export function buildDeletedItems(count = 14): DeletedItem[] {
       locationName: location,
       deletedAt: d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
       deletedBy: ACTORS[seed % ACTORS.length],
-      daysUntilPurge: Math.max(1, 30 - (seed % 25)),
+      reason: reasons[seed % reasons.length],
+      purgeDate: purge.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }),
+      daysUntilPurge,
     });
   }
   return out.sort((a, b) => a.daysUntilPurge - b.daysUntilPurge);
