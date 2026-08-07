@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { HardDrive, Info, MapPin, Search, UploadCloud, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { HardDrive, Info, MapPin, Radio, Search, UploadCloud, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -26,25 +27,48 @@ export function UserMonitoringClient() {
 
   const scopes = useMemo(() => Array.from(new Set(users.map((u) => u.scope))).sort(), [users]);
 
+  // Simulated real-time status updates.
+  const [live, setLive] = useState(false);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setTick((t) => t + 1), 3500);
+    return () => clearInterval(id);
+  }, [live]);
+
+  const displayUsers = useMemo(() => {
+    if (!live) return users;
+    return users.map((u, i) => {
+      const shift = (i + tick) % 7;
+      const status: UserStatus = shift === 0 ? "active" : shift === 1 ? "idle" : shift === 2 ? "offline" : u.status;
+      return {
+        ...u,
+        status,
+        lastActive: status === "active" ? "Sekarang" : u.lastActive,
+        sessions: status === "active" ? Math.max(1, u.sessions) : u.sessions,
+      };
+    });
+  }, [users, live, tick]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return users.filter((u) => {
+    return displayUsers.filter((u) => {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
       if (scopeFilter !== "all" && u.scope !== scopeFilter) return false;
       if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q) && !u.scope.toLowerCase().includes(q))
         return false;
       return true;
     });
-  }, [users, statusFilter, scopeFilter, search]);
+  }, [displayUsers, statusFilter, scopeFilter, search]);
 
   const stats = useMemo(
     () => ({
-      total: users.length,
-      active: users.filter((u) => u.status === "active").length,
-      storageMb: users.reduce((s, u) => s + u.storageMb, 0),
-      uploads: users.reduce((s, u) => s + u.uploads, 0),
+      total: displayUsers.length,
+      active: displayUsers.filter((u) => u.status === "active").length,
+      storageMb: displayUsers.reduce((s, u) => s + u.storageMb, 0),
+      uploads: displayUsers.reduce((s, u) => s + u.uploads, 0),
     }),
-    [users],
+    [displayUsers],
   );
 
   const maxStorage = Math.max(1, ...users.map((u) => u.storageMb));
@@ -56,6 +80,12 @@ export function UserMonitoringClient() {
         title="User & Storage Monitoring"
         description="Pantau aktivitas user, sesi aktif, dan penggunaan penyimpanan lampiran."
         breadcrumbs={[{ label: "Master Data" }, { label: "User & Storage" }]}
+        actions={
+          <Button size="sm" variant={live ? "default" : "outline"} onClick={() => setLive((v) => !v)}>
+            <Radio className={cn("h-4 w-4", live && "animate-pulse")} />
+            {live ? "Live" : "Aktifkan Live"}
+          </Button>
+        }
       />
 
       <div className="space-y-6 p-4 md:p-6">
