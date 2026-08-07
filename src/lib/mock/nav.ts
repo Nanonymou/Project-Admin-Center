@@ -70,6 +70,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Lock Period", href: "/lock-period", icon: Settings2 },
       { label: "Configuration", href: "/master/config", icon: Settings2 },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
+      { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
     ],
   },
 ];
