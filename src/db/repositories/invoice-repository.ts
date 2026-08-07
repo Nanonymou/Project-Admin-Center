@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, ne, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { invoices, type Invoice } from "@/db/schema";
 
@@ -51,4 +51,41 @@ export async function listOutstandingInvoices(filter: InvoiceFilter): Promise<In
   const where = buildWhere(filter, outstanding);
 
   return db.select().from(invoices).where(where).orderBy(desc(invoices.dueDate));
+}
+
+export type OutstandingAggregate = {
+  outstandingCount: number;
+  outstandingAmount: number;
+  overdueCount: number;
+  overdueAmount: number;
+};
+
+/**
+ * Aggregate outstanding-invoice KPIs for the KPI summary — total count/amount of
+ * invoices not yet settled, and the overdue subset. Multi-tenancy is enforced by
+ * `buildWhere`.
+ */
+export async function aggregateOutstanding(filter: InvoiceFilter): Promise<OutstandingAggregate> {
+  const outstanding = or(ne(invoices.status, "settled"), eq(invoices.status, "overdue"));
+  const where = buildWhere(filter, outstanding);
+
+  const overdueAmt = sql<string>`coalesce(sum(case when ${invoices.status} = 'overdue' then ${invoices.amount} else 0 end), 0)`;
+  const overdueCnt = sql<number>`count(*) filter (where ${invoices.status} = 'overdue')`;
+
+  const [row] = await db
+    .select({
+      outstandingCount: count(),
+      outstandingAmount: sql<string>`coalesce(sum(${invoices.amount}), 0)`,
+      overdueCount: overdueCnt,
+      overdueAmount: overdueAmt,
+    })
+    .from(invoices)
+    .where(where);
+
+  return {
+    outstandingCount: Number(row?.outstandingCount ?? 0),
+    outstandingAmount: Number(row?.outstandingAmount ?? 0),
+    overdueCount: Number(row?.overdueCount ?? 0),
+    overdueAmount: Number(row?.overdueAmount ?? 0),
+  };
 }
