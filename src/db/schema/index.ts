@@ -2,6 +2,7 @@ export * from "./columns";
 export * from "./daily-transactions";
 export * from "./daily-transaction-logs";
 export * from "./daily-closings";
+export * from "./daily-closing-history";
 export * from "./transaction-attachments";
 export * from "./daily-margin-view";
 export * from "./margin-by-month-view";
