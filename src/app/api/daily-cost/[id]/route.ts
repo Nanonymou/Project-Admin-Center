@@ -8,6 +8,7 @@ import {
 import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
+import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { prepareDailyCostSubmission } from "@/lib/server/services/daily-cost-submission-service";
 
@@ -91,6 +92,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
     if (await isPeriodLocked(existing.projectId, existing.locationId, trxDate)) {
       return NextResponse.json({ error: "Periode terkunci — entri tidak dapat diubah." }, { status: 409 });
+    }
+    if (isInputClosedForDate(existing.projectId, trxDate)) {
+      return NextResponse.json(
+        { error: "Periode sudah melewati cut-off — entri tidak dapat diubah." },
+        { status: 409 },
+      );
     }
 
     const updated = await updateDailySubmission(id, prepared.input);
