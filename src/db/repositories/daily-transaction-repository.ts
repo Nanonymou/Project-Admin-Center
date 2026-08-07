@@ -1,6 +1,11 @@
 import { and, count, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { dailyTransactions } from "@/db/schema";
+import {
+  dailyTransactionLines,
+  dailyTransactions,
+  type DailyTransaction,
+  type NewDailyTransactionLine,
+} from "@/db/schema";
 
 export type DashboardFilter = {
   /** Required for tenant scope; omit only for the Executive Dashboard. */
@@ -127,6 +132,74 @@ export async function aggregateSalesCostBySite(filter: DashboardFilter): Promise
 export async function aggregateKpisBySite(filter: DashboardFilter): Promise<SiteKpiAggregate[]> {
   const sites = await aggregateSalesCostBySite(filter);
   return sites.sort((a, b) => b.profit - a.profit);
+}
+
+export type DailySubmissionLine = {
+  categoryKey: string;
+  label: string;
+  qty?: string;
+  unitPrice?: string;
+  amount: string;
+  isDeduction?: boolean;
+};
+
+export type DailySubmissionInput = {
+  projectId: string;
+  locationId: string;
+  kind: "sales" | "cost";
+  trxDate: string; // YYYY-MM-DD
+  area?: string;
+  subtotal: string;
+  tax: string;
+  total: string;
+  isLate: boolean;
+  submittedBy: string;
+  lines: DailySubmissionLine[];
+};
+
+/**
+ * Persist a daily submission (sales or cost) header plus its line items in one
+ * transaction, marked as submitted. Returns the created header. The caller is
+ * responsible for authorization and for computing totals / the late flag.
+ */
+export async function createDailySubmission(input: DailySubmissionInput): Promise<DailyTransaction> {
+  return db.transaction(async (tx) => {
+    const [header] = await tx
+      .insert(dailyTransactions)
+      .values({
+        projectId: input.projectId,
+        locationId: input.locationId,
+        kind: input.kind,
+        trxDate: input.trxDate,
+        area: input.area,
+        status: "submitted",
+        subtotal: input.subtotal,
+        tax: input.tax,
+        total: input.total,
+        submittedAt: new Date(),
+        submittedBy: input.submittedBy,
+        isLate: input.isLate,
+        createdBy: input.submittedBy,
+      })
+      .returning();
+
+    if (input.lines.length) {
+      const rows: NewDailyTransactionLine[] = input.lines.map((l) => ({
+        transactionId: header.id,
+        projectId: input.projectId,
+        locationId: input.locationId,
+        categoryKey: l.categoryKey,
+        label: l.label,
+        qty: l.qty ?? "1",
+        unitPrice: l.unitPrice ?? l.amount,
+        amount: l.amount,
+        isDeduction: l.isDeduction ?? false,
+      }));
+      await tx.insert(dailyTransactionLines).values(rows);
+    }
+
+    return header;
+  });
 }
 
 export type PeriodPoint = { period: string; sales: number; cost: number; profit: number };
