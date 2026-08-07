@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { aggregateKpisBySite, type DashboardFilter } from "@/db/repositories/daily-transaction-repository";
 import { rankList, isRankMetric, type RankMetric } from "@/lib/server/services/ranking-service";
-import { authorizeDashboard, getPersonaFromHeaders } from "@/lib/server/rbac";
+import { authorizeRanking, getPersonaFromHeaders } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI, scaleSiteKpisByPeriod } from "@/lib/mock/site-kpi";
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   };
 
   const persona = getPersonaFromHeaders(req.headers);
-  const authz = authorizeDashboard(persona, filter);
+  const authz = authorizeRanking(persona, filter);
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }

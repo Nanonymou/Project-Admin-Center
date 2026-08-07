@@ -44,3 +44,23 @@ export function authorizeDashboard(
 
   return { ok: true };
 }
+
+/**
+ * Authorization for the site-ranking endpoint. Cross-site ranking (comparing
+ * multiple sites) is a Leader/Super Admin capability; a Site Admin may only
+ * rank within their own single-site scope.
+ */
+export function authorizeRanking(
+  persona: Persona,
+  filter: { projectId?: string; locationId?: string; scope?: "tenant" | "executive" },
+): AuthzResult {
+  const base = authorizeDashboard(persona, filter);
+  if (!base.ok) return base;
+
+  const isCrossSite = filter.scope === "executive" || (!filter.locationId && persona.scope.locations.length !== 1);
+  const canRankAcrossSites = persona.role === "super_admin" || persona.role === "leader_admin";
+  if (isCrossSite && !canRankAcrossSites) {
+    return { ok: false, status: 403, message: "Ranking lintas site hanya untuk Leader/Super Admin." };
+  }
+  return { ok: true };
+}
