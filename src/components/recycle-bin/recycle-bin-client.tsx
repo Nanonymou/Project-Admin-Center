@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, RotateCcw, Trash2, Trash } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCcw, Search, Trash2, Trash } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -24,6 +24,7 @@ export function RecycleBinClient() {
   const seeded = useMemo(() => buildDeletedItems(), []);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<DeletedType | "all">("all");
+  const [search, setSearch] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -38,10 +39,21 @@ export function RecycleBinClient() {
   }
 
   const items = useMemo(() => seeded.filter((i) => !removedIds.has(i.id)), [seeded, removedIds]);
-  const filtered = useMemo(
-    () => (typeFilter === "all" ? items : items.filter((i) => i.type === typeFilter)),
-    [items, typeFilter],
-  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((i) => {
+      if (typeFilter !== "all" && i.type !== typeFilter) return false;
+      if (
+        q &&
+        !i.label.toLowerCase().includes(q) &&
+        !i.originalId.toLowerCase().includes(q) &&
+        !i.deletedBy.toLowerCase().includes(q) &&
+        !i.detail.toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [items, typeFilter, search]);
 
   const counts = useMemo(
     () => ({
@@ -120,6 +132,16 @@ export function RecycleBinClient() {
               <CardDescription>Pulihkan atau hapus permanen sebelum masa retensi habis.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari item, ID, atau user…"
+                  className="h-7 w-48 rounded-md border bg-background pl-7 pr-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
               {typeTabs.map((t) => (
                 <button
                   key={t}
