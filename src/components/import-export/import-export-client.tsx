@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Database, Download, FileSpreadsheet, Info, Upload, Wallet, ShoppingCart, FileText } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -66,12 +66,46 @@ const DATA_KINDS: DataKind[] = [
 
 type Job = { id: string; kind: string; direction: "export" | "import"; file: string; rows: number; at: string; by: string };
 
+function buildJobHistory(): Job[] {
+  const kinds = ["Daily Sales", "Daily Cost", "Invoice", "Master Data"];
+  const actors = ["Leader Admin", "Super Admin", "Site Admin"];
+  const out: Job[] = [];
+  for (let i = 0; i < 10; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    d.setHours(9 + (i % 8), (i * 7) % 60, 0, 0);
+    const direction: "export" | "import" = i % 3 === 0 ? "import" : "export";
+    const kind = kinds[i % kinds.length];
+    out.push({
+      id: `hist-${i}`,
+      kind,
+      direction,
+      file: `${kind.toLowerCase().replace(/\s+/g, "_")}.${direction === "export" ? "csv" : "csv"}`,
+      rows: 20 + ((i * 37) % 900),
+      at: d.toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+      by: actors[i % actors.length],
+    });
+  }
+  return out;
+}
+
 export function ImportExportClient() {
   const { persona } = usePersona();
   const canManage = persona.role === "leader_admin" || persona.role === "super_admin" || persona.role === "site_admin";
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Leader/Super Admin see full history (seeded); others only this session's jobs.
+  const canSeeHistory = persona.role === "leader_admin" || persona.role === "super_admin";
+  const seededJobs = useMemo(() => (canSeeHistory ? buildJobHistory() : []), [canSeeHistory]);
+  const [dirFilter, setDirFilter] = useState<"all" | "export" | "import">("all");
+
+  const allJobs = useMemo(() => [...jobs, ...seededJobs], [jobs, seededJobs]);
+  const visibleJobs = useMemo(
+    () => (dirFilter === "all" ? allJobs : allJobs.filter((j) => j.direction === dirFilter)),
+    [allJobs, dirFilter],
+  );
 
   type ImportResult = {
     kind: DataKind;
@@ -211,15 +245,34 @@ export function ImportExportClient() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 text-primary" />
-              Riwayat Job Import/Export
-            </CardTitle>
-            <CardDescription>Catatan aktivitas impor & ekspor pada sesi ini.</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-primary" />
+                Riwayat Job Import/Export
+              </CardTitle>
+              <CardDescription>
+                {canSeeHistory ? "Riwayat lengkap impor & ekspor (Leader/Super Admin)." : "Catatan aktivitas pada sesi ini."}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              {(["all", "export", "import"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDirFilter(d)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] font-medium",
+                    dirFilter === d ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  {d === "all" ? "Semua" : d === "export" ? "Ekspor" : "Impor"}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
-            {jobs.length === 0 ? (
+            {visibleJobs.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">Belum ada job.</div>
             ) : (
               <div className="overflow-x-auto">
@@ -235,7 +288,7 @@ export function ImportExportClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {jobs.map((j) => (
+                    {visibleJobs.map((j) => (
                       <tr key={j.id} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="px-3 py-2 font-medium tabular-nums">{j.at}</td>
                         <td className="px-3 py-2 text-muted-foreground">{j.kind}</td>
