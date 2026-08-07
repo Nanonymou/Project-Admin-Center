@@ -1,6 +1,6 @@
 import { relations } from "drizzle-orm";
 import { boolean, date, index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
-import { auditColumns, tenancyColumns } from "./columns";
+import { auditColumns, softDeleteColumns, tenancyColumns } from "./columns";
 import { masterAreas } from "./master-areas";
 
 /** Kind of daily transaction — the same generic table serves sales and cost. */
@@ -44,6 +44,7 @@ export const dailyTransactions = pgTable(
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     isLate: boolean("is_late").default(false).notNull(),
     ...auditColumns,
+    ...softDeleteColumns,
   },
   (t) => ({
     tenantIdx: index("daily_tx_tenant_idx").on(t.projectId, t.locationId),

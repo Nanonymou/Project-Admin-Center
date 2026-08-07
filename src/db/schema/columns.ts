@@ -15,3 +15,14 @@ export const auditColumns = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 };
+
+/**
+ * Soft-delete columns — `deleted_at` marks a row as recycled (kept for the
+ * Recycle Bin) instead of hard-deleting it; `deleted_by` records who did it.
+ * A null `deleted_at` means the row is live. Queries must filter out soft-deleted
+ * rows unless explicitly listing the recycle bin.
+ */
+export const softDeleteColumns = {
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: varchar("deleted_by", { length: 128 }),
+};

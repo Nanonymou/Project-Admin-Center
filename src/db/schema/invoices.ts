@@ -1,5 +1,5 @@
 import { date, index, numeric, pgEnum, pgTable, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
-import { auditColumns, tenancyColumns } from "./columns";
+import { auditColumns, softDeleteColumns, tenancyColumns } from "./columns";
 
 export const invoiceStatus = pgEnum("invoice_status", ["on_time", "at_risk", "overdue", "settled"]);
 
@@ -34,6 +34,7 @@ export const invoices = pgTable(
     dueDate: date("due_date"),
     pic: varchar("pic", { length: 128 }),
     ...auditColumns,
+    ...softDeleteColumns,
   },
   (t) => ({
     numberIdx: uniqueIndex("invoices_number_idx").on(t.number),
