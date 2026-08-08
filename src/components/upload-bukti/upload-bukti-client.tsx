@@ -58,6 +58,26 @@ const STATUS_ICON: Record<BuktiStatus, typeof Clock> = {
   rejected: XCircle,
 };
 
+/** Upload constraints — must match the accept hint shown to the user. */
+const MAX_SIZE_MB = 5;
+const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+const ALLOWED_EXT = ["jpg", "jpeg", "png", "pdf"];
+const ALLOWED_MIME = ["image/jpeg", "image/png", "application/pdf"];
+
+/** Validate one file; returns an error message, or null when acceptable. */
+function validateFile(f: File): string | null {
+  const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+  const okType = ALLOWED_MIME.includes(f.type) || ALLOWED_EXT.includes(ext);
+  if (!okType) {
+    return `${f.name}: format tidak didukung (hanya JPG, PNG, PDF).`;
+  }
+  if (f.size > MAX_SIZE_BYTES) {
+    const mb = (f.size / (1024 * 1024)).toFixed(1);
+    return `${f.name}: ukuran ${mb} MB melebihi batas ${MAX_SIZE_MB} MB.`;
+  }
+  return null;
+}
+
 /**
  * Core Upload Bukti (evidence) workspace. Renders an upload zone plus a
  * filterable list of uploaded evidence, seeded from mock data and scoped to the
@@ -76,6 +96,8 @@ export function UploadBuktiClient() {
   const [uploaded, setUploaded] = useState<BuktiRecord[]>([]);
   const [kindFilter, setKindFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | BuktiStatus>("all");
+  const [errors, setErrors] = useState<string[]>([]);
+  const [okCount, setOkCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const all = useMemo(() => [...uploaded, ...seeded], [uploaded, seeded]);
@@ -132,9 +154,16 @@ export function UploadBuktiClient() {
     if (!files || files.length === 0) return;
     const firstSite = seeded[0];
     const now = new Date();
-    const added: BuktiRecord[] = Array.from(files).map((f, i) => {
+    const nextErrors: string[] = [];
+    const added: BuktiRecord[] = [];
+    Array.from(files).forEach((f, i) => {
+      const error = validateFile(f);
+      if (error) {
+        nextErrors.push(error);
+        return;
+      }
       const isPdf = f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf");
-      return {
+      added.push({
         id: `local-${now.getTime()}-${i}`,
         projectCode: firstSite?.projectCode ?? persona.scope.projects[0] ?? "BUMA",
         locationId: firstSite?.locationId ?? persona.scope.locations[0] ?? "loc-km22",
@@ -149,9 +178,11 @@ export function UploadBuktiClient() {
         uploadedBy: persona.roleLabel,
         uploadedAt: now.toISOString(),
         url: URL.createObjectURL(f),
-      };
+      });
     });
-    setUploaded((prev) => [...added, ...prev]);
+    setErrors(nextErrors);
+    setOkCount(added.length);
+    if (added.length > 0) setUploaded((prev) => [...added, ...prev]);
   }
 
   return (
@@ -196,13 +227,15 @@ export function UploadBuktiClient() {
               <Upload className="h-4 w-4 text-primary" />
               Unggah Bukti Baru
             </CardTitle>
-            <CardDescription>Format didukung: JPG, PNG, PDF. Maksimal 5 MB per berkas.</CardDescription>
+            <CardDescription>
+              Format didukung: JPG, PNG, PDF. Maksimal {MAX_SIZE_MB} MB per berkas.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <input
               ref={inputRef}
               type="file"
-              accept="image/*,.pdf"
+              accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
               multiple
               className="hidden"
               onChange={(e) => {
@@ -227,6 +260,28 @@ export function UploadBuktiClient() {
               </span>
               <span className="text-xs text-muted-foreground">Bukti yang diunggah akan berstatus menunggu verifikasi.</span>
             </button>
+
+            {okCount > 0 && errors.length === 0 && (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{okCount} berkas berhasil ditambahkan dan menunggu verifikasi.</span>
+              </div>
+            )}
+
+            {errors.length > 0 && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                <div className="flex items-center gap-2 font-medium">
+                  <XCircle className="h-4 w-4 shrink-0" />
+                  {errors.length} berkas ditolak
+                  {okCount > 0 && <span className="font-normal">· {okCount} diterima</span>}
+                </div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-6">
+                  {errors.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 
