@@ -14,6 +14,7 @@ import {
   PiggyBank,
   Calculator,
   CopyPlus,
+  History,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +63,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Attachment Center", href: "/attachment-center", icon: FileText },
       { label: "Total Otomatis", href: "/total-otomatis", icon: Calculator },
       { label: "Salin Data Kemarin", href: "/salin-data-kemarin", icon: CopyPlus },
+      { label: "Riwayat Perubahan Pengeluaran", href: "/riwayat-perubahan-pengeluaran", icon: History },
     ],
   },
   {
