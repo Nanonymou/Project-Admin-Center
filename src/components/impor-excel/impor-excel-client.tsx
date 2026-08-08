@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Upload, FileSpreadsheet, Download, Info, MapPin } from "lucide-react";
+import { Upload, FileSpreadsheet, Download, Info, MapPin, CheckCircle2, ShoppingCart } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { toCsv, parseCsv, downloadTextFile } from "@/lib/csv";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import {
@@ -56,6 +57,18 @@ export function ImporExcelClient() {
   const [header, setHeader] = useState<string[] | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
 
+  type ImportedRecord = {
+    id: string;
+    trxDate: string;
+    categoryKey: string;
+    qty: number;
+    price: number;
+    locationName: string;
+    projectCode: string;
+  };
+  const [imported, setImported] = useState<ImportedRecord[]>([]);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+
   async function onFile(file: File) {
     const text = await file.text();
     const parsed = parseCsv(text).filter((r) => r.length && r.some((c) => c.trim() !== ""));
@@ -96,6 +109,24 @@ export function ImporExcelClient() {
     setFileName(null);
     setHeader(null);
     setRows([]);
+  }
+
+  function confirmImport() {
+    const okRows = rows.filter((r) => r.valid && !r.duplicate);
+    if (okRows.length === 0 || !ws) return;
+    const now = Date.now();
+    const records: ImportedRecord[] = okRows.map((r, i) => ({
+      id: `imp-${now}-${i}`,
+      trxDate: r.cells[0],
+      categoryKey: r.cells[1],
+      qty: Number(r.cells[2]) || 0,
+      price: Number(r.cells[3]) || 0,
+      locationName: ws.locationName,
+      projectCode: ws.projectCode,
+    }));
+    setImported((prev) => [...records, ...prev]);
+    setImportMsg(`${records.length} baris berhasil diimpor ke ${ws.locationName}.`);
+    reset();
   }
 
   return (
@@ -215,9 +246,69 @@ export function ImporExcelClient() {
             rows={rows}
             fileName={fileName}
             onReset={reset}
-            onConfirm={() => {}}
+            onConfirm={confirmImport}
             confirmLabel={`Impor ${validCount} baris ke ${ws?.locationName ?? "site"}`}
           />
+        )}
+
+        {importMsg && (
+          <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{importMsg}</span>
+          </div>
+        )}
+
+        {/* Daily Sales list — updated after each import */}
+        {imported.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4 text-primary" />
+                Daftar Daily Sales (hasil impor)
+              </CardTitle>
+              <CardDescription>{imported.length} entri terimpor pada sesi ini.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Tanggal</th>
+                      <th className="px-3 py-2 text-left font-medium">Site</th>
+                      <th className="px-3 py-2 text-left font-medium">Kategori</th>
+                      <th className="px-3 py-2 text-right font-medium">Qty</th>
+                      <th className="px-3 py-2 text-right font-medium">Harga</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imported.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {formatDate(r.trxDate)}
+                          <Badge variant="info" className="ml-2">
+                            Impor
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{r.locationName}</span>
+                          <span className="ml-1 text-[11px] text-muted-foreground">{r.projectCode}</span>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.categoryKey}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{r.qty}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {formatCurrency(r.price)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">
+                          {formatCurrency(r.qty * r.price)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
