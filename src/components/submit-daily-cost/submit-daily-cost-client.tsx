@@ -82,6 +82,24 @@ export function SubmitDailyCostClient() {
     return c;
   }, [rows]);
 
+  const isLeader = persona.role === "leader_admin" || persona.role === "super_admin";
+
+  // Per-project recap for the Leader Admin — sites submitted vs still pending.
+  const projectRecap = useMemo(() => {
+    const map = new Map<string, { total: number; draft: number; inProgress: number; done: number }>();
+    for (const r of rows) {
+      const agg = map.get(r.projectCode) ?? { total: 0, draft: 0, inProgress: 0, done: 0 };
+      agg.total += 1;
+      if (r.costState === "draft") agg.draft += 1;
+      else if (r.costState === "submitted" || r.costState === "reviewed") agg.inProgress += 1;
+      else agg.done += 1;
+      map.set(r.projectCode, agg);
+    }
+    return Array.from(map, ([projectCode, agg]) => ({ projectCode, ...agg })).sort((a, b) =>
+      a.projectCode.localeCompare(b.projectCode),
+    );
+  }, [rows]);
+
   return (
     <div>
       <PageHeader
@@ -120,6 +138,59 @@ export function SubmitDailyCostClient() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Leader Admin recap — per-project submit progress across all sites */}
+        {isLeader && projectRecap.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Rekap Status per Project (Leader Admin)</CardTitle>
+              <CardDescription>Progres submit Daily Cost seluruh site per project.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Project</th>
+                      <th className="px-3 py-2 text-right font-medium">Total Site</th>
+                      <th className="px-3 py-2 text-right font-medium">Draft</th>
+                      <th className="px-3 py-2 text-right font-medium">Proses</th>
+                      <th className="px-3 py-2 text-right font-medium">Selesai</th>
+                      <th className="px-3 py-2 text-left font-medium">Progres</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectRecap.map((p) => {
+                      const submittedPct = p.total > 0 ? ((p.inProgress + p.done) / p.total) * 100 : 0;
+                      return (
+                        <tr key={p.projectCode} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="px-3 py-2 font-medium">{p.projectCode}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{p.total}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{p.draft}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-sky-700">{p.inProgress}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{p.done}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-28 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-primary"
+                                  style={{ width: `${submittedPct}%` }}
+                                />
+                              </div>
+                              <span className="text-[11px] tabular-nums text-muted-foreground">
+                                {submittedPct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
