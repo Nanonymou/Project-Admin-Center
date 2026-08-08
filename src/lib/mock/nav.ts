@@ -13,6 +13,7 @@ import {
   CalendarDays,
   PiggyBank,
   Calculator,
+  CopyPlus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Timeline Approval", href: "/timeline", icon: GanttChartSquare },
       { label: "Attachment Center", href: "/attachment-center", icon: FileText },
       { label: "Total Otomatis", href: "/total-otomatis", icon: Calculator },
+      { label: "Salin Data Kemarin", href: "/salin-data-kemarin", icon: CopyPlus },
     ],
   },
   {
