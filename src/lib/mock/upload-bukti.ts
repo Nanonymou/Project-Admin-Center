@@ -39,6 +39,8 @@ export type BuktiRecord = {
   uploadedBy: string;
   uploadedAt: string; // ISO date-time
   note?: string;
+  /** Object URL for locally uploaded files; seeded mock rows have none. */
+  url?: string;
 };
 
 const UPLOADERS = ["Admin KM22", "Admin Pomala", "Admin Muara Badak", "Leader Admin", "Admin Mutiara"];
