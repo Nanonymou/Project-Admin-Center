@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calculator, Plus, Trash2, Wallet } from "lucide-react";
+import { Calculator, Copy, Plus, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency, formatNumber, terbilang } from "@/lib/utils";
@@ -67,6 +68,8 @@ export function CostItemInput() {
     setItems(next);
   }
 
+  const [pendingDelete, setPendingDelete] = useState<CostItem | null>(null);
+
   function addRow() {
     const first = categories[0];
     mutate([
@@ -75,8 +78,19 @@ export function CostItemInput() {
     ]);
   }
 
+  function duplicateRow(id: string) {
+    const src = rows.find((r) => r.id === id);
+    if (!src) return;
+    const idx = rows.findIndex((r) => r.id === id);
+    const copy = { ...src, id: nextId() };
+    const next = [...rows];
+    next.splice(idx + 1, 0, copy);
+    mutate(next);
+  }
+
   function removeRow(id: string) {
     mutate(rows.filter((r) => r.id !== id));
+    setPendingDelete(null);
   }
 
   function updateRow(id: string, patch: Partial<CostItem>) {
@@ -204,9 +218,24 @@ export function CostItemInput() {
                         {formatCurrency(lineTotal(r))}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button size="sm" variant="ghost" onClick={() => removeRow(r.id)} title="Hapus item">
-                          <Trash2 className="h-4 w-4 text-rose-500" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => duplicateRow(r.id)}
+                            title="Duplikat item"
+                          >
+                            <Copy className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setPendingDelete(r)}
+                            title="Hapus item"
+                          >
+                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -247,6 +276,34 @@ export function CostItemInput() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete confirmation */}
+      <Dialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Hapus item?"
+        description={pendingDelete ? pendingDelete.label : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPendingDelete(null)}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => pendingDelete && removeRow(pendingDelete.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Hapus
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Item <b>{pendingDelete?.label}</b> akan dihapus dari perhitungan. Tindakan ini tidak dapat
+          dibatalkan.
+        </p>
+      </Dialog>
     </div>
   );
 }
