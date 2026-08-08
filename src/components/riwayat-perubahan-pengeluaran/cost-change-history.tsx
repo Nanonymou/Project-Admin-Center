@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { History, ArrowRight } from "lucide-react";
+import { History, ArrowRight, Eye, TrendingUp, TrendingDown } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDateTime, formatDate } from "@/lib/utils";
@@ -14,7 +16,19 @@ import {
   COST_CHANGE_ACTIONS,
   COST_CHANGE_ACTION_META,
   type CostChangeAction,
+  type CostChangeEntry,
 } from "@/lib/mock/cost-change-log";
+
+/** Signed delta between before and after (nulls treated as 0). */
+function delta(e: CostChangeEntry): number {
+  return (e.after ?? 0) - (e.before ?? 0);
+}
+
+/** Percentage change relative to the before value; null when not applicable. */
+function deltaPct(e: CostChangeEntry): number | null {
+  if (e.before === null || e.before === 0 || e.after === null) return null;
+  return ((e.after - e.before) / e.before) * 100;
+}
 
 /**
  * Cost change-history page (Riwayat Perubahan Pengeluaran). Shows an append-only
@@ -32,6 +46,7 @@ export function CostChangeHistory() {
 
   const [actionFilter, setActionFilter] = useState<"all" | CostChangeAction>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [detail, setDetail] = useState<CostChangeEntry | null>(null);
 
   const locations = useMemo(() => {
     const map = new Map<string, string>();
@@ -141,6 +156,7 @@ export function CostChangeHistory() {
                       <th className="px-3 py-2 text-left font-medium">Aksi</th>
                       <th className="px-3 py-2 text-right font-medium">Perubahan</th>
                       <th className="px-3 py-2 text-left font-medium">Oleh</th>
+                      <th className="px-3 py-2 text-right font-medium">Detail</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -173,6 +189,11 @@ export function CostChangeHistory() {
                             )}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">{e.editor}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button size="sm" variant="outline" onClick={() => setDetail(e)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -183,6 +204,87 @@ export function CostChangeHistory() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Before/after detail */}
+      <Dialog
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title="Detail Perubahan"
+        description={
+          detail ? `${detail.categoryLabel} · ${detail.locationName} · ${detail.projectCode}` : undefined
+        }
+        className="max-w-lg"
+      >
+        {detail && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant={COST_CHANGE_ACTION_META[detail.action].badge}>
+                {COST_CHANGE_ACTION_META[detail.action].label}
+              </Badge>
+              <span className="text-muted-foreground">
+                Transaksi {formatDate(detail.trxDate)} · diubah {formatDateTime(detail.at)}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md border p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sebelum</div>
+                <div className="mt-1 text-lg font-semibold tabular-nums">
+                  {detail.before !== null ? formatCurrency(detail.before) : "—"}
+                </div>
+              </div>
+              <div className="rounded-md border p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sesudah</div>
+                <div className="mt-1 text-lg font-semibold tabular-nums text-primary">
+                  {detail.after !== null ? formatCurrency(detail.after) : "—"}
+                </div>
+              </div>
+            </div>
+
+            {detail.before !== null && detail.after !== null && (
+              <div
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium",
+                  delta(detail) > 0
+                    ? "border-rose-200 bg-rose-50 text-rose-700"
+                    : delta(detail) < 0
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-input bg-muted/40 text-muted-foreground",
+                )}
+              >
+                {delta(detail) > 0 ? (
+                  <TrendingUp className="h-4 w-4" />
+                ) : delta(detail) < 0 ? (
+                  <TrendingDown className="h-4 w-4" />
+                ) : null}
+                <span className="tabular-nums">
+                  {delta(detail) > 0 ? "+" : ""}
+                  {formatCurrency(delta(detail))}
+                </span>
+                {deltaPct(detail) !== null && (
+                  <span className="tabular-nums">
+                    ({delta(detail) > 0 ? "+" : ""}
+                    {deltaPct(detail)!.toFixed(1)}%)
+                  </span>
+                )}
+              </div>
+            )}
+
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Diubah oleh</dt>
+                <dd className="font-medium">{detail.editor}</dd>
+              </div>
+              {detail.reason && (
+                <div className="flex justify-between gap-4">
+                  <dt className="shrink-0 text-muted-foreground">Alasan</dt>
+                  <dd className="text-right">{detail.reason}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
