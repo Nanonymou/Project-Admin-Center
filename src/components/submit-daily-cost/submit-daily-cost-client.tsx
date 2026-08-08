@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Send, Wallet, CheckCircle2 } from "lucide-react";
+import { Send, Wallet, CheckCircle2, Undo2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -45,16 +46,30 @@ export function SubmitDailyCostClient() {
   // Session-local overrides for cost state after a submit action.
   const [overrides, setOverrides] = useState<Record<string, ClosingState>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ locationId: string; locationName: string } | null>(null);
 
   const rows = baseline.map((r) => ({
     ...r,
     costState: overrides[r.locationId] ?? r.costState,
+    // Only rows the user submitted this session can be reverted locally.
+    submittedLocally: overrides[r.locationId] === "submitted",
     dailyCost: SITE_KPI.find((s) => s.locationId === r.locationId)?.cost ?? 0,
   }));
 
-  function submit(locationId: string, locationName: string) {
-    setOverrides((prev) => ({ ...prev, [locationId]: "submitted" }));
-    setMsg(`Daily Cost ${locationName} berhasil disubmit untuk approval.`);
+  function confirmSubmit() {
+    if (!confirm) return;
+    setOverrides((prev) => ({ ...prev, [confirm.locationId]: "submitted" }));
+    setMsg(`Daily Cost ${confirm.locationName} berhasil disubmit untuk approval.`);
+    setConfirm(null);
+  }
+
+  function undo(locationId: string, locationName: string) {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      delete next[locationId];
+      return next;
+    });
+    setMsg(`Submit ${locationName} dibatalkan — kembali ke draft.`);
   }
 
   const counts = useMemo(() => {
@@ -144,15 +159,29 @@ export function SubmitDailyCostClient() {
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">{r.lastUpdated}</td>
                           <td className="px-3 py-2 text-right">
-                            <Button
-                              size="sm"
-                              variant={r.costState === "draft" ? "default" : "outline"}
-                              disabled={!canSubmit || r.costState !== "draft"}
-                              onClick={() => submit(r.locationId, r.locationName)}
-                            >
-                              <Send className="h-4 w-4" />
-                              {r.costState === "draft" ? "Submit" : "Terkirim"}
-                            </Button>
+                            {r.submittedLocally ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Badge variant="info">Terkirim</Badge>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => undo(r.locationId, r.locationName)}
+                                  title="Batalkan submit"
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant={r.costState === "draft" ? "default" : "outline"}
+                                disabled={!canSubmit || r.costState !== "draft"}
+                                onClick={() => setConfirm({ locationId: r.locationId, locationName: r.locationName })}
+                              >
+                                <Send className="h-4 w-4" />
+                                {r.costState === "draft" ? "Submit" : "Terkirim"}
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -188,6 +217,30 @@ export function SubmitDailyCostClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Submit confirmation */}
+      <Dialog
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title="Submit Daily Cost?"
+        description={confirm ? confirm.locationName : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirm(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={confirmSubmit}>
+              <Send className="h-4 w-4" />
+              Submit
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Daily Cost <b>{confirm?.locationName}</b> akan dikirim untuk proses approval. Setelah disubmit,
+          status berpindah dari Draft ke Submitted.
+        </p>
+      </Dialog>
     </div>
   );
 }
