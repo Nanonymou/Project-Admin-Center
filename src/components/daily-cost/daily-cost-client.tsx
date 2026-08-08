@@ -14,6 +14,7 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { SubmitStatusList } from "@/components/daily-cost/submit-status-list";
 import { MissingSubmissionStrip } from "@/components/daily-cost/missing-submission-strip";
+import { BuktiPanel } from "@/components/upload-bukti/bukti-panel";
 import { buildSubmitStatus } from "@/lib/mock/closing-status";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -663,6 +664,12 @@ export function DailyCostClient() {
             <SubmitStatusList rows={submitStatus} />
           </CardContent>
         </Card>
+
+        <BuktiPanel
+          projectCode={workspace.projectCode}
+          locationId={workspace.locationId}
+          title={`Bukti Pengeluaran — ${workspace.locationName}`}
+        />
       </div>
 
       <Dialog
