@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, terbilang } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getCostCategories } from "@/lib/mock/cost-config";
 
@@ -239,6 +239,9 @@ export function CostItemInput() {
               </div>
               <div className="text-2xl font-bold tabular-nums text-primary md:text-3xl">
                 {formatCurrency(grandTotal)}
+              </div>
+              <div className="max-w-md text-right text-[11px] capitalize italic text-muted-foreground">
+                {terbilang(grandTotal)}
               </div>
             </div>
           </CardContent>
