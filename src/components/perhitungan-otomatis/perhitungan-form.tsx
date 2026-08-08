@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { calculateTransaction } from "@/lib/finance";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getPricedCategories } from "@/lib/mock/pricing-config";
@@ -64,7 +64,13 @@ export function PerhitunganForm() {
     })),
     ws?.projectCode ?? "",
   );
-  const { lines, subtotal, taxAmount, total } = calc;
+  const { lines, subtotal, taxAmount, total, taxRate } = calc;
+
+  // Breakdown for the polished result panel.
+  const grossTotal = lines.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
+  const deductionTotal = lines.reduce((s, l) => s + (l.amount < 0 ? -l.amount : 0), 0);
+  const activeLineCount = lines.filter((l) => l.qty > 0).length;
+  const totalQty = lines.reduce((s, l) => s + l.qty, 0);
 
   if (!ws) {
     return (
@@ -179,22 +185,52 @@ export function PerhitunganForm() {
               <Calculator className="h-4 w-4 text-primary" />
               Ringkasan Perhitungan
             </CardTitle>
+            <CardDescription>
+              {activeLineCount} kategori aktif · {formatNumber(totalQty)} qty · dihitung otomatis.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <dl className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Subtotal</dt>
-                <dd className="font-medium tabular-nums">{formatCurrency(subtotal)}</dd>
+            <div className="grid gap-4 md:grid-cols-5 md:items-stretch">
+              {/* Breakdown */}
+              <dl className="space-y-2 text-sm md:col-span-3">
+                <div className="flex items-center justify-between">
+                  <dt className="text-muted-foreground">Bruto (sebelum pengurang)</dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(grossTotal)}</dd>
+                </div>
+                {deductionTotal > 0 && (
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Pengurang</dt>
+                    <dd className="font-medium tabular-nums text-rose-600">
+                      −{formatCurrency(deductionTotal)}
+                    </dd>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t pt-2">
+                  <dt className="text-muted-foreground">Subtotal</dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(subtotal)}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="flex items-center gap-2 text-muted-foreground">
+                    {tax ? tax.label : "Pajak"}
+                    <Badge variant="info">{(taxRate * 100).toFixed(taxRate * 100 % 1 === 0 ? 0 : 1)}%</Badge>
+                  </dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(taxAmount)}</dd>
+                </div>
+              </dl>
+
+              {/* Prominent total */}
+              <div className="flex flex-col justify-center rounded-lg border bg-primary/5 p-4 text-center md:col-span-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Total Tagihan
+                </div>
+                <div className="mt-1 text-2xl font-bold tabular-nums text-primary md:text-3xl">
+                  {formatCurrency(total)}
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  Termasuk {tax ? tax.label : "pajak"} {formatCurrency(taxAmount)}
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">{tax ? tax.label : "Pajak"}</dt>
-                <dd className="font-medium tabular-nums">{formatCurrency(taxAmount)}</dd>
-              </div>
-              <div className="mt-2 flex items-center justify-between border-t pt-3 text-base">
-                <dt className="font-semibold">Total</dt>
-                <dd className="font-bold tabular-nums text-primary">{formatCurrency(total)}</dd>
-              </div>
-            </dl>
+            </div>
           </CardContent>
         </Card>
       </div>
