@@ -65,6 +65,60 @@ export function portfolioMarginPct(rows: { sales: number; cost: number }[]): num
   return computeMarginPct(totalSales, totalCost);
 }
 
+/**
+ * A single transaction line before calculation: quantity × unit price, with an
+ * optional `deduction` flag that makes the line subtract from the subtotal
+ * (e.g. Backcharge). `key`/`label`/`unit` are carried through untouched.
+ */
+export type TransactionLineInput = {
+  key: string;
+  label: string;
+  unit?: string;
+  price: number;
+  qty: number;
+  deduction?: boolean;
+};
+
+/** A calculated line: the input plus its signed `amount` (qty × price). */
+export type TransactionLine = TransactionLineInput & { amount: number };
+
+export type TransactionCalculation = {
+  lines: TransactionLine[];
+  subtotal: number;
+  taxLabel: string;
+  taxRate: number;
+  taxAmount: number;
+  total: number;
+};
+
+/**
+ * Automatic price & total calculation for a transaction form. Each line's amount
+ * is `qty × price` (negated for deduction lines); the subtotal is their sum; the
+ * tax is `subtotal × rate` using the project's config-driven tax (PPN/PB1),
+ * rounded to the Rupiah; the total is subtotal + tax. Pure and config-aware so
+ * the form, previews, and any future submit path share one calculation.
+ */
+export function calculateTransaction(
+  lineInputs: TransactionLineInput[],
+  projectCode: string,
+): TransactionCalculation {
+  const lines: TransactionLine[] = lineInputs.map((l) => ({
+    ...l,
+    amount: Math.max(0, l.qty) * l.price * (l.deduction ? -1 : 1),
+  }));
+  const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
+  const tax = getTaxConfig(projectCode);
+  const taxAmount = Math.round(subtotal * tax.rate);
+  return {
+    lines,
+    subtotal,
+    taxLabel: tax.label,
+    taxRate: tax.rate,
+    taxAmount,
+    total: subtotal + taxAmount,
+  };
+}
+
 /** Rupiah formatting — re-exported so consumers import from one place. */
 export const formatRupiah = formatCurrency;
 export const formatRupiahCompact = formatCurrencyCompact;

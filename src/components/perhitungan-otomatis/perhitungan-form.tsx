@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
+import { calculateTransaction } from "@/lib/finance";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getPricedCategories } from "@/lib/mock/pricing-config";
 import { getTaxConfig } from "@/lib/mock/tax-config";
@@ -51,15 +52,19 @@ export function PerhitunganForm() {
     return qty[key] ?? seededQty[key] ?? 0;
   }
 
-  const lines = categories.map((c) => {
-    const q = qtyOf(c.key);
-    const amount = q * c.price * (c.deduction ? -1 : 1);
-    return { ...c, qty: q, amount };
-  });
-
-  const subtotal = lines.reduce((s, l) => s + l.amount, 0);
-  const taxAmount = tax ? Math.round(subtotal * tax.rate) : 0;
-  const total = subtotal + taxAmount;
+  // Automatic calculation — shared, config-aware engine (subtotal → tax → total).
+  const calc = calculateTransaction(
+    categories.map((c) => ({
+      key: c.key,
+      label: c.label,
+      unit: c.unit,
+      price: c.price,
+      qty: qtyOf(c.key),
+      deduction: c.deduction,
+    })),
+    ws?.projectCode ?? "",
+  );
+  const { lines, subtotal, taxAmount, total } = calc;
 
   if (!ws) {
     return (
