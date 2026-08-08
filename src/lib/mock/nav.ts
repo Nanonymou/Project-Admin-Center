@@ -16,6 +16,7 @@ import {
   CopyPlus,
   Copy,
   History,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,6 +67,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Salin Data Kemarin", href: "/salin-data-kemarin", icon: CopyPlus },
       { label: "Riwayat Perubahan Pengeluaran", href: "/riwayat-perubahan-pengeluaran", icon: History },
       { label: "Duplikat Record", href: "/duplikat-record", icon: Copy },
+      { label: "Impor Excel", href: "/impor-excel", icon: FileSpreadsheet },
     ],
   },
   {
