@@ -12,6 +12,7 @@ import {
   Trophy,
   CalendarDays,
   PiggyBank,
+  Calculator,
   type LucideIcon,
 } from "lucide-react";
 
@@ -58,6 +59,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Compliance Monitoring", href: "/compliance", icon: BadgeCheck },
       { label: "Timeline Approval", href: "/timeline", icon: GanttChartSquare },
       { label: "Attachment Center", href: "/attachment-center", icon: FileText },
+      { label: "Total Otomatis", href: "/total-otomatis", icon: Calculator },
     ],
   },
   {
