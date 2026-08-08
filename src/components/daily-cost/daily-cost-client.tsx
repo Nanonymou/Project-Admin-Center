@@ -501,11 +501,19 @@ export function DailyCostClient() {
 
           <Card>
             <CardHeader className="space-y-2">
-              <div>
-                <CardTitle>Daftar Transaksi</CardTitle>
-                <CardDescription>
-                  Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
-                </CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Daftar Transaksi</CardTitle>
+                  <CardDescription>
+                    Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
+                  </CardDescription>
+                </div>
+                <Link href={`/riwayat-perubahan-pengeluaran?location=${workspace.locationId}`}>
+                  <Button size="sm" variant="outline">
+                    <History className="h-4 w-4" />
+                    Buka Riwayat Perubahan
+                  </Button>
+                </Link>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 {(["current", "all"] as const).map((s) => (

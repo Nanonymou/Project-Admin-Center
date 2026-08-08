@@ -36,7 +36,7 @@ function deltaPct(e: CostChangeEntry): number | null {
  * persona and filterable by action and site. Seeded from mock data; no backend
  * required at this stage.
  */
-export function CostChangeHistory() {
+export function CostChangeHistory({ initialLocationId }: { initialLocationId?: string } = {}) {
   const { persona } = usePersona();
 
   const entries = useMemo(
@@ -45,7 +45,7 @@ export function CostChangeHistory() {
   );
 
   const [actionFilter, setActionFilter] = useState<"all" | CostChangeAction>("all");
-  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState<string>(initialLocationId ?? "all");
   const [detail, setDetail] = useState<CostChangeEntry | null>(null);
 
   const locations = useMemo(() => {
