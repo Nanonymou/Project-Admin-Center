@@ -7,6 +7,7 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -45,19 +46,31 @@ export function SalinDataKemarinClient() {
     [ws],
   );
 
-  // Yesterday's entry — deterministic mock quantities per category.
+  // Some sites have no entry for yesterday — deterministic per location so the
+  // empty-state ("tidak ada data kemarin") is reproducible.
+  const hasYesterdayData = useMemo(() => {
+    if (!ws) return false;
+    let h = 0;
+    for (let i = 0; i < ws.locationId.length; i++) h += ws.locationId.charCodeAt(i);
+    return h % 4 !== 0;
+  }, [ws]);
+
+  // Yesterday's entry — deterministic mock quantities per category (empty when
+  // the site has no data for yesterday).
   const yesterdayQty = useMemo(() => {
     const out: Record<string, number> = {};
+    if (!hasYesterdayData) return out;
     categories.forEach((c, i) => {
       out[c.key] = c.deduction ? 0 : 30 + ((i * 23) % 110);
     });
     return out;
-  }, [categories]);
+  }, [categories, hasYesterdayData]);
 
   // Today's editable quantities — empty until the admin types or copies.
   const [todayQty, setTodayQty] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [confirmCopy, setConfirmCopy] = useState(false);
 
   type SavedEntry = {
     id: string;
@@ -71,10 +84,20 @@ export function SalinDataKemarinClient() {
   };
   const [saved, setSaved] = useState<SavedEntry[]>([]);
 
-  function copyYesterday() {
+  function doCopy() {
     setTodayQty({ ...yesterdayQty });
     setCopied(true);
     setSavedMsg(null);
+    setConfirmCopy(false);
+  }
+
+  const hasTodayInput = Object.values(todayQty).some((v) => v > 0);
+
+  function requestCopy() {
+    if (!hasYesterdayData) return;
+    // Confirm before overwriting existing input for today.
+    if (hasTodayInput) setConfirmCopy(true);
+    else doCopy();
   }
 
   function reset() {
@@ -153,7 +176,7 @@ export function SalinDataKemarinClient() {
               </option>
             ))}
           </select>
-          <Button size="sm" disabled={!canInput} onClick={copyYesterday}>
+          <Button size="sm" disabled={!canInput || !hasYesterdayData} onClick={requestCopy}>
             <CopyPlus className="h-4 w-4" />
             Salin Data Kemarin
           </Button>
@@ -194,6 +217,16 @@ export function SalinDataKemarinClient() {
               <CardDescription>{formatDate(yesterday)} · hanya-baca</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
+              {!hasYesterdayData ? (
+                <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+                  <CalendarDays className="h-8 w-8 text-muted-foreground" />
+                  <div className="text-sm font-medium">Tidak ada data kemarin</div>
+                  <p className="max-w-xs text-xs text-muted-foreground">
+                    Belum ada entri Daily Sales untuk {ws.locationName} pada {formatDate(yesterday)}. Silakan
+                    input manual pada form hari ini.
+                  </p>
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -227,6 +260,7 @@ export function SalinDataKemarinClient() {
                   </tfoot>
                 </table>
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -343,6 +377,29 @@ export function SalinDataKemarinClient() {
           </Card>
         )}
       </div>
+
+      {/* Overwrite confirmation */}
+      <Dialog
+        open={confirmCopy}
+        onClose={() => setConfirmCopy(false)}
+        title="Timpa input hari ini?"
+        description="Form hari ini sudah berisi angka."
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmCopy(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={doCopy}>
+              <CopyPlus className="h-4 w-4" />
+              Timpa & Salin
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Menyalin data kemarin akan menimpa qty yang sudah Anda isi pada form hari ini. Lanjutkan?
+        </p>
+      </Dialog>
     </div>
   );
 }
