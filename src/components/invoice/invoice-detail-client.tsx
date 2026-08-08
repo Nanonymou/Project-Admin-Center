@@ -28,6 +28,7 @@ import { buildInvoiceAuditTrail } from "@/lib/mock/invoice-audit";
 import { AUDIT_ACTION_META } from "@/lib/mock/audit-trail";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
+import { BuktiPanel } from "@/components/upload-bukti/bukti-panel";
 
 const STAGE_FLOW = ["Verifikasi Site", "Approval Leader", "Verifikasi Finance", "Kirim Client", "Payment"];
 
@@ -223,6 +224,12 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
             <AuditTrail entries={auditTrail} />
           </CardContent>
         </Card>
+
+        <BuktiPanel
+          projectCode={detail.site.projectCode}
+          locationId={detail.site.locationId}
+          title="Bukti Invoice"
+        />
       </div>
     </div>
   );
