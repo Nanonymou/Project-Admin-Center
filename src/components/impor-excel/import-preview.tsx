@@ -11,6 +11,8 @@ export type ParsedRow = {
   cells: string[];
   valid: boolean;
   issues: string[];
+  /** Set when the row duplicates an earlier row's unique key. */
+  duplicate?: boolean;
 };
 
 /**

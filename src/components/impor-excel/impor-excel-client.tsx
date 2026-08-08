@@ -66,8 +66,27 @@ export function ImporExcelClient() {
       return;
     }
     setHeader(parsed[0].map((h) => h.trim()));
-    setRows(validateRows(parsed.slice(1), VALIDATORS));
+
+    // Validate each row, then flag rows that duplicate an earlier row's key
+    // (trxDate + categoryKey) — the first occurrence is kept, later ones flagged.
+    const validated = validateRows(parsed.slice(1), VALIDATORS);
+    const seen = new Set<string>();
+    for (const row of validated) {
+      const key = `${(row.cells[0] ?? "").trim()}|${(row.cells[1] ?? "").trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        row.duplicate = true;
+        row.valid = false;
+        row.issues = ["Baris duplikat (tanggal + kategori sama).", ...row.issues];
+      } else {
+        seen.add(key);
+      }
+    }
+    setRows(validated);
   }
+
+  const duplicateCount = rows.filter((r) => r.duplicate).length;
+  const validCount = rows.filter((r) => r.valid).length;
+  const invalidCount = rows.length - validCount;
 
   function downloadTemplate() {
     downloadTextFile("template-daily-sales.csv", toCsv([[...COLUMNS], ...SAMPLE]));
@@ -158,6 +177,36 @@ export function ImporExcelClient() {
           </CardContent>
         </Card>
 
+        {/* Result summary */}
+        {header !== null && rows.length > 0 && (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Card>
+              <CardContent className="py-4 text-center">
+                <div className="text-2xl font-semibold tabular-nums">{rows.length}</div>
+                <div className="text-xs text-muted-foreground">Total Baris</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <div className="text-2xl font-semibold tabular-nums text-emerald-700">{validCount}</div>
+                <div className="text-xs text-muted-foreground">Valid</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <div className="text-2xl font-semibold tabular-nums text-rose-700">{invalidCount}</div>
+                <div className="text-xs text-muted-foreground">Invalid</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <div className="text-2xl font-semibold tabular-nums text-amber-700">{duplicateCount}</div>
+                <div className="text-xs text-muted-foreground">Duplikat</div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Preview */}
         {header !== null && (
           <ImportPreview
@@ -167,7 +216,7 @@ export function ImporExcelClient() {
             fileName={fileName}
             onReset={reset}
             onConfirm={() => {}}
-            confirmLabel={`Impor ke ${ws?.locationName ?? "site"}`}
+            confirmLabel={`Impor ${validCount} baris ke ${ws?.locationName ?? "site"}`}
           />
         )}
       </div>
