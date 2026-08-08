@@ -1,0 +1,193 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Send, Wallet, CheckCircle2 } from "lucide-react";
+import { PageHeader } from "@/components/app/page-header";
+import { PersonaBanner } from "@/components/activity/persona-banner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { usePersona } from "@/components/providers/persona-provider";
+import { canAccessLocation } from "@/lib/personas";
+import { cn, formatCurrency } from "@/lib/utils";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
+import {
+  buildSubmitStatus,
+  CLOSING_STATE_META,
+  type ClosingState,
+} from "@/lib/mock/closing-status";
+
+const BADGE_VARIANT: Record<ClosingState, "default" | "info" | "warning" | "success"> = {
+  draft: "default",
+  submitted: "info",
+  reviewed: "warning",
+  approved: "success",
+  locked: "success",
+};
+
+/**
+ * Submit Daily Cost — main page. Lists each site's Daily Cost closing state for
+ * the current period and lets a site admin submit a draft for approval. Submit
+ * advances the state draft → submitted (mock, session-local). Persona-scoped;
+ * cross-site view is available to Leader/Super Admin.
+ */
+export function SubmitDailyCostClient() {
+  const { persona } = usePersona();
+  const canSubmit =
+    persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin";
+
+  const sites = useMemo(
+    () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
+    [persona],
+  );
+  const baseline = useMemo(() => buildSubmitStatus(sites), [sites]);
+
+  // Session-local overrides for cost state after a submit action.
+  const [overrides, setOverrides] = useState<Record<string, ClosingState>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const rows = baseline.map((r) => ({
+    ...r,
+    costState: overrides[r.locationId] ?? r.costState,
+    dailyCost: SITE_KPI.find((s) => s.locationId === r.locationId)?.cost ?? 0,
+  }));
+
+  function submit(locationId: string, locationName: string) {
+    setOverrides((prev) => ({ ...prev, [locationId]: "submitted" }));
+    setMsg(`Daily Cost ${locationName} berhasil disubmit untuk approval.`);
+  }
+
+  const counts = useMemo(() => {
+    const c = { draft: 0, submitted: 0, done: 0 };
+    for (const r of rows) {
+      if (r.costState === "draft") c.draft += 1;
+      else if (r.costState === "submitted" || r.costState === "reviewed") c.submitted += 1;
+      else c.done += 1;
+    }
+    return c;
+  }, [rows]);
+
+  return (
+    <div>
+      <PageHeader
+        title="Submit Daily Cost"
+        description="Kirim Daily Cost harian per site untuk proses approval."
+        breadcrumbs={[{ label: "Operasional" }, { label: "Submit Daily Cost" }]}
+      />
+
+      <div className="space-y-6 p-4 md:p-6">
+        <PersonaBanner persona={persona} scopeSummary={`${sites.length} site`} />
+
+        {msg && (
+          <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{msg}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-2xl font-semibold tabular-nums">{counts.draft}</div>
+              <div className="text-xs text-muted-foreground">Belum disubmit (draft)</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-2xl font-semibold tabular-nums">{counts.submitted}</div>
+              <div className="text-xs text-muted-foreground">Dalam proses approval</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-2xl font-semibold tabular-nums">{counts.done}</div>
+              <div className="text-xs text-muted-foreground">Selesai (approved/locked)</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-primary" />
+              Status Submit Daily Cost per Site
+            </CardTitle>
+            <CardDescription>Submit hanya tersedia untuk entri berstatus draft.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {rows.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">Tidak ada site dalam cakupan Anda.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Site</th>
+                      <th className="px-3 py-2 text-right font-medium">Cost (bulan)</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-left font-medium">Terakhir</th>
+                      <th className="px-3 py-2 text-right font-medium">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const meta = CLOSING_STATE_META[r.costState];
+                      return (
+                        <tr key={r.locationId} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="px-3 py-2">
+                            <span className="font-medium">{r.locationName}</span>
+                            <span className="ml-1 text-[11px] text-muted-foreground">{r.projectCode}</span>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.dailyCost)}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={BADGE_VARIANT[r.costState]}>{meta.label}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{r.lastUpdated}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant={r.costState === "draft" ? "default" : "outline"}
+                              disabled={!canSubmit || r.costState !== "draft"}
+                              onClick={() => submit(r.locationId, r.locationName)}
+                            >
+                              <Send className="h-4 w-4" />
+                              {r.costState === "draft" ? "Submit" : "Terkirim"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Approval progress legend */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Alur Status Closing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {(Object.keys(CLOSING_STATE_META) as ClosingState[]).map((s, i) => (
+                <div key={s} className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-md border px-2 py-1 font-medium",
+                      "border-input bg-background",
+                    )}
+                  >
+                    {i + 1}. {CLOSING_STATE_META[s].label}
+                  </span>
+                  {i < 4 && <span className="text-muted-foreground">→</span>}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

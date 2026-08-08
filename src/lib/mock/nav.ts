@@ -68,6 +68,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Riwayat Perubahan Pengeluaran", href: "/riwayat-perubahan-pengeluaran", icon: History },
       { label: "Duplikat Record", href: "/duplikat-record", icon: Copy },
       { label: "Impor Excel", href: "/impor-excel", icon: FileSpreadsheet },
+      { label: "Submit Daily Cost", href: "/submit-daily-cost", icon: Wallet },
     ],
   },
   {
