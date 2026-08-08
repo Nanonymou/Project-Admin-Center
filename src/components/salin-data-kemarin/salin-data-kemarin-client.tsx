@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CopyPlus, ShoppingCart, CalendarDays, Info } from "lucide-react";
+import { CopyPlus, ShoppingCart, CalendarDays, Info, Save, CheckCircle2, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,15 +57,30 @@ export function SalinDataKemarinClient() {
   // Today's editable quantities — empty until the admin types or copies.
   const [todayQty, setTodayQty] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  type SavedEntry = {
+    id: string;
+    locationName: string;
+    projectCode: string;
+    date: string;
+    total: number;
+    itemCount: number;
+    fromCopy: boolean;
+    at: string;
+  };
+  const [saved, setSaved] = useState<SavedEntry[]>([]);
 
   function copyYesterday() {
     setTodayQty({ ...yesterdayQty });
     setCopied(true);
+    setSavedMsg(null);
   }
 
   function reset() {
     setTodayQty({});
     setCopied(false);
+    setSavedMsg(null);
   }
 
   const yesterdayTotal = categories.reduce(
@@ -76,6 +91,31 @@ export function SalinDataKemarinClient() {
     (s, c) => s + (todayQty[c.key] ?? 0) * c.price * (c.deduction ? -1 : 1),
     0,
   );
+
+  const todayItemCount = categories.filter((c) => (todayQty[c.key] ?? 0) > 0).length;
+  const canSave = canInput && todayItemCount > 0;
+
+  function save() {
+    if (!canSave || !ws) return;
+    const entry: SavedEntry = {
+      id: `save-${Date.now()}`,
+      locationName: ws.locationName,
+      projectCode: ws.projectCode,
+      date: today,
+      total: todayTotal,
+      itemCount: todayItemCount,
+      fromCopy: copied,
+      at: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+    };
+    setSaved((prev) => [entry, ...prev]);
+    setSavedMsg(
+      `Entri ${formatDate(today)} tersimpan (${todayItemCount} item · ${formatCurrency(todayTotal)})${
+        copied ? " — disalin dari kemarin" : ""
+      }.`,
+    );
+    setTodayQty({});
+    setCopied(false);
+  }
 
   if (!ws) {
     return (
@@ -117,12 +157,23 @@ export function SalinDataKemarinClient() {
             <CopyPlus className="h-4 w-4" />
             Salin Data Kemarin
           </Button>
-          {copied && (
-            <Button size="sm" variant="outline" onClick={reset}>
+          <Button size="sm" variant="outline" disabled={!canSave} onClick={save}>
+            <Save className="h-4 w-4" />
+            Simpan Entri
+          </Button>
+          {(copied || todayItemCount > 0) && (
+            <Button size="sm" variant="ghost" onClick={reset}>
               Reset
             </Button>
           )}
         </div>
+
+        {savedMsg && (
+          <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{savedMsg}</span>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -244,6 +295,53 @@ export function SalinDataKemarinClient() {
             </CardContent>
           </Card>
         </div>
+
+        {saved.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Entri Tersimpan (sesi ini)
+              </CardTitle>
+              <CardDescription>Catatan entri Daily Sales yang disimpan pada sesi ini.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Waktu</th>
+                      <th className="px-3 py-2 text-left font-medium">Site</th>
+                      <th className="px-3 py-2 text-left font-medium">Tanggal</th>
+                      <th className="px-3 py-2 text-right font-medium">Item</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      <th className="px-3 py-2 text-left font-medium">Sumber</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {saved.map((s) => (
+                      <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2 tabular-nums">{s.at}</td>
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{s.locationName}</span>
+                          <span className="ml-1 text-[11px] text-muted-foreground">{s.projectCode}</span>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{formatDate(s.date)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{s.itemCount}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(s.total)}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={s.fromCopy ? "info" : "default"}>
+                            {s.fromCopy ? "Salin Kemarin" : "Input Manual"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
