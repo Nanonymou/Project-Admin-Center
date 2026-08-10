@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GanttChartSquare, MapPin, CheckCircle2, Clock, CircleDashed, Pencil } from "lucide-react";
+import { GanttChartSquare, MapPin, CheckCircle2, Clock, CircleDashed, Pencil, Paperclip, X } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,6 +106,18 @@ export function InvoiceTimelineClient() {
   const [editStage, setEditStage] = useState<string | null>(null);
   const [editState, setEditState] = useState<StageState>("pending");
   const [editDate, setEditDate] = useState("");
+  // Supporting documents attached per stage (session-local, name only).
+  const [stageDocs, setStageDocs] = useState<Record<string, string[]>>({});
+
+  function addStageDocs(stage: string, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const names = Array.from(files).map((f) => f.name);
+    setStageDocs((prev) => ({ ...prev, [stage]: [...(prev[stage] ?? []), ...names] }));
+  }
+
+  function removeStageDoc(stage: string, name: string) {
+    setStageDocs((prev) => ({ ...prev, [stage]: (prev[stage] ?? []).filter((n) => n !== name) }));
+  }
 
   function openEdit(stage: { stage: string; state: StageState; startedAt: string | null }) {
     setEditStage(stage.stage);
@@ -303,6 +315,12 @@ export function InvoiceTimelineClient() {
                       <span className="font-medium">{s.stage}</span>
                       <Badge variant={meta.badge}>{meta.label}</Badge>
                       {s.breached && <Badge variant="danger">Lewat SLA</Badge>}
+                      {(stageDocs[s.stage]?.length ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Paperclip className="h-3 w-3" />
+                          {stageDocs[s.stage].length}
+                        </span>
+                      )}
                       {s.startedAt && (
                         <span className="text-[11px] tabular-nums text-muted-foreground">
                           mulai {formatDate(s.startedAt)}
@@ -375,6 +393,45 @@ export function InvoiceTimelineClient() {
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
           </label>
+
+          {/* Supporting documents */}
+          <div className="flex flex-col gap-2 text-xs">
+            <span className="text-muted-foreground">Dokumen pendukung</span>
+            <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-[11px] font-medium hover:bg-accent">
+              <Paperclip className="h-3.5 w-3.5" />
+              Unggah berkas
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (editStage) addStageDocs(editStage, e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {editStage && (stageDocs[editStage]?.length ?? 0) > 0 && (
+              <ul className="space-y-1">
+                {stageDocs[editStage].map((name) => (
+                  <li
+                    key={name}
+                    className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1"
+                  >
+                    <span className="truncate">{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeStageDoc(editStage, name)}
+                      className="shrink-0 text-muted-foreground hover:text-rose-600"
+                      title="Hapus"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </Dialog>
     </div>
