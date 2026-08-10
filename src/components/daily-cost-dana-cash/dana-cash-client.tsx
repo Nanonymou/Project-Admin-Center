@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus } from "lucide-react";
+import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus, Pencil, Trash2, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
@@ -58,21 +59,70 @@ export function DanaCashClient() {
 
   const catKey = formCategory || categories[0]?.key || "misc";
 
+  // Session change log for the history panel.
+  type ChangeAction = "add" | "edit" | "delete";
+  type ChangeLogRow = { id: string; action: ChangeAction; label: string; amount: number; at: string };
+  const [changeLog, setChangeLog] = useState<ChangeLogRow[]>([]);
+
+  function logChange(action: ChangeAction, label: string, amount: number) {
+    setChangeLog((prev) => [
+      {
+        id: `log-${Date.now()}-${Math.round(Math.random() * 1e5)}`,
+        action,
+        label,
+        amount,
+        at: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      },
+      ...prev,
+    ]);
+  }
+
   function addTransaction() {
     if (!ws || formAmount <= 0) return;
     const cat = categories.find((c) => c.key === catKey);
+    const amount = formType === "top_up" ? formAmount : -formAmount;
+    const label = formType === "top_up" ? "Top-up Dana Cash" : cat?.label ?? "Pengeluaran";
     const entry: DanaCashEntry = {
       id: `local-${Date.now()}`,
       date: formDate,
       categoryKey: formType === "top_up" ? "top_up" : catKey,
-      categoryLabel: formType === "top_up" ? "Top-up Dana Cash" : cat?.label ?? "Pengeluaran",
+      categoryLabel: label,
       description: formDesc.trim() || (formType === "top_up" ? "Pengisian ulang kas" : "Pengeluaran kas"),
-      amount: formType === "top_up" ? formAmount : -formAmount,
+      amount,
       by: persona.roleLabel,
     };
     setAdded((prev) => [...prev, entry]);
+    logChange("add", label, amount);
     setFormAmount(0);
     setFormDesc("");
+  }
+
+  // Edit dialog (session-added entries only).
+  const [editing, setEditing] = useState<DanaCashEntry | null>(null);
+  const [editAmount, setEditAmount] = useState(0);
+  const [editDesc, setEditDesc] = useState("");
+
+  function openEdit(entry: DanaCashEntry) {
+    setEditing(entry);
+    setEditAmount(Math.abs(entry.amount));
+    setEditDesc(entry.description);
+  }
+
+  function saveEdit() {
+    if (!editing || editAmount <= 0) return;
+    const sign = editing.amount < 0 ? -1 : 1;
+    setAdded((prev) =>
+      prev.map((e) =>
+        e.id === editing.id ? { ...e, amount: sign * editAmount, description: editDesc.trim() || e.description } : e,
+      ),
+    );
+    logChange("edit", editing.categoryLabel, sign * editAmount);
+    setEditing(null);
+  }
+
+  function deleteEntry(entry: DanaCashEntry) {
+    setAdded((prev) => prev.filter((e) => e.id !== entry.id));
+    logChange("delete", entry.categoryLabel, entry.amount);
   }
 
   // Compute the running balance per entry.
@@ -263,6 +313,7 @@ export function DanaCashClient() {
                     <th className="px-3 py-2 text-right font-medium">Nominal</th>
                     <th className="px-3 py-2 text-right font-medium">Saldo</th>
                     <th className="px-3 py-2 text-left font-medium">Oleh</th>
+                    <th className="px-3 py-2 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,6 +342,20 @@ export function DanaCashClient() {
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(r.balance)}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.by}</td>
+                        <td className="px-3 py-2 text-right">
+                          {r.id.startsWith("local-") && canInput ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Ubah">
+                                <Pencil className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteEntry(r)} title="Hapus">
+                                <Trash2 className="h-4 w-4 text-rose-500" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -316,7 +381,87 @@ export function DanaCashClient() {
             />
           </CardContent>
         </Card>
+
+        {/* Change history panel */}
+        {changeLog.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <History className="h-4 w-4 text-primary" />
+                Riwayat Perubahan (sesi ini)
+              </CardTitle>
+              <CardDescription>Aksi tambah / ubah / hapus transaksi kas pada sesi ini.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ul className="divide-y">
+                {changeLog.map((c) => (
+                  <li key={c.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                    <span className="tabular-nums text-[11px] text-muted-foreground">{c.at}</span>
+                    <Badge
+                      variant={c.action === "add" ? "success" : c.action === "edit" ? "info" : "danger"}
+                    >
+                      {c.action === "add" ? "Tambah" : c.action === "edit" ? "Ubah" : "Hapus"}
+                    </Badge>
+                    <span className="flex-1 truncate">{c.label}</span>
+                    <span
+                      className={cn(
+                        "tabular-nums font-medium",
+                        c.amount < 0 ? "text-rose-700" : "text-emerald-700",
+                      )}
+                    >
+                      {c.amount < 0 ? "−" : "+"}
+                      {formatCurrency(Math.abs(c.amount))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* Edit transaction dialog */}
+      <Dialog
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title="Ubah Transaksi Kas"
+        description={editing ? editing.categoryLabel : undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
+              Batal
+            </Button>
+            <Button size="sm" disabled={editAmount <= 0} onClick={saveEdit}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        {editing && (
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground">Nominal (Rp)</span>
+              <input
+                type="number"
+                min={0}
+                step={1000}
+                value={editAmount}
+                onChange={(e) => setEditAmount(Math.max(0, Number(e.target.value) || 0))}
+                className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground">Keterangan</span>
+              <input
+                type="text"
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
