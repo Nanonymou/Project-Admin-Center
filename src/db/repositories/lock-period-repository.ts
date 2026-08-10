@@ -1,6 +1,12 @@
 import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { dailyTransactions, lockPeriods, type LockPeriod } from "@/db/schema";
+import {
+  dailyTransactions,
+  lockPeriods,
+  lockPeriodHistory,
+  type LockPeriod,
+  type LockPeriodHistory,
+} from "@/db/schema";
 
 export type LockPeriodFilter = {
   projectId?: string;
@@ -30,6 +36,38 @@ export async function listLockPeriods(filter: LockPeriodFilter): Promise<LockPer
     .from(lockPeriods)
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(lockPeriods.periodLabel))
+    .limit(limit);
+}
+
+/** Append a lock/unlock action to the period-lock history. */
+export async function recordLockHistory(entry: {
+  projectId: string;
+  locationId: string;
+  periodLabel: string;
+  action: "lock" | "unlock";
+  actor: string;
+  reason?: string;
+}): Promise<void> {
+  await db.insert(lockPeriodHistory).values(entry);
+}
+
+/** List the lock/unlock history for a site/period (or scope), newest first. */
+export async function listLockHistory(filter: {
+  projectId?: string;
+  locationId?: string;
+  periodLabel?: string;
+  limit?: number;
+}): Promise<LockPeriodHistory[]> {
+  const conds: SQL[] = [];
+  if (filter.projectId) conds.push(eq(lockPeriodHistory.projectId, filter.projectId));
+  if (filter.locationId) conds.push(eq(lockPeriodHistory.locationId, filter.locationId));
+  if (filter.periodLabel) conds.push(eq(lockPeriodHistory.periodLabel, filter.periodLabel));
+  const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
+  return db
+    .select()
+    .from(lockPeriodHistory)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(lockPeriodHistory.createdAt))
     .limit(limit);
 }
 

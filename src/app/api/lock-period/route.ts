@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   applyLockToTransactions,
   listLockPeriods,
+  recordLockHistory,
   setPeriodLock,
 } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
@@ -124,6 +125,19 @@ export async function POST(req: NextRequest) {
       to: periodEnd,
       locked,
     });
+    // Append the lock/unlock action to the period-lock history.
+    try {
+      await recordLockHistory({
+        projectId,
+        locationId,
+        periodLabel,
+        action: locked ? "lock" : "unlock",
+        actor: persona.name,
+        reason,
+      });
+    } catch {
+      // history is best-effort
+    }
     revalidateKpi();
     return NextResponse.json({ source: "db", lock, affectedTransactions: affected });
   } catch (err) {
