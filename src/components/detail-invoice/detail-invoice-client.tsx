@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AttachmentCenter } from "@/components/attachments/attachment-center";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -213,6 +214,17 @@ export function DetailInvoiceClient() {
                 </tfoot>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Invoice documents */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Lampiran Invoice — {detail.number}</CardTitle>
+            <CardDescription>Unggah dokumen invoice (PO, faktur pajak, berita acara) dan pratinjau langsung.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AttachmentCenter title="Dokumen Invoice" accept="image/*,.pdf" />
           </CardContent>
         </Card>
       </div>
