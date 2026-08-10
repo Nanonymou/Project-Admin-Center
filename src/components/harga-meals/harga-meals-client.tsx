@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { UtensilsCrossed, MapPin, Tag, Pencil, Plus } from "lucide-react";
+import { UtensilsCrossed, MapPin, Tag, Pencil, Plus, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,8 +48,24 @@ export function HargaMealsClient() {
   const siteKey = ws?.locationId ?? "";
   const [overrides, setOverrides] = useState<Record<string, Record<string, number>>>({});
   const [customRows, setCustomRows] = useState<Record<string, PriceRow[]>>({});
+  // Deactivated category keys per site — a price kept for reference but marked
+  // inactive so it is excluded from active pricing.
+  const [inactive, setInactive] = useState<Record<string, string[]>>({});
   const siteOverrides = overrides[siteKey] ?? {};
   const siteCustom = customRows[siteKey] ?? [];
+  const siteInactive = inactive[siteKey] ?? [];
+
+  function isInactive(key: string): boolean {
+    return siteInactive.includes(key);
+  }
+
+  function toggleActive(key: string) {
+    setInactive((prev) => {
+      const cur = prev[siteKey] ?? [];
+      const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+      return { ...prev, [siteKey]: next };
+    });
+  }
 
   const editable = canEditPrices(persona);
 
@@ -148,10 +164,11 @@ export function HargaMealsClient() {
           <tbody>
             {list.map((c) => {
               const edited = c.key in siteOverrides;
+              const off = isInactive(c.key);
               return (
-                <tr key={c.key} className="border-b last:border-b-0">
+                <tr key={c.key} className={`border-b last:border-b-0 ${off ? "opacity-50" : ""}`}>
                   <td className="px-3 py-2 font-medium">
-                    {c.label}
+                    <span className={off ? "line-through" : ""}>{c.label}</span>
                     {c.custom && (
                       <Badge variant="success" className="ml-2">
                         Kustom
@@ -160,6 +177,11 @@ export function HargaMealsClient() {
                     {edited && !c.custom && (
                       <Badge variant="warning" className="ml-2">
                         Diubah
+                      </Badge>
+                    )}
+                    {off && (
+                      <Badge variant="danger" className="ml-2">
+                        Nonaktif
                       </Badge>
                     )}
                   </td>
@@ -174,15 +196,36 @@ export function HargaMealsClient() {
                   </td>
                   {editable && (
                     <td className="px-3 py-2 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(c)}
-                        className="h-7 gap-1 px-2"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Ubah
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(c)}
+                          disabled={off}
+                          className="h-7 gap-1 px-2"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Ubah
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleActive(c.key)}
+                          className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
+                        >
+                          {off ? (
+                            <>
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Aktifkan
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="h-3.5 w-3.5" />
+                              Nonaktifkan
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -220,7 +263,7 @@ export function HargaMealsClient() {
             ))}
           </select>
           <Badge variant="default" className="ml-auto">
-            {rows.length} kategori
+            {rows.length - siteInactive.length} aktif / {rows.length} kategori
           </Badge>
           {editable && (
             <Button size="sm" onClick={openAdd} className="gap-1.5">
