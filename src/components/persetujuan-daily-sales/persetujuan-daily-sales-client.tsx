@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle, Check, X, Send } from "lucide-react";
+import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle, Check, X, Send, LayoutDashboard, Info } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,6 +131,33 @@ export function PersetujuanDailySalesClient() {
     return c;
   }, [submissions]);
 
+  // Dashboard aggregation — ONLY approved submissions feed the dashboard.
+  const approvedDashboard = useMemo(() => {
+    const approved = submissions.filter((s) => s.status === "approved");
+    const total = approved.reduce((sum, s) => sum + s.total, 0);
+    const bySite = new Map<string, { locationName: string; projectCode: string; total: number; count: number }>();
+    for (const s of approved) {
+      const agg = bySite.get(s.locationId) ?? {
+        locationName: s.locationName,
+        projectCode: s.projectCode,
+        total: 0,
+        count: 0,
+      };
+      agg.total += s.total;
+      agg.count += 1;
+      bySite.set(s.locationId, agg);
+    }
+    const excludedTotal = submissions
+      .filter((s) => s.status !== "approved")
+      .reduce((sum, s) => sum + s.total, 0);
+    return {
+      total,
+      count: approved.length,
+      excludedTotal,
+      sites: Array.from(bySite.values()).sort((a, b) => b.total - a.total),
+    };
+  }, [submissions]);
+
   return (
     <div>
       <PageHeader
@@ -165,6 +192,67 @@ export function PersetujuanDailySalesClient() {
             );
           })}
         </div>
+
+        {/* Approved-only dashboard */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LayoutDashboard className="h-4 w-4 text-primary" />
+              Dashboard Sales (hanya data disetujui)
+            </CardTitle>
+            <CardDescription>
+              Hanya pengajuan berstatus <b>Disetujui</b> yang dihitung ke dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <div className="text-2xl font-bold tabular-nums text-primary">
+                  {formatCurrency(approvedDashboard.total)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Total sales disetujui · {approvedDashboard.count} pengajuan
+                </div>
+              </div>
+              <div className="ml-auto flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {formatCurrency(approvedDashboard.excludedTotal)} belum masuk dashboard (menunggu/ditolak).
+                </span>
+              </div>
+            </div>
+
+            {approvedDashboard.sites.length > 0 ? (
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Site</th>
+                      <th className="px-3 py-2 text-right font-medium">Pengajuan Disetujui</th>
+                      <th className="px-3 py-2 text-right font-medium">Total Sales</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedDashboard.sites.map((site) => (
+                      <tr key={`${site.projectCode}-${site.locationName}`} className="border-b last:border-0">
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{site.locationName}</span>
+                          <span className="ml-1 text-[11px] text-muted-foreground">{site.projectCode}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{site.count}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">
+                          {formatCurrency(site.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Belum ada pengajuan disetujui pada cakupan Anda.</p>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:space-y-0">
