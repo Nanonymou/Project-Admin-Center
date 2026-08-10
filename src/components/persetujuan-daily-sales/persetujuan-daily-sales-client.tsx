@@ -1,20 +1,61 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardCheck, ShoppingCart } from "lucide-react";
+import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { getServiceCategories } from "@/lib/mock/service-config";
 import {
   buildDailySalesSubmissions,
   DS_APPROVAL_STATUSES,
   DS_STATUS_META,
+  type DailySalesSubmission,
   type DsApprovalStatus,
 } from "@/lib/mock/daily-sales-approval";
+
+/** Deterministic line-item breakdown for a submission (sums to its total). */
+function submissionLines(s: DailySalesSubmission): { label: string; qty: number; amount: number }[] {
+  const cats = getServiceCategories(s.projectCode).slice(0, s.itemCount);
+  if (cats.length === 0) return [];
+  const weights = cats.map((_, i) => 1 + ((i * 7 + s.locationId.length) % 5));
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  return cats.map((c, i) => {
+    const amount = Math.round((weights[i] / weightSum) * s.total);
+    const price = c.defaultPrice || 1;
+    return { label: c.label, qty: Math.max(1, Math.round(amount / price)), amount };
+  });
+}
+
+/** Approval-history steps for a submission, based on its current status. */
+function approvalSteps(s: DailySalesSubmission): { label: string; state: "done" | "current" | "pending" | "rejected"; note: string }[] {
+  const order: DsApprovalStatus[] = ["submitted", "reviewed", "approved"];
+  const idx = s.status === "rejected" ? 1 : order.indexOf(s.status);
+  return [
+    { label: "Diajukan", state: "done", note: `${s.submittedBy} · ${formatDate(s.trxDate)}` },
+    {
+      label: "Direview",
+      state:
+        s.status === "rejected"
+          ? "rejected"
+          : idx >= 1
+            ? "done"
+            : "current",
+      note: s.status === "rejected" ? "Ditolak reviewer" : idx >= 1 ? "Reviewer site" : "Menunggu review",
+    },
+    {
+      label: "Disetujui",
+      state: s.status === "approved" ? "done" : s.status === "rejected" ? "pending" : idx >= 1 ? "current" : "pending",
+      note: s.status === "approved" ? "Leader Admin" : "Menunggu approval",
+    },
+  ];
+}
 
 /**
  * Persetujuan Daily Sales — approval list. Shows recent Daily Sales submissions
@@ -33,6 +74,7 @@ export function PersetujuanDailySalesClient() {
 
   const [statusFilter, setStatusFilter] = useState<"all" | DsApprovalStatus>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [detail, setDetail] = useState<DailySalesSubmission | null>(null);
 
   const locations = useMemo(() => {
     const map = new Map<string, string>();
@@ -141,6 +183,7 @@ export function PersetujuanDailySalesClient() {
                       <th className="px-3 py-2 text-right font-medium">Total</th>
                       <th className="px-3 py-2 text-left font-medium">Diajukan</th>
                       <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-right font-medium">Detail</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -161,6 +204,11 @@ export function PersetujuanDailySalesClient() {
                           <td className="px-3 py-2">
                             <Badge variant={meta.badge}>{meta.label}</Badge>
                           </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button size="sm" variant="outline" onClick={() => setDetail(s)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -171,6 +219,78 @@ export function PersetujuanDailySalesClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Submission detail + approval history */}
+      <Dialog
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        title="Detail Pengajuan Daily Sales"
+        description={detail ? `${detail.locationName} · ${detail.projectCode} · ${formatDate(detail.trxDate)}` : undefined}
+        className="max-w-2xl"
+      >
+        {detail && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant={DS_STATUS_META[detail.status].badge}>{DS_STATUS_META[detail.status].label}</Badge>
+              <span className="text-muted-foreground">Diajukan oleh {detail.submittedBy}</span>
+              <span className="ml-auto font-medium tabular-nums">{formatCurrency(detail.total)}</span>
+            </div>
+
+            {/* Line items */}
+            <div>
+              <div className="mb-1 text-xs font-medium text-muted-foreground">Rincian</div>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2 py-1.5 text-left font-medium">Kategori</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Qty</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissionLines(detail).map((l, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-2 py-1.5">{l.label}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{l.qty}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCurrency(l.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Approval history */}
+            <div>
+              <div className="mb-2 text-xs font-medium text-muted-foreground">Riwayat Persetujuan</div>
+              <ol className="space-y-2">
+                {approvalSteps(detail).map((step, i) => {
+                  const Icon =
+                    step.state === "done" ? CheckCircle2 : step.state === "rejected" ? XCircle : Clock;
+                  const color =
+                    step.state === "done"
+                      ? "text-emerald-600"
+                      : step.state === "rejected"
+                        ? "text-rose-600"
+                        : step.state === "current"
+                          ? "text-sky-600"
+                          : "text-muted-foreground";
+                  return (
+                    <li key={i} className="flex items-start gap-2">
+                      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", color)} />
+                      <div>
+                        <div className="text-sm font-medium">{step.label}</div>
+                        <div className="text-[11px] text-muted-foreground">{step.note}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
