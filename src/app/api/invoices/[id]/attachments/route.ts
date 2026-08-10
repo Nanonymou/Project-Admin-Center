@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
 /**
  * POST /api/invoices/:id/attachments
- * Body: { fileName, fileType?, sizeBytes?, category?, storageKey? }
+ * Body: { fileName, fileType?, sizeBytes?, category?, stage?, note?, storageKey? }
  * Registers an uploaded attachment's metadata against the invoice. Viewers
  * cannot upload; the persona must have access to the invoice's site.
  */
@@ -84,9 +84,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       projectId: invoice.projectId,
       locationId: invoice.locationId,
       category: typeof body.category === "string" ? body.category : undefined,
+      stage: typeof body.stage === "string" ? body.stage : undefined,
       fileName,
       fileType: typeof body.fileType === "string" ? body.fileType : undefined,
       sizeBytes,
+      note: typeof body.note === "string" ? body.note : undefined,
       storageKey: typeof body.storageKey === "string" ? body.storageKey : undefined,
       uploadedBy: persona.name,
     };

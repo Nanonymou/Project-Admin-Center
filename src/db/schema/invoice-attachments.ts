@@ -19,10 +19,15 @@ export const invoiceAttachments = pgTable(
       .references(() => invoices.id, { onDelete: "cascade" }),
     ...tenancyColumns,
     category: varchar("category", { length: 64 }),
+    // Workflow stage this document belongs to (config-driven stage key), so the
+    // Detail Invoice can group supporting documents by approval stage.
+    stage: varchar("stage", { length: 64 }),
     fileName: varchar("file_name", { length: 256 }).notNull(),
     fileType: varchar("file_type", { length: 128 }),
     sizeBytes: bigint("size_bytes", { mode: "number" }).default(0).notNull(),
     storageKey: varchar("storage_key", { length: 512 }),
+    // Free-text caption shown alongside the document in the attachment center.
+    note: varchar("note", { length: 512 }),
     uploadedBy: varchar("uploaded_by", { length: 128 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -30,6 +35,7 @@ export const invoiceAttachments = pgTable(
     invoiceIdx: index("invoice_attachments_invoice_idx").on(t.invoiceId),
     tenantIdx: index("invoice_attachments_tenant_idx").on(t.projectId, t.locationId),
     categoryIdx: index("invoice_attachments_category_idx").on(t.category),
+    stageIdx: index("invoice_attachments_stage_idx").on(t.invoiceId, t.stage),
   }),
 );
 
