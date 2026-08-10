@@ -4,6 +4,7 @@ import {
   dailyTransactionLines,
   dailyTransactionLogs,
   dailyTransactions,
+  entryChangeHistory,
   type DailyTransaction,
   type DailyTransactionLine,
   type NewDailyTransactionLine,
@@ -213,6 +214,21 @@ export async function createDailySubmission(input: DailySubmissionInput): Promis
       actor: input.submittedBy,
       toStatus: "submitted",
       detail: `Entri ${input.kind} ${input.trxDate} disubmit.`,
+    });
+
+    // Field-level change history: the entry's total was created.
+    await tx.insert(entryChangeHistory).values({
+      projectId: input.projectId,
+      locationId: input.locationId,
+      kind: input.kind,
+      transactionId: header.id,
+      trxDate: input.trxDate,
+      action: "create",
+      field: "total",
+      beforeValue: null,
+      afterValue: input.total,
+      editor: input.submittedBy,
+      reason: "Entri baru dibuat.",
     });
 
     return header;
@@ -510,6 +526,13 @@ export async function updateDailySubmission(
   input: DailySubmissionInput,
 ): Promise<DailyTransaction | null> {
   return db.transaction(async (tx) => {
+    // Capture the prior total so the change history can record before → after.
+    const [prev] = await tx
+      .select({ total: dailyTransactions.total })
+      .from(dailyTransactions)
+      .where(eq(dailyTransactions.id, id))
+      .limit(1);
+
     const [header] = await tx
       .update(dailyTransactions)
       .set({
@@ -552,6 +575,24 @@ export async function updateDailySubmission(
       toStatus: header.status,
       detail: `Entri ${input.kind} ${input.trxDate} diubah.`,
     });
+
+    // Field-level change history: record the total's before → after (only when
+    // it actually changed) so the "Riwayat Perubahan" view has a diff to show.
+    if (prev && Number(prev.total) !== Number(input.total)) {
+      await tx.insert(entryChangeHistory).values({
+        projectId: input.projectId,
+        locationId: input.locationId,
+        kind: input.kind,
+        transactionId: id,
+        trxDate: input.trxDate,
+        action: "update",
+        field: "total",
+        beforeValue: prev.total,
+        afterValue: input.total,
+        editor: input.submittedBy,
+        reason: "Entri diperbarui.",
+      });
+    }
 
     return header;
   });
