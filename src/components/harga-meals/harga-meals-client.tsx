@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { UtensilsCrossed, MapPin, Tag, Pencil, Plus, Ban, RotateCcw } from "lucide-react";
+import { UtensilsCrossed, MapPin, Tag, Pencil, Plus, Ban, RotateCcw, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,25 @@ import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getPricedCategories, type PricedCategory } from "@/lib/mock/pricing-config";
 
 type PriceRow = { key: string; label: string; unit: string; price: number; custom?: boolean };
+
+type PriceHistoryEntry = {
+  id: string;
+  at: string;
+  actor: string;
+  category: string;
+  action: "Tambah" | "Ubah" | "Nonaktifkan" | "Aktifkan";
+  detail: string;
+};
+
+function nowLabel(): string {
+  return new Date().toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 /** Site admins/leaders can edit prices; viewers get a read-only list. */
 function canEditPrices(persona: Persona): boolean {
@@ -51,19 +70,38 @@ export function HargaMealsClient() {
   // Deactivated category keys per site — a price kept for reference but marked
   // inactive so it is excluded from active pricing.
   const [inactive, setInactive] = useState<Record<string, string[]>>({});
+  // Session-local change history per site (newest first).
+  const [history, setHistory] = useState<Record<string, PriceHistoryEntry[]>>({});
   const siteOverrides = overrides[siteKey] ?? {};
   const siteCustom = customRows[siteKey] ?? [];
   const siteInactive = inactive[siteKey] ?? [];
+  const siteHistory = history[siteKey] ?? [];
+
+  function logHistory(entry: Omit<PriceHistoryEntry, "id" | "at" | "actor">) {
+    setHistory((prev) => ({
+      ...prev,
+      [siteKey]: [
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: nowLabel(), actor: persona.name, ...entry },
+        ...(prev[siteKey] ?? []),
+      ],
+    }));
+  }
 
   function isInactive(key: string): boolean {
     return siteInactive.includes(key);
   }
 
-  function toggleActive(key: string) {
+  function toggleActive(key: string, label: string) {
+    const willDeactivate = !siteInactive.includes(key);
     setInactive((prev) => {
       const cur = prev[siteKey] ?? [];
       const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
       return { ...prev, [siteKey]: next };
+    });
+    logHistory({
+      category: label,
+      action: willDeactivate ? "Nonaktifkan" : "Aktifkan",
+      detail: willDeactivate ? "Harga dinonaktifkan." : "Harga diaktifkan kembali.",
     });
   }
 
@@ -116,10 +154,19 @@ export function HargaMealsClient() {
     const price = Math.max(0, Math.round(Number(formPrice) || 0));
     if (editKey) {
       // Editing an existing/custom row → record a price override for this site.
+      const prevRow = rows.find((r) => r.key === editKey);
+      const oldPrice = prevRow ? priceOf(prevRow) : 0;
       setOverrides((prev) => ({
         ...prev,
         [siteKey]: { ...(prev[siteKey] ?? {}), [editKey]: price },
       }));
+      if (oldPrice !== price) {
+        logHistory({
+          category: formLabel,
+          action: "Ubah",
+          detail: `Harga ${formatCurrency(oldPrice)} → ${formatCurrency(price)}.`,
+        });
+      }
     } else {
       // Adding a new custom category for this site.
       const label = formLabel.trim();
@@ -129,6 +176,11 @@ export function HargaMealsClient() {
         ...prev,
         [siteKey]: [...(prev[siteKey] ?? []), { key, label, unit: formUnit.trim() || "unit", price, custom: true }],
       }));
+      logHistory({
+        category: label,
+        action: "Tambah",
+        detail: `Kategori baru ditambahkan · ${formatCurrency(price)}/${formUnit.trim() || "unit"}.`,
+      });
     }
     setFormOpen(false);
   }
@@ -210,7 +262,7 @@ export function HargaMealsClient() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => toggleActive(c.key)}
+                          onClick={() => toggleActive(c.key, c.label)}
                           className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
                         >
                           {off ? (
@@ -293,6 +345,54 @@ export function HargaMealsClient() {
             <CardDescription>Harga default kategori layanan non-meals.</CardDescription>
           </CardHeader>
           <CardContent>{priceTable(others, "Tidak ada kategori layanan lain.")}</CardContent>
+        </Card>
+
+        {/* Price change history */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Harga
+            </CardTitle>
+            <CardDescription>
+              {siteHistory.length === 0
+                ? "Belum ada perubahan pada sesi ini."
+                : `${siteHistory.length} perubahan · ${ws.locationName}.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {siteHistory.length === 0 ? (
+              <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+                Perubahan harga (tambah/ubah/nonaktifkan) akan tercatat di sini.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {siteHistory.map((h) => {
+                  const variant =
+                    h.action === "Tambah"
+                      ? "success"
+                      : h.action === "Ubah"
+                        ? "warning"
+                        : h.action === "Nonaktifkan"
+                          ? "danger"
+                          : "info";
+                  return (
+                    <li
+                      key={h.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-card px-3 py-2 text-sm"
+                    >
+                      <Badge variant={variant}>{h.action}</Badge>
+                      <span className="font-medium">{h.category}</span>
+                      <span className="text-xs text-muted-foreground">{h.detail}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {h.actor} · {h.at}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
         </Card>
       </div>
 
