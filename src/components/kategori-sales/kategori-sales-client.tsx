@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ListChecks, MapPin, Tag, TrendingUp, TrendingDown, Plus, Pencil } from "lucide-react";
+import { ListChecks, MapPin, Tag, TrendingUp, TrendingDown, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,20 +13,7 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
-import { getServiceCategories } from "@/lib/mock/service-config";
-import { getPriceFor } from "@/lib/mock/pricing-config";
-
-type CategoryRow = {
-  key: string;
-  label: string;
-  unit: string;
-  price: number;
-  deduction: boolean;
-  custom?: boolean;
-};
-
-/** Field overrides applied on top of a base/custom category, keyed by category key. */
-type CategoryOverride = Partial<Pick<CategoryRow, "label" | "unit" | "price" | "deduction">>;
+import { useKategoriStore, type KategoriRow } from "@/lib/hooks/use-kategori-store";
 
 /** Site admins/leaders can manage categories; viewers get a read-only list. */
 function canEditCategories(persona: Persona): boolean {
@@ -35,11 +22,10 @@ function canEditCategories(persona: Persona): boolean {
 
 /**
  * Kategori Sales — the config-driven list of sales service categories per
- * project (PRD §Master Data / Service Category matrix). Categories are sourced
- * from the service config keyed by project code; leaders/admins can add custom
- * categories or edit existing ones (session-local, per project). Shows each
- * category's unit, type (revenue vs deduction), and the site's effective price
- * from Master Pricing. Persona-scoped.
+ * project (PRD §Master Data / Service Category matrix). Categories come from
+ * the service config keyed by project code; leaders/admins can add custom
+ * categories, edit existing ones, or deactivate them. All edits live in a
+ * session-local store (`useKategoriStore`), per project. Persona-scoped.
  */
 export function KategoriSalesClient() {
   const { persona } = usePersona();
@@ -53,12 +39,15 @@ export function KategoriSalesClient() {
   const [query, setQuery] = useState("");
   const editable = canEditCategories(persona);
 
-  // Session-local edits keyed by project code (categories are per-project).
-  const projectKey = ws?.projectCode ?? "";
-  const [overrides, setOverrides] = useState<Record<string, Record<string, CategoryOverride>>>({});
-  const [customCats, setCustomCats] = useState<Record<string, CategoryRow[]>>({});
-  const projOverrides = overrides[projectKey] ?? {};
-  const projCustom = customCats[projectKey] ?? [];
+  const store = useKategoriStore(ws?.projectCode ?? "", ws?.locationId ?? "");
+
+  const categories: KategoriRow[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return store.rows.filter((c) => !q || c.label.toLowerCase().includes(q) || c.key.includes(q));
+  }, [store.rows, query]);
+
+  const revenueCount = categories.filter((c) => !c.deduction && c.active).length;
+  const deductionCount = categories.filter((c) => c.deduction && c.active).length;
 
   // Form/dialog state.
   const [formOpen, setFormOpen] = useState(false);
@@ -67,27 +56,6 @@ export function KategoriSalesClient() {
   const [formUnit, setFormUnit] = useState("");
   const [formPrice, setFormPrice] = useState("");
   const [formDeduction, setFormDeduction] = useState(false);
-
-  const categories: CategoryRow[] = useMemo(() => {
-    if (!ws) return [];
-    const base: CategoryRow[] = getServiceCategories(ws.projectCode).map((c) => {
-      const ov = projOverrides[c.key] ?? {};
-      return {
-        key: c.key,
-        label: ov.label ?? c.label,
-        unit: ov.unit ?? c.unit,
-        price: ov.price ?? getPriceFor(ws.projectCode, ws.locationId, c.key),
-        deduction: ov.deduction ?? Boolean(c.deduction),
-      };
-    });
-    const custom: CategoryRow[] = projCustom.map((c) => ({ ...c, ...(projOverrides[c.key] ?? {}) }));
-    const all = [...base, ...custom];
-    const q = query.trim().toLowerCase();
-    return all.filter((c) => !q || c.label.toLowerCase().includes(q) || c.key.includes(q));
-  }, [ws, query, projOverrides, projCustom]);
-
-  const revenueCount = categories.filter((c) => !c.deduction).length;
-  const deductionCount = categories.filter((c) => c.deduction).length;
 
   function openAdd() {
     setEditKey(null);
@@ -98,7 +66,7 @@ export function KategoriSalesClient() {
     setFormOpen(true);
   }
 
-  function openEdit(row: CategoryRow) {
+  function openEdit(row: KategoriRow) {
     setEditKey(row.key);
     setFormLabel(row.label);
     setFormUnit(row.unit);
@@ -110,23 +78,9 @@ export function KategoriSalesClient() {
   function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
-    const price = Math.max(0, Math.round(Number(formPrice) || 0));
-    const unit = formUnit.trim() || "unit";
-    if (editKey) {
-      setOverrides((prev) => ({
-        ...prev,
-        [projectKey]: {
-          ...(prev[projectKey] ?? {}),
-          [editKey]: { label, unit, price, deduction: formDeduction },
-        },
-      }));
-    } else {
-      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
-      setCustomCats((prev) => ({
-        ...prev,
-        [projectKey]: [...(prev[projectKey] ?? []), { key, label, unit, price, deduction: formDeduction, custom: true }],
-      }));
-    }
+    const input = { label, unit: formUnit, price: Number(formPrice) || 0, deduction: formDeduction };
+    if (editKey) store.editCategory(editKey, input);
+    else store.addCategory(input);
     setFormOpen(false);
   }
 
@@ -171,6 +125,7 @@ export function KategoriSalesClient() {
             className="h-8 w-44 text-xs"
           />
           <div className="ml-auto flex items-center gap-2">
+            <Badge variant="default">{store.activeCount} aktif</Badge>
             <Badge variant="success" className="gap-1">
               <TrendingUp className="h-3 w-3" />
               {revenueCount} penjualan
@@ -207,7 +162,7 @@ export function KategoriSalesClient() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-sm">
+                <table className="w-full min-w-[600px] text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
                       <th className="px-3 py-2 font-medium">Kategori</th>
@@ -220,17 +175,25 @@ export function KategoriSalesClient() {
                   </thead>
                   <tbody>
                     {categories.map((c) => (
-                      <tr key={c.key} className="border-b last:border-b-0">
+                      <tr
+                        key={c.key}
+                        className={`border-b last:border-b-0 ${c.active ? "" : "opacity-50"}`}
+                      >
                         <td className="px-3 py-2 font-medium">
-                          {c.label}
+                          <span className={c.active ? "" : "line-through"}>{c.label}</span>
                           {c.custom && (
                             <Badge variant="success" className="ml-2">
                               Kustom
                             </Badge>
                           )}
-                          {!c.custom && c.key in projOverrides && (
+                          {!c.custom && c.edited && (
                             <Badge variant="warning" className="ml-2">
                               Diubah
+                            </Badge>
+                          )}
+                          {!c.active && (
+                            <Badge variant="danger" className="ml-2">
+                              Nonaktif
                             </Badge>
                           )}
                         </td>
@@ -254,15 +217,36 @@ export function KategoriSalesClient() {
                         </td>
                         {editable && (
                           <td className="px-3 py-2 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEdit(c)}
-                              className="h-7 gap-1 px-2"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Ubah
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEdit(c)}
+                                disabled={!c.active}
+                                className="h-7 gap-1 px-2"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Ubah
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => store.toggleActive(c.key)}
+                                className={`h-7 gap-1 px-2 ${c.active ? "text-rose-600" : "text-emerald-600"}`}
+                              >
+                                {c.active ? (
+                                  <>
+                                    <Ban className="h-3.5 w-3.5" />
+                                    Nonaktifkan
+                                  </>
+                                ) : (
+                                  <>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Aktifkan
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </td>
                         )}
                       </tr>
