@@ -1,4 +1,4 @@
-import { getApprovalTimeframes } from "@/lib/mock/approval-timeframe-config";
+import { getApprovalTimeframes, type ApprovalTimeframe } from "@/lib/mock/approval-timeframe-config";
 
 export type TimelineStage = {
   stage: string;
@@ -22,15 +22,14 @@ function isoDate(d: Date): string {
 }
 
 /**
- * Build an invoice's processing timeline from the config-driven approval stages,
- * seeded deterministically per invoice so it is stable across requests. Mirrors
- * the client seeding: stages before the current index are done, one is running,
- * the rest pending; `actual_days` and `breached` reflect whether a completed
- * stage overran its SLA. Used as the mock fallback when the DB is unavailable, so
- * the timeline endpoints always respond.
+ * Build an invoice's processing timeline from an approval-stage flow, seeded
+ * deterministically per invoice so it is stable across requests. Mirrors the
+ * client seeding: stages before the current index are done, one is running, the
+ * rest pending; `actual_days` and `breached` reflect whether a completed stage
+ * overran its SLA. The `flow` is supplied by the caller so the Master Timeframe
+ * overrides can be applied before building (see resolveTimeframes).
  */
-export function buildTimeline(projectCode: string, seedKey: string): TimelineStage[] {
-  const flow = getApprovalTimeframes(projectCode, "invoice");
+export function buildTimelineFromFlow(flow: ApprovalTimeframe[], seedKey: string): TimelineStage[] {
   if (flow.length === 0) return [];
   const seed = seedOf(seedKey);
   const currentIdx = seed % flow.length;
@@ -59,4 +58,12 @@ export function buildTimeline(projectCode: string, seedKey: string): TimelineSta
       breached,
     };
   });
+}
+
+/**
+ * Build a timeline straight from the config-driven flow (no Master Timeframe
+ * overrides). Retained for callers that don't need DB resolution.
+ */
+export function buildTimeline(projectCode: string, seedKey: string): TimelineStage[] {
+  return buildTimelineFromFlow(getApprovalTimeframes(projectCode, "invoice"), seedKey);
 }

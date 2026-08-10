@@ -7,10 +7,10 @@ import {
 } from "@/db/repositories/invoice-stage-progress-repository";
 import type { NewInvoiceAttachment, NewInvoiceStageProgress } from "@/db/schema";
 import { recordDocumentUpload } from "@/lib/server/services/invoice-audit-service";
+import { resolveTimeframes } from "@/lib/server/services/master-timeframe-service";
 import { requirePersona } from "@/lib/server/rbac";
 import { isAllowedUpload } from "@/lib/server/file-types";
 import { canAccessLocation } from "@/lib/personas";
-import { getApprovalTimeframes } from "@/lib/mock/approval-timeframe-config";
 
 export const dynamic = "force-dynamic";
 
@@ -76,8 +76,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "Tidak ada akses ke invoice ini." }, { status: 403 });
     }
 
-    // The stage must be part of the invoice's config-driven approval flow.
-    const flow = getApprovalTimeframes(invoice.projectId, "invoice");
+    // The stage must be part of the invoice's Master-Timeframe-resolved flow.
+    const flow = await resolveTimeframes(invoice.projectId, "invoice");
     const flowIdx = flow.findIndex((f) => f.stage === stage);
     if (flowIdx === -1) {
       return NextResponse.json({ error: `Stage tidak dikenal: ${stage}.` }, { status: 400 });

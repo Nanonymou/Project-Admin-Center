@@ -5,11 +5,11 @@ import {
   upsertStageProgress,
 } from "@/db/repositories/invoice-stage-progress-repository";
 import type { NewInvoiceStageProgress } from "@/db/schema";
-import { buildTimeline } from "@/lib/server/services/invoice-timeline-service";
+import { buildTimeline, buildTimelineFromFlow } from "@/lib/server/services/invoice-timeline-service";
 import { recordInvoiceActivity } from "@/lib/server/services/invoice-audit-service";
+import { resolveTimeframes } from "@/lib/server/services/master-timeframe-service";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
-import { getApprovalTimeframes } from "@/lib/mock/approval-timeframe-config";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 
@@ -50,8 +50,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (rows.length > 0) {
       return NextResponse.json({ source: "db", invoiceId: id, count: rows.length, stages: rows });
     }
-    // No persisted progress yet — synthesize from config.
-    const stages = buildTimeline(invoice.projectId, `${invoice.locationId}-${invoice.number}`);
+    // No persisted progress yet — synthesize from the Master-Timeframe-resolved flow.
+    const flow = await resolveTimeframes(invoice.projectId, "invoice");
+    const stages = buildTimelineFromFlow(flow, `${invoice.locationId}-${invoice.number}`);
     return NextResponse.json({ source: "config", invoiceId: id, count: stages.length, stages });
   } catch {
     // Mock fallback: locate the invoice by its "<locationId>-<number>" id.
@@ -108,8 +109,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: "Tidak ada akses ke invoice ini." }, { status: 403 });
     }
 
-    // Resolve SLA + order from the config-driven flow for this stage.
-    const flow = getApprovalTimeframes(invoice.projectId, "invoice");
+    // Resolve SLA + order from the Master-Timeframe-resolved flow for this stage.
+    const flow = await resolveTimeframes(invoice.projectId, "invoice");
     const idx = flow.findIndex((f) => f.stage === stage);
     if (idx === -1) {
       return NextResponse.json({ error: `Stage tidak dikenal: ${stage}.` }, { status: 400 });
