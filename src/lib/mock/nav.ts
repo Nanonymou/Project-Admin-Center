@@ -22,6 +22,7 @@ import {
   LockOpen,
   GitBranch,
   CalendarClock,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 
@@ -100,6 +101,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Configuration", href: "/master/config", icon: Settings2 },
       { label: "Workflow Default Approval", href: "/workflow-default-approval", icon: GitBranch },
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
+      { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
       { label: "Import/Export", href: "/import-export", icon: Settings2 },
