@@ -24,6 +24,7 @@ import {
   CalendarClock,
   UtensilsCrossed,
   ListChecks,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 
@@ -92,6 +93,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Projects", href: "/master/projects", icon: Building2 },
       { label: "Kelola Pengguna", href: "/kelola-pengguna", icon: Users },
+      { label: "Role", href: "/role", icon: Shield },
       { label: "User & Storage", href: "/user-monitoring", icon: Users },
       { label: "Approvals", href: "/master/approvals", icon: BadgeCheck },
       { label: "Manajemen Periode", href: "/period-status", icon: CalendarDays },
