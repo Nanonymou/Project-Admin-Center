@@ -274,6 +274,13 @@
       "when": 1786129885588,
       "tag": "0038_sturdy_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786339397787,
+      "tag": "0039_illegal_dazzler",
+      "breakpoints": true
     }
   ]
 }
