@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "daily_tx_line_category_unique_idx" ON "daily_transaction_lines" USING btree ("transaction_id","category_key");

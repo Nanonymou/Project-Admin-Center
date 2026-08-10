@@ -1,5 +1,16 @@
 import { relations } from "drizzle-orm";
-import { boolean, date, index, numeric, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  numeric,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { auditColumns, softDeleteColumns, tenancyColumns } from "./columns";
 import { masterAreas } from "./master-areas";
 
@@ -81,6 +92,9 @@ export const dailyTransactionLines = pgTable(
   (t) => ({
     txIdx: index("daily_tx_line_tx_idx").on(t.transactionId),
     tenantIdx: index("daily_tx_line_tenant_idx").on(t.projectId, t.locationId),
+    // One line per category within a transaction — the natural uniqueness for
+    // Daily Sales import so a duplicated (trxDate, categoryKey) row is rejected.
+    categoryUnique: uniqueIndex("daily_tx_line_category_unique_idx").on(t.transactionId, t.categoryKey),
   }),
 );
 
