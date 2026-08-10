@@ -6,6 +6,10 @@ import {
 } from "@/db/repositories/invoice-repository";
 import type { NewInvoice } from "@/db/schema";
 import { computeInvoice, invoiceCalcColumns } from "@/lib/server/services/invoice-calculation-service";
+import {
+  recordInvoiceEdited,
+  recordStageTransition,
+} from "@/lib/server/services/invoice-audit-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation, type Persona } from "@/lib/personas";
@@ -105,6 +109,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const updated = await updateInvoice(id, patch);
     if (!updated) return NextResponse.json({ error: "Invoice tidak ditemukan." }, { status: 404 });
+
+    // Record the audit trail — a stage move is a distinct workflow event; any
+    // other field change is an edit. Best-effort: never fail the update on log error.
+    try {
+      if (patch.stage && patch.stage !== existing.stage) {
+        await recordStageTransition(updated, persona.name, existing.stage, patch.stage, persona.role);
+      }
+      const editedFields = Object.keys(patch).filter((f) => f !== "stage" && f !== "updatedAt");
+      if (editedFields.length > 0) {
+        await recordInvoiceEdited(updated, persona.name, editedFields, persona.role);
+      }
+    } catch {
+      /* audit logging is best-effort */
+    }
+
     revalidateKpi();
     return NextResponse.json({ source: "db", invoice: updated });
   } catch {

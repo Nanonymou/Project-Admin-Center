@@ -6,6 +6,7 @@ import {
   invoiceCalcColumns,
   parseInvoiceCalcInput,
 } from "@/lib/server/services/invoice-calculation-service";
+import { recordInvoiceCreated } from "@/lib/server/services/invoice-audit-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -170,6 +171,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const invoice = await createInvoice(values);
+    // Best-effort audit trail — never fail the create because logging failed.
+    try {
+      await recordInvoiceCreated(
+        { ...invoice, number: invoice.number },
+        persona.name,
+        persona.role,
+      );
+    } catch {
+      /* audit logging is best-effort */
+    }
     revalidateKpi();
     return NextResponse.json({ source: "db", invoice, calc }, { status: 201 });
   } catch (err) {

@@ -4,6 +4,7 @@ import { addAttachment } from "@/db/repositories/invoice-attachment-repository";
 import type { NewInvoiceAttachment } from "@/db/schema";
 import { requirePersona } from "@/lib/server/rbac";
 import { isAllowedUpload } from "@/lib/server/file-types";
+import { recordDocumentUpload } from "@/lib/server/services/invoice-audit-service";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       uploadedBy: persona.name,
     };
     const attachment = await addAttachment(values);
+    try {
+      await recordDocumentUpload(invoice, persona.name, fileName, persona.role);
+    } catch {
+      /* audit logging is best-effort */
+    }
     return NextResponse.json({ source: "db", attachment }, { status: 201 });
   } catch (err) {
     return NextResponse.json(

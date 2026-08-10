@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { invoiceActivities, type InvoiceActivity } from "@/db/schema";
+import { invoiceActivities, type InvoiceActivity, type NewInvoiceActivity } from "@/db/schema";
 
 export type ActivityFilter = {
   /** Required for tenant scope; omit only for cross-site (executive) views. */
@@ -39,6 +39,15 @@ function buildWhere(filter: ActivityFilter): SQL | undefined {
  * Repository Pattern: all DB access to the invoice_activities table flows
  * through this module; multi-tenancy is enforced in `buildWhere`.
  */
+/**
+ * Append one activity to an invoice's audit trail. The table is append-only, so
+ * this is the sole write path (no update/delete).
+ */
+export async function addInvoiceActivity(values: NewInvoiceActivity): Promise<InvoiceActivity> {
+  const [row] = await db.insert(invoiceActivities).values(values).returning();
+  return row;
+}
+
 /** Full audit trail for a single invoice, chronological (oldest first). */
 export async function listInvoiceActivities(invoiceId: string): Promise<InvoiceActivity[]> {
   return db
