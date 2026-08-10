@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 
 type AuditAction = "create" | "review" | "approve" | "send" | "upload" | "lock";
@@ -53,6 +53,7 @@ export function AuditTrailInvoiceClient() {
     [persona],
   );
   const [wsIndex, setWsIndex] = useState(0);
+  const [actionFilter, setActionFilter] = useState<"all" | AuditAction>("all");
   const ws = workspaces[wsIndex] ?? workspaces[0];
 
   const trail = useMemo(() => {
@@ -83,6 +84,9 @@ export function AuditTrailInvoiceClient() {
   const seed = seedOf(ws.locationId);
   const invoiceNo = `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}`;
   const amount = 80_000_000 + (seed % 40) * 1_000_000;
+
+  const actionsPresent = Array.from(new Set(trail.map((e) => e.action)));
+  const visibleTrail = actionFilter === "all" ? trail : trail.filter((e) => e.action === actionFilter);
 
   return (
     <div>
@@ -116,16 +120,37 @@ export function AuditTrailInvoiceClient() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-4 w-4 text-primary" />
-              Audit Trail
-            </CardTitle>
-            <CardDescription>{trail.length} kejadian tercatat pada invoice ini.</CardDescription>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Audit Trail
+              </CardTitle>
+              <CardDescription>
+                {visibleTrail.length} dari {trail.length} kejadian pada invoice ini.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {(["all", ...actionsPresent] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setActionFilter(a)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] font-medium",
+                    actionFilter === a
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-accent",
+                  )}
+                >
+                  {a === "all" ? "Semua" : ACTION_META[a].label}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             <ol className="relative space-y-4 pl-6">
-              {trail.map((e, i) => {
+              {visibleTrail.map((e, i) => {
                 const meta = ACTION_META[e.action];
                 const Icon = meta.icon;
                 return (
@@ -133,7 +158,7 @@ export function AuditTrailInvoiceClient() {
                     <span className="absolute -left-6 top-0.5 flex h-4 w-4 items-center justify-center">
                       <span className="h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
                     </span>
-                    {i < trail.length - 1 && (
+                    {i < visibleTrail.length - 1 && (
                       <span className="absolute -left-[18px] top-4 h-full w-px bg-border" aria-hidden />
                     )}
                     <div className="flex flex-wrap items-center gap-2">
