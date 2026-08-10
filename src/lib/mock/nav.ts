@@ -20,6 +20,7 @@ import {
   Download,
   Lock,
   LockOpen,
+  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 
@@ -96,6 +97,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Kunci Periode", href: "/kunci-periode", icon: Lock },
       { label: "Unlock Period", href: "/unlock-period", icon: LockOpen },
       { label: "Configuration", href: "/master/config", icon: Settings2 },
+      { label: "Workflow Default Approval", href: "/workflow-default-approval", icon: GitBranch },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
       { label: "Import/Export", href: "/import-export", icon: Settings2 },
