@@ -25,35 +25,33 @@ import {
   UtensilsCrossed,
   ListChecks,
   Shield,
+  ShieldCheck,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
-import type { PersonaRole } from "@/lib/personas";
 
 export type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
   badge?: string;
-  /** Role allowlist. Omit → visible to every role. */
-  roles?: PersonaRole[];
 };
 
 export type NavSection = {
   label: string;
   items: NavItem[];
-  /** Role allowlist for the whole section. Omit → visible to every role. */
-  roles?: PersonaRole[];
 };
 
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Overview",
     items: [
-      { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "leader_admin"] },
+      { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
-      { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck, roles: ["super_admin", "leader_admin"] },
-      { label: "Dashboard Margin", href: "/margin", icon: PiggyBank, roles: ["super_admin", "leader_admin"] },
+      { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
+      { label: "Dashboard Leader & Workspace", href: "/leader-workspace", icon: LayoutGrid },
+      { label: "Dashboard Margin", href: "/margin", icon: PiggyBank },
       { label: "Site Performance", href: "/performance", icon: Trophy },
       { label: "Peringkat Project", href: "/project-performance", icon: Trophy },
       { label: "Perbandingan Sales", href: "/sales-compare", icon: ShoppingCart },
@@ -95,7 +93,6 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Master Data",
-    roles: ["super_admin", "leader_admin"],
     items: [
       { label: "Projects", href: "/master/projects", icon: Building2 },
       { label: "Kelola Pengguna", href: "/kelola-pengguna", icon: Users },
@@ -114,21 +111,10 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
+      { label: "Hak Akses", href: "/hak-akses", icon: ShieldCheck },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
       { label: "Import/Export", href: "/import-export", icon: Settings2 },
     ],
   },
 ];
-
-/**
- * Role-aware navigation: keep only the sections and items whose `roles`
- * allowlist is omitted (visible to all) or includes the given role. Sections
- * that end up with no visible items are dropped so no empty headers render.
- */
-export function filterNavForRole(role: PersonaRole): NavSection[] {
-  const allowed = (roles?: PersonaRole[]) => !roles || roles.includes(role);
-  return NAV_SECTIONS.filter((section) => allowed(section.roles))
-    .map((section) => ({ ...section, items: section.items.filter((item) => allowed(item.roles)) }))
-    .filter((section) => section.items.length > 0);
-}

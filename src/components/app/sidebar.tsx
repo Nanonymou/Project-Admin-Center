@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { filterNavForRole } from "@/lib/mock/nav";
+import { filterNavForRole } from "@/lib/mock/access-config";
 import { usePersona } from "@/components/providers/persona-provider";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard } from "lucide-react";
