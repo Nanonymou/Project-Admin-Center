@@ -5,7 +5,7 @@ import {
   type DanaCashFilter,
 } from "@/db/repositories/dana-cash-repository";
 import type { NewDanaCashTransaction } from "@/db/schema";
-import { requirePersona } from "@/lib/server/rbac";
+import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { danaCashOpeningBalance } from "@/lib/mock/dana-cash";
 
@@ -27,6 +27,21 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
+
+  // Per-site access: a cross-site (executive) listing is Leader/Super only, and
+  // a project/location filter must be inside the persona's scope. Site admins
+  // must scope to a project they own; rows are post-filtered as defence in depth.
+  const authz = authorizeDashboard(persona, filter);
+  if (!authz.ok) {
+    return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
+  }
+  const isSiteScoped = persona.scope.locations.length > 0;
+  if (isSiteScoped && scope === "executive" && !projectId && !locationId) {
+    return NextResponse.json(
+      { error: "Pilih project/lokasi Anda — daftar lintas site hanya untuk Leader/Super Admin." },
+      { status: 403 },
+    );
+  }
 
   try {
     const rows = (await listDanaCashTransactions(filter)).filter((r) =>
