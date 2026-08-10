@@ -31,4 +31,5 @@ export * from "./monitoring";
 export * from "./import-export-jobs";
 export * from "./invoice-activities";
 export * from "./invoice-attachments";
+export * from "./evidence-attachments";
 export * from "./all-attachments-view";

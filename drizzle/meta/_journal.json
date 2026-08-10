@@ -281,6 +281,13 @@
       "when": 1786339397787,
       "tag": "0039_illegal_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1786339854170,
+      "tag": "0040_strong_stone_men",
+      "breakpoints": true
     }
   ]
 }
