@@ -1,8 +1,9 @@
-import { and, asc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   danaCashAudit,
   danaCashTransactions,
+  type DanaCashAudit,
   type DanaCashTransaction,
   type NewDanaCashTransaction,
 } from "@/db/schema";
@@ -47,6 +48,15 @@ export async function getDanaCashTransactionById(id: string): Promise<DanaCashTr
     .where(and(eq(danaCashTransactions.id, id), isNull(danaCashTransactions.deletedAt)))
     .limit(1);
   return row ?? null;
+}
+
+/** List the audit trail (change history) for a Dana Cash transaction, newest first. */
+export async function listDanaCashAudit(transactionId: string): Promise<DanaCashAudit[]> {
+  return db
+    .select()
+    .from(danaCashAudit)
+    .where(eq(danaCashAudit.transactionId, transactionId))
+    .orderBy(desc(danaCashAudit.createdAt));
 }
 
 /** Signed amount for a movement (top-up positive, expense negative). */
