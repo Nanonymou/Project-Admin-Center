@@ -4,6 +4,7 @@ export * from "./daily-transaction-logs";
 export * from "./daily-closings";
 export * from "./daily-closing-history";
 export * from "./daily-submissions";
+export * from "./daily-submission-history";
 export * from "./transaction-attachments";
 export * from "./daily-margin-view";
 export * from "./margin-by-month-view";
