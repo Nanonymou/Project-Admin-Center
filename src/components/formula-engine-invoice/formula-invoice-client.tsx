@@ -13,14 +13,31 @@ import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
 import { getBbmConfig } from "@/lib/mock/bbm-config";
 
-/** Deterministic mock invoice inputs per project (config drives the formula). */
-function mockInvoiceInput(projectCode: string, locationId: string) {
+/** Invoice types — each profiles the mock financial inputs differently. */
+const INVOICE_TYPES = [
+  { key: "meals", label: "Jasa Katering (Meals)", subtotal: 1, deduction: 0.02, bbm: 0 },
+  { key: "meals_bbm", label: "Katering + BBM", subtotal: 1.1, deduction: 0.02, bbm: 1 },
+  { key: "backcharge", label: "Dengan Backcharge", subtotal: 1, deduction: 0.12, bbm: 0 },
+  { key: "full", label: "Kontrak Penuh", subtotal: 1.6, deduction: 0.04, bbm: 0.5 },
+] as const;
+type InvoiceType = (typeof INVOICE_TYPES)[number]["key"];
+
+/**
+ * Deterministic mock invoice inputs per project & invoice type (config drives the
+ * formula; the type scales the base amounts). BBM is only populated when the
+ * project's config enables it.
+ */
+function mockInvoiceInput(projectCode: string, locationId: string, type: InvoiceType) {
   let h = 0;
   for (let i = 0; i < locationId.length; i++) h = (h * 31 + locationId.charCodeAt(i)) & 0xffffffff;
   const seed = Math.abs(h);
-  const subtotal = 80_000_000 + (seed % 40) * 1_000_000;
-  const deduction = (seed % 5) * 1_000_000;
-  const bbm = getBbmConfig(projectCode).applies ? 5_000_000 + (seed % 8) * 500_000 : 0;
+  const profile = INVOICE_TYPES.find((t) => t.key === type) ?? INVOICE_TYPES[0];
+  const baseSubtotal = 80_000_000 + (seed % 40) * 1_000_000;
+  const subtotal = Math.round(baseSubtotal * profile.subtotal);
+  const deduction = Math.round(subtotal * profile.deduction);
+  const bbm = getBbmConfig(projectCode).applies
+    ? Math.round((5_000_000 + (seed % 8) * 500_000) * profile.bbm)
+    : 0;
   const overdueDays = (seed % 4) * 20; // 0, 20, 40, 60
   return { projectCode, subtotal, deduction, bbm, overdueDays };
 }
@@ -34,8 +51,12 @@ export function FormulaInvoiceClient() {
   );
   const [wsIndex, setWsIndex] = useState(0);
   const ws = workspaces[wsIndex] ?? workspaces[0];
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>("meals");
 
-  const input = useMemo(() => (ws ? mockInvoiceInput(ws.projectCode, ws.locationId) : null), [ws]);
+  const input = useMemo(
+    () => (ws ? mockInvoiceInput(ws.projectCode, ws.locationId, invoiceType) : null),
+    [ws, invoiceType],
+  );
   const calc = useMemo(() => (input ? computeInvoice(input) : null), [input]);
   const bbmCfg = ws ? getBbmConfig(ws.projectCode) : null;
 
@@ -82,6 +103,18 @@ export function FormulaInvoiceClient() {
             {workspaces.map((w, i) => (
               <option key={w.locationId} value={i}>
                 {w.projectCode} — {w.locationName}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs text-muted-foreground">Jenis Invoice</label>
+          <select
+            value={invoiceType}
+            onChange={(e) => setInvoiceType(e.target.value as InvoiceType)}
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          >
+            {INVOICE_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
               </option>
             ))}
           </select>
