@@ -6,6 +6,7 @@ import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
 import { toCsv } from "@/lib/csv";
+import { buildXlsxBlob } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +38,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }
 
+  // Optional status filter and output format.
+  const statusFilter = sp.get("status")?.trim().toLowerCase() || undefined;
+  const format = sp.get("format") === "xlsx" ? "xlsx" : "csv";
+
   let dataRows: (string | number)[][];
   try {
-    const rows = (await listDailySubmissions(filter, "sales", 1000)).filter((r) =>
-      canAccessLocation(persona, r.locationId, r.projectId),
+    const rows = (await listDailySubmissions(filter, "sales", 1000)).filter(
+      (r) =>
+        canAccessLocation(persona, r.locationId, r.projectId) &&
+        (!statusFilter || String(r.status).toLowerCase() === statusFilter),
     );
     dataRows = rows.map((r) => [
       r.trxDate,
@@ -64,13 +71,26 @@ export async function GET(req: NextRequest) {
         .filter((d) => (!filter.from || d.iso >= filter.from) && (!filter.to || d.iso <= filter.to))
         .map((d) => [d.iso, s.projectCode, s.locationId, "", "approved", d.sales, 0, d.sales, "0"]);
     });
+    // Mock rows are all "approved" — honour a status filter for anything else.
+    if (statusFilter && statusFilter !== "approved") dataRows = [];
+  }
+
+  const suffix = projectId ? `-${projectId}` : "";
+  if (format === "xlsx") {
+    const blob = buildXlsxBlob([HEADER, ...dataRows], "Daily Sales");
+    return new NextResponse(blob, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="daily-sales${suffix}.xlsx"`,
+      },
+    });
   }
 
   const csv = toCsv([HEADER, ...dataRows]);
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv;charset=utf-8",
-      "Content-Disposition": 'attachment; filename="daily-sales.csv"',
+      "Content-Disposition": `attachment; filename="daily-sales${suffix}.csv"`,
     },
   });
 }
