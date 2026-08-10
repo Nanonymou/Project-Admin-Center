@@ -29,6 +29,18 @@ const STATE_META: Record<StageState, { badge: "success" | "info" | "default"; ic
 };
 
 /**
+ * Activity-bar color by status: breached (past SLA) is red, at-risk (≥80% of the
+ * SLA used but not yet over) is amber, an in-progress stage is sky, a completed
+ * on-time stage is emerald. Pending stages have no activity bar.
+ */
+function barColor(state: StageState, breached: boolean, atRisk: boolean): string {
+  if (breached) return "bg-rose-500";
+  if (atRisk) return "bg-amber-500";
+  if (state === "current") return "bg-sky-500";
+  return "bg-emerald-500";
+}
+
+/**
  * Invoice Processing Timeline — visualizes an invoice's progress through the
  * config-driven approval stages (Verifikasi Site → Approval Leader → Verifikasi
  * Finance → Kirim Client → Payment) with each stage's SLA, actual duration, and
@@ -136,7 +148,9 @@ export function InvoiceTimelineClient() {
     const planWidth = (s.slaDays / totalSla) * 100;
     const actualWidth = (Math.max(0, s.actualDays) / totalSla) * 100;
     offsetDays += s.slaDays;
-    return { ...s, left, planWidth, actualWidth };
+    // At-risk: used ≥80% of the SLA window but not yet breached.
+    const atRisk = s.state !== "pending" && !s.breached && s.actualDays >= s.slaDays * 0.8;
+    return { ...s, left, planWidth, actualWidth, atRisk, color: barColor(s.state, s.breached, atRisk) };
   });
 
   return (
@@ -226,12 +240,9 @@ export function InvoiceTimelineClient() {
                     {/* Actual activity bar */}
                     {s.state !== "pending" && (
                       <div
-                        className={cn(
-                          "absolute top-1 h-4 rounded",
-                          s.breached ? "bg-rose-500" : s.state === "done" ? "bg-emerald-500" : "bg-sky-500",
-                        )}
+                        className={cn("absolute top-1 h-4 rounded", s.color)}
                         style={{ left: `${s.left}%`, width: `${Math.max(1, s.actualWidth)}%` }}
-                        title={`Aktual ${s.actualDays} hari`}
+                        title={`Aktual ${s.actualDays} hari${s.atRisk ? " (mendekati SLA)" : s.breached ? " (lewat SLA)" : ""}`}
                       />
                     )}
                   </div>
@@ -250,6 +261,9 @@ export function InvoiceTimelineClient() {
               </span>
               <span className="inline-flex items-center gap-1">
                 <span className="h-2.5 w-4 rounded bg-sky-500" /> Berjalan
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-4 rounded bg-amber-500" /> Mendekati SLA
               </span>
               <span className="inline-flex items-center gap-1">
                 <span className="h-2.5 w-4 rounded bg-rose-500" /> Lewat SLA
