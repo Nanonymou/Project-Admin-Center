@@ -302,6 +302,13 @@
       "when": 1786340513950,
       "tag": "0042_boring_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1786341356907,
+      "tag": "0043_steady_william_stryker",
+      "breakpoints": true
     }
   ]
 }
