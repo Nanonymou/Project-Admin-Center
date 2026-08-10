@@ -77,6 +77,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Persetujuan Daily Sales", href: "/persetujuan-daily-sales", icon: BadgeCheck },
       { label: "Riwayat Perubahan Penjualan", href: "/riwayat-perubahan-penjualan", icon: History },
       { label: "Formula Engine Invoice", href: "/formula-engine-invoice", icon: Calculator },
+      { label: "Detail Invoice", href: "/detail-invoice", icon: FileText },
     ],
   },
   {
