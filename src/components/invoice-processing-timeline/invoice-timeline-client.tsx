@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GanttChartSquare, MapPin, CheckCircle2, Clock, CircleDashed } from "lucide-react";
+import { GanttChartSquare, MapPin, CheckCircle2, Clock, CircleDashed, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
@@ -83,6 +85,31 @@ export function InvoiceTimelineClient() {
     });
   }, [ws, invoiceIndex]);
 
+  // Session-local edits to a stage's date/progress (keyed by stage name).
+  type StageOverride = { state?: StageState; startedAt?: string };
+  const [overrides, setOverrides] = useState<Record<string, StageOverride>>({});
+  const stagesEffective = stages.map((s) => ({ ...s, ...overrides[s.stage] }));
+
+  // Edit modal state.
+  const [editStage, setEditStage] = useState<string | null>(null);
+  const [editState, setEditState] = useState<StageState>("pending");
+  const [editDate, setEditDate] = useState("");
+
+  function openEdit(stage: { stage: string; state: StageState; startedAt: string | null }) {
+    setEditStage(stage.stage);
+    setEditState(stage.state);
+    setEditDate(stage.startedAt ?? new Date().toISOString().slice(0, 10));
+  }
+
+  function saveEdit() {
+    if (!editStage) return;
+    setOverrides((prev) => ({
+      ...prev,
+      [editStage]: { state: editState, startedAt: editState === "pending" ? undefined : editDate },
+    }));
+    setEditStage(null);
+  }
+
   if (!ws) {
     return (
       <div>
@@ -97,14 +124,14 @@ export function InvoiceTimelineClient() {
     invoiceOptions[invoiceIndex]?.number ??
     `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}`;
   const amount = 80_000_000 + (seed % 40) * 1_000_000;
-  const doneCount = stages.filter((s) => s.state === "done").length;
-  const pct = Math.round((doneCount / stages.length) * 100);
+  const doneCount = stagesEffective.filter((s) => s.state === "done").length;
+  const pct = Math.round((doneCount / stagesEffective.length) * 100);
 
   // Gantt geometry: each stage occupies a horizontal band; its planned bar spans
   // `slaDays` from the cumulative SLA offset, and its actual bar spans `actualDays`.
-  const totalSla = stages.reduce((s, st) => s + st.slaDays, 0) || 1;
+  const totalSla = stagesEffective.reduce((s, st) => s + st.slaDays, 0) || 1;
   let offsetDays = 0;
-  const gantt = stages.map((s) => {
+  const gantt = stagesEffective.map((s) => {
     const left = (offsetDays / totalSla) * 100;
     const planWidth = (s.slaDays / totalSla) * 100;
     const actualWidth = (Math.max(0, s.actualDays) / totalSla) * 100;
@@ -242,7 +269,7 @@ export function InvoiceTimelineClient() {
           </CardHeader>
           <CardContent>
             <ol className="relative space-y-5 pl-6">
-              {stages.map((s, i) => {
+              {stagesEffective.map((s, i) => {
                 const meta = STATE_META[s.state];
                 const Icon = meta.icon;
                 return (
@@ -255,7 +282,7 @@ export function InvoiceTimelineClient() {
                         )}
                       />
                     </span>
-                    {i < stages.length - 1 && (
+                    {i < stagesEffective.length - 1 && (
                       <span className="absolute -left-[18px] top-5 h-full w-px bg-border" aria-hidden />
                     )}
                     <div className="flex flex-wrap items-center gap-2">
@@ -263,10 +290,19 @@ export function InvoiceTimelineClient() {
                       <Badge variant={meta.badge}>{meta.label}</Badge>
                       {s.breached && <Badge variant="danger">Lewat SLA</Badge>}
                       {s.startedAt && (
-                        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+                        <span className="text-[11px] tabular-nums text-muted-foreground">
                           mulai {formatDate(s.startedAt)}
                         </span>
                       )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto h-6 px-2"
+                        onClick={() => openEdit(s)}
+                        title="Ubah tanggal & progress"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       SLA {s.slaDays} hari
@@ -284,6 +320,49 @@ export function InvoiceTimelineClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit stage date & progress */}
+      <Dialog
+        open={editStage !== null}
+        onClose={() => setEditStage(null)}
+        title="Ubah Aktivitas Stage"
+        description={editStage ?? undefined}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditStage(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveEdit}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="text-muted-foreground">Progress</span>
+            <select
+              value={editState}
+              onChange={(e) => setEditState(e.target.value as StageState)}
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="pending">Menunggu</option>
+              <option value="current">Berjalan</option>
+              <option value="done">Selesai</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="text-muted-foreground">Tanggal mulai</span>
+            <input
+              type="date"
+              value={editDate}
+              disabled={editState === "pending"}
+              onChange={(e) => setEditDate(e.target.value)}
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+          </label>
+        </div>
+      </Dialog>
     </div>
   );
 }
