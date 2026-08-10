@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText, CalendarClock, UserCircle, MapPin, Receipt } from "lucide-react";
+import { FileText, CalendarClock, UserCircle, MapPin, Receipt, History, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,14 +61,32 @@ export function DetailInvoiceClient() {
     const status = statuses[seed % statuses.length];
     const due = new Date();
     due.setDate(due.getDate() + 30 - overdueDays);
+
+    // Deterministic change history (create + a couple of edits).
+    const editor = ["Bagas Wicaksono", "Ika Rahmawati", "Fajar Nugraha", "Dinda Ayu"][seed % 4];
+    const now = Date.now();
+    const at = (hoursAgo: number) =>
+      new Date(now - hoursAgo * 3_600_000).toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    const history = [
+      { action: "Dibuat", field: "invoice", before: null as string | null, after: "draft", by: editor, at: at(72), badge: "success" as const },
+      { action: "Diubah", field: "nilai", before: formatCurrency(subtotal), after: formatCurrency(calc.subtotal + calc.taxAmount), by: "Finance", at: at(30), badge: "info" as const },
+      { action: "Diubah", field: "status", before: "draft", after: status, by: "Leader Admin", at: at(6), badge: "info" as const },
+    ];
+
     return {
       number: `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}`,
-      pic: ["Bagas Wicaksono", "Ika Rahmawati", "Fajar Nugraha", "Dinda Ayu"][seed % 4],
+      pic: editor,
       dueDate: due.toISOString().slice(0, 10),
       status,
       lines,
       calc,
       overdueDays,
+      history,
     };
   }, [ws, wsIndex]);
 
@@ -225,6 +243,37 @@ export function DetailInvoiceClient() {
           </CardHeader>
           <CardContent>
             <AttachmentCenter title="Dokumen Invoice" accept="image/*,.pdf" />
+          </CardContent>
+        </Card>
+
+        {/* Change history */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Invoice
+            </CardTitle>
+            <CardDescription>Jejak perubahan pada invoice ini (mock).</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {detail.history.map((h, i) => (
+                <li key={i} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="w-28 shrink-0 text-[11px] tabular-nums text-muted-foreground">{h.at}</span>
+                  <Badge variant={h.badge}>{h.action}</Badge>
+                  <span className="font-medium capitalize">{h.field}</span>
+                  {h.before !== null && (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <span className="text-muted-foreground line-through">{h.before}</span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      <span className="font-medium">{h.after}</span>
+                    </span>
+                  )}
+                  {h.before === null && <span className="text-xs text-muted-foreground">{h.after}</span>}
+                  <span className="ml-auto text-[11px] text-muted-foreground">{h.by}</span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       </div>
