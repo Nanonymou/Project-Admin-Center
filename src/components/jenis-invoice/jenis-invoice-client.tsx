@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText, Fuel, Percent, Minus, Plus } from "lucide-react";
+import { FileText, Fuel, Percent, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,14 +13,15 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { type Persona } from "@/lib/personas";
 import { listInvoiceTypes, type InvoiceTypeProfile } from "@/lib/mock/invoice-type-config";
 
-type InvoiceTypeRow = InvoiceTypeProfile & { custom?: boolean };
+type InvoiceTypeRow = InvoiceTypeProfile & { custom?: boolean; active: boolean };
+type TypeOverride = Partial<Pick<InvoiceTypeProfile, "label" | "deductionRate" | "hasBbm" | "bbmRate">>;
 
 /** Render a fraction (0..1) as a percentage string, e.g. 0.06 → "6%". */
 function pct(fraction: number): string {
   return `${(fraction * 100).toFixed((fraction * 100) % 1 === 0 ? 0 : 1)}%`;
 }
 
-/** Site admins/leaders can add invoice types; viewers get a read-only list. */
+/** Site admins/leaders can manage invoice types; viewers get a read-only list. */
 function canEditTypes(persona: Persona): boolean {
   return persona.role !== "viewer";
 }
@@ -29,33 +30,62 @@ function canEditTypes(persona: Persona): boolean {
  * Jenis Invoice — the config-driven catalogue of invoice type profiles
  * (`invoice-type-config.ts`). Each profile shapes how an invoice's financial
  * inputs are derived: the default deduction rate and whether a BBM (fuel)
- * surcharge participates. Leaders/admins can add new (session-local) types; type
- * profiles are generic (no project-named entries) so they stay reusable across
- * every project.
+ * surcharge participates. Leaders/admins can add, rename, and activate/
+ * deactivate types (session-local). Type profiles stay generic (no
+ * project-named entries) so they remain reusable across every project.
  */
 export function JenisInvoiceClient() {
   const { persona } = usePersona();
   const editable = canEditTypes(persona);
 
-  // Session-local custom types, appended to the config-driven catalogue.
-  const [customTypes, setCustomTypes] = useState<InvoiceTypeRow[]>([]);
-  const types = useMemo<InvoiceTypeRow[]>(
-    () => [...listInvoiceTypes(), ...customTypes],
-    [customTypes],
-  );
+  // Session-local state: custom types, field overrides on any type, and the
+  // deactivated key set.
+  const [customTypes, setCustomTypes] = useState<(InvoiceTypeProfile & { custom: true })[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, TypeOverride>>({});
+  const [inactive, setInactive] = useState<string[]>([]);
+
+  const types = useMemo<InvoiceTypeRow[]>(() => {
+    const base: InvoiceTypeRow[] = [...listInvoiceTypes(), ...customTypes].map((t) => {
+      const ov = overrides[t.key] ?? {};
+      return {
+        key: t.key,
+        label: ov.label ?? t.label,
+        deductionRate: ov.deductionRate ?? t.deductionRate,
+        hasBbm: ov.hasBbm ?? t.hasBbm,
+        bbmRate: ov.bbmRate ?? t.bbmRate,
+        custom: (t as { custom?: boolean }).custom ?? false,
+        active: !inactive.includes(t.key),
+      };
+    });
+    return base;
+  }, [customTypes, overrides, inactive]);
+
+  const activeCount = types.filter((t) => t.active).length;
+  const isEdited = (key: string) => key in overrides;
 
   // Form state.
   const [formOpen, setFormOpen] = useState(false);
+  const [editKey, setEditKey] = useState<string | null>(null); // null = add new
   const [formLabel, setFormLabel] = useState("");
   const [formDeduction, setFormDeduction] = useState("");
   const [formHasBbm, setFormHasBbm] = useState(false);
   const [formBbm, setFormBbm] = useState("");
 
   function openAdd() {
+    setEditKey(null);
     setFormLabel("");
     setFormDeduction("");
     setFormHasBbm(false);
     setFormBbm("");
+    setFormOpen(true);
+  }
+
+  function openEdit(t: InvoiceTypeRow) {
+    setEditKey(t.key);
+    setFormLabel(t.label);
+    setFormDeduction(String(Math.round(t.deductionRate * 1000) / 10));
+    setFormHasBbm(t.hasBbm);
+    setFormBbm(String(Math.round(t.bbmRate * 1000) / 10));
     setFormOpen(true);
   }
 
@@ -68,13 +98,27 @@ export function JenisInvoiceClient() {
   function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
-    const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
     const bbmRate = formHasBbm ? parsePct(formBbm) : 0;
-    setCustomTypes((prev) => [
-      ...prev,
-      { key, label, deductionRate: parsePct(formDeduction), hasBbm: formHasBbm, bbmRate, custom: true },
-    ]);
+    const fields: TypeOverride = {
+      label,
+      deductionRate: parsePct(formDeduction),
+      hasBbm: formHasBbm,
+      bbmRate,
+    };
+    if (editKey) {
+      setOverrides((prev) => ({ ...prev, [editKey]: { ...prev[editKey], ...fields } }));
+    } else {
+      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+      setCustomTypes((prev) => [
+        ...prev,
+        { key, label, deductionRate: fields.deductionRate!, hasBbm: formHasBbm, bbmRate, custom: true },
+      ]);
+    }
     setFormOpen(false);
+  }
+
+  function toggleActive(key: string) {
+    setInactive((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
   return (
@@ -88,8 +132,11 @@ export function JenisInvoiceClient() {
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <PersonaBanner persona={persona} scopeSummary={`${types.length} jenis`} />
+          <Badge variant="default" className="ml-auto">
+            {activeCount} aktif / {types.length}
+          </Badge>
           {editable && (
-            <Button size="sm" onClick={openAdd} className="ml-auto gap-1.5">
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
               <Plus className="h-4 w-4" />
               Tambah Jenis
             </Button>
@@ -109,23 +156,34 @@ export function JenisInvoiceClient() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
                     <th className="px-3 py-2 font-medium">Jenis Invoice</th>
                     <th className="px-3 py-2 font-medium">Kode</th>
                     <th className="px-3 py-2 text-right font-medium">Potongan Default</th>
                     <th className="px-3 py-2 font-medium">BBM Surcharge</th>
+                    {editable && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {types.map((t) => (
-                    <tr key={t.key} className="border-b last:border-b-0">
+                    <tr key={t.key} className={`border-b last:border-b-0 ${t.active ? "" : "opacity-50"}`}>
                       <td className="px-3 py-2 font-medium">
-                        {t.label}
+                        <span className={t.active ? "" : "line-through"}>{t.label}</span>
                         {t.custom && (
                           <Badge variant="success" className="ml-2">
                             Kustom
+                          </Badge>
+                        )}
+                        {!t.custom && isEdited(t.key) && (
+                          <Badge variant="warning" className="ml-2">
+                            Diubah
+                          </Badge>
+                        )}
+                        {!t.active && (
+                          <Badge variant="danger" className="ml-2">
+                            Nonaktif
                           </Badge>
                         )}
                       </td>
@@ -150,6 +208,40 @@ export function JenisInvoiceClient() {
                           <Badge variant="muted">Tidak</Badge>
                         )}
                       </td>
+                      {editable && (
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(t)}
+                              disabled={!t.active}
+                              className="h-7 gap-1 px-2"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Ubah
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleActive(t.key)}
+                              className={`h-7 gap-1 px-2 ${t.active ? "text-rose-600" : "text-emerald-600"}`}
+                            >
+                              {t.active ? (
+                                <>
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Nonaktifkan
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Aktifkan
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -157,40 +249,13 @@ export function JenisInvoiceClient() {
             </div>
           </CardContent>
         </Card>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {types.map((t) => (
-            <Card key={t.key}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{t.label}</CardTitle>
-                <CardDescription className="font-mono text-xs">{t.key}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Percent className="h-3.5 w-3.5" />
-                    Potongan
-                  </span>
-                  <span className="font-medium tabular-nums">{pct(t.deductionRate)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Fuel className="h-3.5 w-3.5" />
-                    BBM
-                  </span>
-                  <span className="font-medium tabular-nums">{t.hasBbm ? pct(t.bbmRate) : "—"}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </div>
 
       <Dialog
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="Tambah Jenis Invoice"
-        description="Tambahkan profil jenis invoice baru. Nilai dalam persen dari subtotal."
+        title={editKey ? "Ubah Jenis Invoice" : "Tambah Jenis Invoice"}
+        description="Perbarui nama dan parameter jenis invoice. Nilai dalam persen dari subtotal."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
