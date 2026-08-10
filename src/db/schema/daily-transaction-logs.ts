@@ -15,6 +15,7 @@ export const dailyTransactionLogAction = pgEnum("daily_transaction_log_action", 
   "reject",
   "lock",
   "unlock",
+  "copy",
 ]);
 
 /**

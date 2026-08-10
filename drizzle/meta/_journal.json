@@ -288,6 +288,13 @@
       "when": 1786339854170,
       "tag": "0040_strong_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786340394724,
+      "tag": "0041_flimsy_puppet_master",
+      "breakpoints": true
     }
   ]
 }

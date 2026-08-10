@@ -43,6 +43,9 @@ export const dailyTransactions = pgTable(
     approvedBy: varchar("approved_by", { length: 128 }),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     isLate: boolean("is_late").default(false).notNull(),
+    // Provenance for the "Salin Data Kemarin" flow: when an entry is created by
+    // copying a previous day's entry, this points at the source transaction.
+    copiedFromId: uuid("copied_from_id"),
     ...auditColumns,
     ...softDeleteColumns,
   },
