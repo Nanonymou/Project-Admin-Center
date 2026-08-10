@@ -95,5 +95,6 @@ export const config = {
     "/api/dana-cash/:path*",
     "/api/unlock-period/:path*",
     "/api/persetujuan-daily-sales/:path*",
+    "/api/sales-change-history/:path*",
   ],
 };
