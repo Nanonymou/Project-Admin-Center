@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Users, MapPin, Shield, Search, Pencil, Mail } from "lucide-react";
+import { Users, MapPin, Shield, Search, Mail, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,15 +80,16 @@ export function KelolaPenggunaClient() {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PersonaRole | "all">("all");
 
-  // Session-local site-access overrides keyed by user id.
+  // Session-local site-access overrides keyed by user id, and newly-created accounts.
   const [accessOverrides, setAccessOverrides] = useState<Record<string, SiteGrant[]>>({});
+  const [customUsers, setCustomUsers] = useState<ManagedUser[]>([]);
 
   const allUsers: ManagedUser[] = useMemo(
     () =>
-      listManagedUsers().map((u) =>
+      [...customUsers, ...listManagedUsers()].map((u) =>
         accessOverrides[u.id] ? { ...u, siteAccess: accessOverrides[u.id] } : u,
       ),
-    [accessOverrides],
+    [accessOverrides, customUsers],
   );
 
   const users: ManagedUser[] = useMemo(() => {
@@ -123,6 +124,40 @@ export function KelolaPenggunaClient() {
     if (!assignUser) return;
     setAccessOverrides((prev) => ({ ...prev, [assignUser.id]: locationsToGrants(selectedLocs) }));
     setAssignUser(null);
+  }
+
+  // Create-account modal state.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addRole, setAddRole] = useState<PersonaRole>("site_admin");
+  const [addLocs, setAddLocs] = useState<string[]>([]);
+
+  function openAdd() {
+    setAddName("");
+    setAddEmail("");
+    setAddRole("site_admin");
+    setAddLocs([]);
+    setAddOpen(true);
+  }
+
+  const addValid = addName.trim().length > 0 && /.+@.+\..+/.test(addEmail.trim());
+
+  function saveAdd() {
+    if (!addValid) return;
+    // Org-wide roles get full access; scoped roles use the picked sites.
+    const orgWide = addRole === "super_admin";
+    const user: ManagedUser = {
+      id: `usr-custom-${Date.now()}`,
+      name: addName.trim(),
+      email: addEmail.trim(),
+      role: addRole,
+      status: "invited",
+      siteAccess: orgWide ? [] : locationsToGrants(addLocs),
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+    setCustomUsers((prev) => [user, ...prev]);
+    setAddOpen(false);
   }
 
   return (
@@ -184,6 +219,12 @@ export function KelolaPenggunaClient() {
               </option>
             ))}
           </select>
+          {manage && (
+            <Button size="sm" onClick={openAdd} className="ml-auto gap-1.5">
+              <UserPlus className="h-4 w-4" />
+              Tambah Akun
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -320,6 +361,90 @@ export function KelolaPenggunaClient() {
               </label>
             );
           })}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Tambah Akun"
+        description="Buat akun baru dan tetapkan peran serta cakupan site."
+        className="max-w-lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAddOpen(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveAdd} disabled={!addValid}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Nama</label>
+              <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Nama lengkap" className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Email</label>
+              <Input
+                type="email"
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="nama@tpb.co.id"
+                className="h-9"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Peran</label>
+            <select
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value as PersonaRole)}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {listRoles().map((r) => (
+                <option key={r.role} value={r.role}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">{getRoleDefinition(addRole).description}</p>
+          </div>
+          {addRole !== "super_admin" && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Penugasan Lokasi ({addLocs.length} dipilih)
+              </label>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-1">
+                {MOCK_WORKSPACES.map((w) => (
+                  <label
+                    key={w.locationId}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 hover:bg-accent"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={addLocs.includes(w.locationId)}
+                      onChange={() =>
+                        setAddLocs((prev) =>
+                          prev.includes(w.locationId)
+                            ? prev.filter((l) => l !== w.locationId)
+                            : [...prev, w.locationId],
+                        )
+                      }
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <span className="truncate text-xs">
+                      {w.locationName}
+                      <span className="text-muted-foreground"> · {w.projectCode}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Dialog>
     </div>
