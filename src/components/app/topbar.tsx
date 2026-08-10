@@ -1,17 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, Check, ChevronsUpDown, Search, UserCog } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, Check, ChevronsUpDown, Search, UserCog, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { TopbarFilter } from "@/components/app/topbar-filter";
 import { canAccessLocation } from "@/lib/personas";
+import { clearSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export function Topbar() {
+  const router = useRouter();
   const { persona, personas, setPersonaId } = usePersona();
   const { activeWorkspace, workspaces, activeLocationId, setActiveLocationId } = useActiveSite();
+
+  function logout() {
+    clearSession();
+    setOpen(false);
+    router.push("/login");
+  }
   const [open, setOpen] = useState(false);
   const [siteOpen, setSiteOpen] = useState(false);
   const [siteQuery, setSiteQuery] = useState("");
@@ -247,6 +256,14 @@ export function Topbar() {
               <div className="mt-2 border-t px-2 pt-2 text-[11px] text-muted-foreground">
                 Persona hanya simulasi UI — tidak menembus backend security.
               </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-rose-600 hover:bg-accent"
+              >
+                <LogOut className="h-4 w-4" />
+                Keluar
+              </button>
             </div>
           )}
         </div>
