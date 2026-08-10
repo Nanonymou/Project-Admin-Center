@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LockOpen, Lock, CalendarDays } from "lucide-react";
+import { LockOpen, Lock, CalendarDays, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
@@ -34,12 +35,28 @@ export function UnlockPeriodClient() {
     [sites],
   );
 
+  const canUnlock = persona.role === "leader_admin" || persona.role === "super_admin";
+
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const projects = useMemo(
     () => Array.from(new Set(lockedPeriods.map((r) => r.projectCode))).sort(),
     [lockedPeriods],
   );
-  const visible = lockedPeriods.filter((r) => projectFilter === "all" || r.projectCode === projectFilter);
+
+  // Session-local: ids that have been unlocked this session (hidden from list).
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const visible = lockedPeriods.filter(
+    (r) =>
+      !unlockedIds.has(r.id) && (projectFilter === "all" || r.projectCode === projectFilter),
+  );
+
+  function unlock(id: string, label: string) {
+    if (!canUnlock) return;
+    setUnlockedIds((prev) => new Set(prev).add(id));
+    setMsg(`Periode ${label} dibuka oleh ${persona.roleLabel}.`);
+  }
 
   return (
     <div>
@@ -51,6 +68,23 @@ export function UnlockPeriodClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${lockedPeriods.length} periode terkunci`} />
+
+        {msg && (
+          <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{msg}</span>
+          </div>
+        )}
+
+        {!canUnlock && (
+          <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span>
+              Membuka kunci periode hanya dapat dilakukan oleh <b>Leader Admin</b> atau{" "}
+              <b>Super Admin</b>. Silakan ajukan ke Leader Admin.
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -98,6 +132,7 @@ export function UnlockPeriodClient() {
                       <th className="px-3 py-2 text-right font-medium">Sales</th>
                       <th className="px-3 py-2 text-right font-medium">Cost</th>
                       <th className="px-3 py-2 text-left font-medium">Dikunci</th>
+                      <th className="px-3 py-2 text-right font-medium">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -125,6 +160,20 @@ export function UnlockPeriodClient() {
                             {r.lockedBy ?? "System"}
                             {r.lockedAt ? ` · ${r.lockedAt}` : ""}
                           </div>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {canUnlock ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => unlock(r.id, `${r.locationName} ${r.periodLabel}`)}
+                            >
+                              <LockOpen className="h-4 w-4" />
+                              Buka Kunci
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">Perlu Leader Admin</span>
+                          )}
                         </td>
                       </tr>
                     ))}
