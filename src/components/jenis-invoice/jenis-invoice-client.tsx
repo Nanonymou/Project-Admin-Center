@@ -128,8 +128,19 @@ export function JenisInvoiceClient() {
     setFormOpen(false);
   }
 
-  function toggleActive(key: string) {
-    setInactive((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  // Deactivating asks for confirmation (it hides the type from invoice-creation
+  // dropdowns); reactivating is immediate.
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  const confirmType = confirmKey ? types.find((t) => t.key === confirmKey) : null;
+
+  function requestToggle(t: InvoiceTypeRow) {
+    if (t.active) setConfirmKey(t.key);
+    else setInactive((prev) => prev.filter((k) => k !== t.key));
+  }
+
+  function confirmDeactivate() {
+    if (confirmKey) setInactive((prev) => (prev.includes(confirmKey) ? prev : [...prev, confirmKey]));
+    setConfirmKey(null);
   }
 
   return (
@@ -235,7 +246,7 @@ export function JenisInvoiceClient() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => toggleActive(t.key)}
+                              onClick={() => requestToggle(t)}
                               className={`h-7 gap-1 px-2 ${t.active ? "text-rose-600" : "text-emerald-600"}`}
                             >
                               {t.active ? (
@@ -361,6 +372,32 @@ export function JenisInvoiceClient() {
             </div>
           )}
         </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmKey !== null}
+        onClose={() => setConfirmKey(null)}
+        title="Nonaktifkan Jenis Invoice?"
+        description={
+          confirmType
+            ? `"${confirmType.label}" tidak akan muncul pada dropdown pembuatan invoice sampai diaktifkan kembali.`
+            : undefined
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmKey(null)}>
+              Batal
+            </Button>
+            <Button variant="destructive" size="sm" onClick={confirmDeactivate}>
+              Nonaktifkan
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Data historis yang sudah memakai jenis ini tidak berubah. Anda dapat mengaktifkannya lagi kapan
+          saja dari daftar.
+        </p>
       </Dialog>
     </div>
   );
