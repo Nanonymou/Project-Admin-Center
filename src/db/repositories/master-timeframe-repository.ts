@@ -35,6 +35,9 @@ export async function upsertMasterTimeframe(values: NewMasterTimeframe): Promise
         slaDays: values.slaDays,
         orderIndex: values.orderIndex,
         active: true,
+        role: values.role,
+        stageType: values.stageType,
+        requiresDocument: values.requiresDocument,
         updatedAt: new Date(),
       },
     });

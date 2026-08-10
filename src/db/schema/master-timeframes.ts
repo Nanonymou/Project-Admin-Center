@@ -18,6 +18,12 @@ export const masterTimeframes = pgTable(
     slaDays: integer("sla_days").default(0).notNull(),
     orderIndex: integer("order_index").default(0).notNull(),
     active: boolean("active").default(true).notNull(),
+    // Responsible role (PIC) for the stage — the approver/verifier persona role.
+    role: varchar("role", { length: 64 }),
+    // Stage nature within the flow: verification | approval | delivery | payment.
+    stageType: varchar("stage_type", { length: 32 }),
+    // Whether the stage requires supporting documents before it can complete.
+    requiresDocument: boolean("requires_document").default(false).notNull(),
     ...auditColumns,
   },
   (t) => ({
