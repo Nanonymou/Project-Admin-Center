@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getInvoiceById } from "@/db/repositories/invoice-repository";
 import { listAttachments } from "@/db/repositories/invoice-attachment-repository";
+import { listInvoiceLines } from "@/db/repositories/invoice-line-repository";
 import { listInvoiceActivities } from "@/db/repositories/invoice-activity-repository";
 import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
 import { requirePersona } from "@/lib/server/rbac";
@@ -30,16 +31,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (!canAccessLocation(persona, invoice.locationId, invoice.projectId)) {
       return NextResponse.json({ error: "Tidak ada akses ke invoice ini." }, { status: 403 });
     }
-    const [attachments, activities] = await Promise.all([
+    const [lines, attachments, activities] = await Promise.all([
+      listInvoiceLines(id),
       listAttachments(id),
       listInvoiceActivities(id),
     ]);
+    // Recompute from the full stored breakdown inputs (base + BBM + penalty), so
+    // the detail's calc reproduces the persisted total rather than dropping the
+    // fuel surcharge and late penalty.
     const calc = computeInvoice({
       projectCode: invoice.projectId,
       subtotal: Number(invoice.subtotal),
       deduction: Number(invoice.deduction),
+      bbm: Number(invoice.bbmAmount),
+      overdueDays: invoice.overdueDays ?? 0,
     });
-    return NextResponse.json({ source: "db", invoice, calc, attachments, activities });
+    return NextResponse.json({ source: "db", invoice, calc, lines, attachments, activities });
   } catch {
     // Mock fallback: locate the invoice by its "<locationId>-<number>" id.
     for (const site of SITE_KPI) {
@@ -53,6 +60,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         source: "mock",
         invoice: { ...inv, projectCode: site.projectCode, locationId: site.locationId },
         calc,
+        lines: [],
         attachments: [],
         activities: buildInvoiceAuditTrail(inv),
       });
