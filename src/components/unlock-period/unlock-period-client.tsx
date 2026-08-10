@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LockOpen, Lock, CalendarDays, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { LockOpen, Lock, CalendarDays, ShieldAlert, CheckCircle2, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +48,34 @@ export function UnlockPeriodClient() {
   const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
 
+  type UnlockActivity = {
+    id: string;
+    period: string;
+    by: string;
+    reason: string;
+    at: string;
+    session?: boolean;
+  };
+
+  // Seeded past unlock activity (deterministic mock).
+  const seededHistory = useMemo<UnlockActivity[]>(() => {
+    const src = lockedPeriods.slice(0, 3);
+    return src.map((r, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (i + 1) * 3);
+      return {
+        id: `seed-hist-${r.id}`,
+        period: `${r.locationName} ${r.periodLabel}`,
+        by: "Leader Admin",
+        reason: ["Koreksi nominal invoice", "Revisi data cost", "Penyesuaian pajak"][i % 3],
+        at: d.toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+      };
+    });
+  }, [lockedPeriods]);
+
+  const [sessionHistory, setSessionHistory] = useState<UnlockActivity[]>([]);
+  const history = [...sessionHistory, ...seededHistory];
+
   const visible = lockedPeriods.filter(
     (r) =>
       !unlockedIds.has(r.id) && (projectFilter === "all" || r.projectCode === projectFilter),
@@ -66,6 +94,22 @@ export function UnlockPeriodClient() {
   function confirmUnlock() {
     if (!target || reason.trim().length < 3) return;
     setUnlockedIds((prev) => new Set(prev).add(target.id));
+    setSessionHistory((prev) => [
+      {
+        id: `sess-${Date.now()}`,
+        period: target.label,
+        by: persona.roleLabel,
+        reason: reason.trim(),
+        at: new Date().toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        session: true,
+      },
+      ...prev,
+    ]);
     setMsg(`Periode ${target.label} dibuka oleh ${persona.roleLabel}. Alasan: ${reason.trim()}`);
     setTarget(null);
   }
@@ -195,6 +239,50 @@ export function UnlockPeriodClient() {
             )}
           </CardContent>
         </Card>
+
+        {/* Unlock activity history */}
+        {history.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Riwayat Aktivitas Buka Kunci
+              </CardTitle>
+              <CardDescription>Catatan pembukaan periode beserta alasannya.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Waktu</th>
+                      <th className="px-3 py-2 text-left font-medium">Periode</th>
+                      <th className="px-3 py-2 text-left font-medium">Oleh</th>
+                      <th className="px-3 py-2 text-left font-medium">Alasan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h) => (
+                      <tr key={h.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2 whitespace-nowrap text-xs">
+                          {h.at}
+                          {h.session && (
+                            <Badge variant="info" className="ml-2">
+                              Baru
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{h.period}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{h.by}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{h.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Unlock confirmation modal */}
