@@ -84,6 +84,18 @@ export function InvoiceTimelineClient() {
   const doneCount = stages.filter((s) => s.state === "done").length;
   const pct = Math.round((doneCount / stages.length) * 100);
 
+  // Gantt geometry: each stage occupies a horizontal band; its planned bar spans
+  // `slaDays` from the cumulative SLA offset, and its actual bar spans `actualDays`.
+  const totalSla = stages.reduce((s, st) => s + st.slaDays, 0) || 1;
+  let offsetDays = 0;
+  const gantt = stages.map((s) => {
+    const left = (offsetDays / totalSla) * 100;
+    const planWidth = (s.slaDays / totalSla) * 100;
+    const actualWidth = (Math.max(0, s.actualDays) / totalSla) * 100;
+    offsetDays += s.slaDays;
+    return { ...s, left, planWidth, actualWidth };
+  });
+
   return (
     <div>
       <PageHeader
@@ -126,6 +138,64 @@ export function InvoiceTimelineClient() {
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Gantt chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GanttChartSquare className="h-4 w-4 text-primary" />
+              Bagan Gantt
+            </CardTitle>
+            <CardDescription>Bar rencana (SLA) vs aktivitas aktual per stage.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {gantt.map((s) => (
+                <div key={s.stage} className="flex items-center gap-3">
+                  <div className="w-36 shrink-0 truncate text-xs font-medium" title={s.stage}>
+                    {s.stage}
+                  </div>
+                  <div className="relative h-6 flex-1 overflow-hidden rounded bg-muted/50">
+                    {/* Planned (SLA) bar */}
+                    <div
+                      className="absolute top-0 h-full rounded bg-primary/20"
+                      style={{ left: `${s.left}%`, width: `${s.planWidth}%` }}
+                      title={`SLA ${s.slaDays} hari`}
+                    />
+                    {/* Actual activity bar */}
+                    {s.state !== "pending" && (
+                      <div
+                        className={cn(
+                          "absolute top-1 h-4 rounded",
+                          s.breached ? "bg-rose-500" : s.state === "done" ? "bg-emerald-500" : "bg-sky-500",
+                        )}
+                        style={{ left: `${s.left}%`, width: `${Math.max(1, s.actualWidth)}%` }}
+                        title={`Aktual ${s.actualDays} hari`}
+                      />
+                    )}
+                  </div>
+                  <div className="w-16 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                    {s.slaDays}h
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-4 rounded bg-primary/20" /> Rencana (SLA)
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-4 rounded bg-emerald-500" /> Selesai
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-4 rounded bg-sky-500" /> Berjalan
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-4 rounded bg-rose-500" /> Lewat SLA
+              </span>
             </div>
           </CardContent>
         </Card>
