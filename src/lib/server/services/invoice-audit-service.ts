@@ -77,6 +77,79 @@ export function recordInvoiceEdited(
   return recordInvoiceActivity({ invoice, action: "edit", actor, role, detail });
 }
 
+export type InvoiceFieldChange = { field: string; before: unknown; after: unknown };
+
+/** Invoice fields whose changes are worth auditing. */
+const AUDITED_FIELDS: (keyof Invoice)[] = [
+  "number",
+  "subtotal",
+  "deduction",
+  "base",
+  "bbmAmount",
+  "taxableBase",
+  "tax",
+  "penaltyAmount",
+  "amount",
+  "status",
+  "stage",
+  "agingBucket",
+  "issuedDate",
+  "dueDate",
+  "pic",
+];
+
+/**
+ * Diff two invoice snapshots over the audited fields. A value is "changed" when
+ * its stringified form differs (numeric columns are strings from Drizzle, so this
+ * compares them correctly). `exclude` skips fields already recorded elsewhere
+ * (e.g. a stage move logged as its own event).
+ */
+export function diffInvoice(
+  before: Invoice,
+  after: Invoice,
+  exclude: (keyof Invoice)[] = [],
+): InvoiceFieldChange[] {
+  const skip = new Set(exclude);
+  const changes: InvoiceFieldChange[] = [];
+  for (const f of AUDITED_FIELDS) {
+    if (skip.has(f)) continue;
+    const b = before[f];
+    const a = after[f];
+    if (String(b ?? "") !== String(a ?? "")) {
+      changes.push({ field: f as string, before: b ?? null, after: a ?? null });
+    }
+  }
+  return changes;
+}
+
+/**
+ * Automatic invoice change recorder — diffs the before/after snapshots and, when
+ * anything audited changed, writes a single "edit" activity carrying the
+ * field-level changes (before → after) in the audit metadata. Returns the
+ * activity, or null when nothing audited changed. This is the service the write
+ * routes call so every invoice mutation is logged consistently without each
+ * route re-implementing the diff.
+ */
+export async function recordInvoiceChanges(
+  before: Invoice,
+  after: Invoice,
+  actor: string,
+  opts: { role?: string; exclude?: (keyof Invoice)[]; ipAddress?: string; userAgent?: string } = {},
+): Promise<InvoiceActivity | null> {
+  const changes = diffInvoice(before, after, opts.exclude);
+  if (changes.length === 0) return null;
+  return recordInvoiceActivity({
+    invoice: after,
+    action: "edit",
+    actor,
+    role: opts.role,
+    detail: `Perubahan pada: ${changes.map((c) => c.field).join(", ")}.`,
+    metadata: { changes },
+    ipAddress: opts.ipAddress,
+    userAgent: opts.userAgent,
+  });
+}
+
 /** Record a stage transition (approval workflow movement). */
 export function recordStageTransition(
   invoice: RecordActivityInput["invoice"],

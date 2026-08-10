@@ -7,7 +7,7 @@ import {
 import type { NewInvoice } from "@/db/schema";
 import { computeInvoice, invoiceCalcColumns } from "@/lib/server/services/invoice-calculation-service";
 import {
-  recordInvoiceEdited,
+  recordInvoiceChanges,
   recordStageTransition,
 } from "@/lib/server/services/invoice-audit-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
@@ -110,16 +110,26 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const updated = await updateInvoice(id, patch);
     if (!updated) return NextResponse.json({ error: "Invoice tidak ditemukan." }, { status: 404 });
 
-    // Record the audit trail — a stage move is a distinct workflow event; any
-    // other field change is an edit. Best-effort: never fail the update on log error.
+    // Record the audit trail automatically — a stage move is a distinct workflow
+    // event; every other audited field change is captured (before → after) by
+    // diffing the snapshots. Best-effort: never fail the update on a log error.
     try {
-      if (patch.stage && patch.stage !== existing.stage) {
-        await recordStageTransition(updated, persona.name, existing.stage, patch.stage, persona.role);
+      const stageMoved = Boolean(patch.stage && patch.stage !== existing.stage);
+      if (stageMoved) {
+        await recordStageTransition(
+          updated,
+          persona.name,
+          existing.stage,
+          patch.stage as string,
+          persona.role,
+        );
       }
-      const editedFields = Object.keys(patch).filter((f) => f !== "stage" && f !== "updatedAt");
-      if (editedFields.length > 0) {
-        await recordInvoiceEdited(updated, persona.name, editedFields, persona.role);
-      }
+      await recordInvoiceChanges(existing, updated, persona.name, {
+        role: persona.role,
+        exclude: stageMoved ? ["stage"] : [],
+        ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      });
     } catch {
       /* audit logging is best-effort */
     }
