@@ -42,6 +42,16 @@ export async function listEvidence(filter: EvidenceFilter): Promise<EvidenceAtta
     .limit(limit);
 }
 
+/** Fetch a single evidence attachment by id (excludes soft-deleted). */
+export async function getEvidenceById(id: string): Promise<EvidenceAttachment | null> {
+  const [row] = await db
+    .select()
+    .from(evidenceAttachments)
+    .where(and(eq(evidenceAttachments.id, id), isNull(evidenceAttachments.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Record an uploaded evidence attachment. Returns the created row. */
 export async function createEvidence(values: NewEvidenceAttachment): Promise<EvidenceAttachment> {
   const [row] = await db.insert(evidenceAttachments).values(values).returning();
