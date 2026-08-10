@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calculator, FileText, Fuel, Percent, AlertTriangle, MapPin } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -53,11 +53,36 @@ export function FormulaInvoiceClient() {
   const ws = workspaces[wsIndex] ?? workspaces[0];
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("meals");
 
-  const input = useMemo(
+  const seed = useMemo(
     () => (ws ? mockInvoiceInput(ws.projectCode, ws.locationId, invoiceType) : null),
     [ws, invoiceType],
   );
-  const calc = useMemo(() => (input ? computeInvoice(input) : null), [input]);
+
+  // Editable inputs — seeded from the mock, recalculated live as they change.
+  const [subtotal, setSubtotal] = useState(0);
+  const [deduction, setDeduction] = useState(0);
+  const [bbm, setBbm] = useState(0);
+  const [overdueDays, setOverdueDays] = useState(0);
+
+  // Reset editable values whenever the workspace or invoice type changes.
+  useEffect(() => {
+    if (!seed) return;
+    setSubtotal(seed.subtotal);
+    setDeduction(seed.deduction);
+    setBbm(seed.bbm);
+    setOverdueDays(seed.overdueDays);
+  }, [seed]);
+
+  const input = ws
+    ? { projectCode: ws.projectCode, subtotal, deduction, bbm, overdueDays }
+    : null;
+  const calc = useMemo(() => (input ? computeInvoice(input) : null), [
+    input?.projectCode,
+    subtotal,
+    deduction,
+    bbm,
+    overdueDays,
+  ]);
   const bbmCfg = ws ? getBbmConfig(ws.projectCode) : null;
 
   if (!ws || !input || !calc) {
@@ -121,6 +146,65 @@ export function FormulaInvoiceClient() {
           <Badge variant="info">{calc.taxLabel}</Badge>
           {bbmCfg?.applies && <Badge variant="warning">BBM aktif</Badge>}
         </div>
+
+        {/* Editable inputs — formula recomputes live */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Input Nilai (otomatis dihitung)</CardTitle>
+            <CardDescription>Ubah nilai — total dihitung ulang seketika.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">Subtotal jasa (Rp)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1_000_000}
+                  value={subtotal}
+                  onChange={(e) => setSubtotal(Math.max(0, Number(e.target.value) || 0))}
+                  className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">Pengurang / backcharge (Rp)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={500_000}
+                  value={deduction}
+                  onChange={(e) => setDeduction(Math.max(0, Number(e.target.value) || 0))}
+                  className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">
+                  BBM surcharge (Rp){!bbmCfg?.applies && " — nonaktif"}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={500_000}
+                  value={bbm}
+                  disabled={!bbmCfg?.applies}
+                  onChange={(e) => setBbm(Math.max(0, Number(e.target.value) || 0))}
+                  className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">Hari terlambat</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={overdueDays}
+                  onChange={(e) => setOverdueDays(Math.max(0, Number(e.target.value) || 0))}
+                  className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
+                />
+              </label>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Formula breakdown */}
