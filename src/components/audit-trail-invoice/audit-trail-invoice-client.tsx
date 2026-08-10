@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { History, MapPin, FileText, CheckCircle2, Send, Eye, Lock } from "lucide-react";
+import { History, MapPin, FileText, CheckCircle2, Send, Eye, Lock, ShieldAlert, ArrowDownWideNarrow } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +54,10 @@ export function AuditTrailInvoiceClient() {
   );
   const [wsIndex, setWsIndex] = useState(0);
   const [actionFilter, setActionFilter] = useState<"all" | AuditAction>("all");
+  const [newestFirst, setNewestFirst] = useState(true);
   const ws = workspaces[wsIndex] ?? workspaces[0];
+
+  const canViewAudit = persona.role === "leader_admin" || persona.role === "super_admin";
 
   const trail = useMemo(() => {
     if (!ws) return [];
@@ -86,7 +89,9 @@ export function AuditTrailInvoiceClient() {
   const amount = 80_000_000 + (seed % 40) * 1_000_000;
 
   const actionsPresent = Array.from(new Set(trail.map((e) => e.action)));
-  const visibleTrail = actionFilter === "all" ? trail : trail.filter((e) => e.action === actionFilter);
+  const filtered = actionFilter === "all" ? trail : trail.filter((e) => e.action === actionFilter);
+  // Trail is built chronologically; show newest-first by default.
+  const visibleTrail = newestFirst ? [...filtered].reverse() : filtered;
 
   return (
     <div>
@@ -119,6 +124,17 @@ export function AuditTrailInvoiceClient() {
           </span>
         </div>
 
+        {!canViewAudit ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+              <ShieldAlert className="h-8 w-8 text-amber-500" />
+              <div className="text-sm font-medium">Audit trail invoice khusus Leader Admin</div>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Jejak audit lengkap invoice hanya dapat dilihat oleh Leader Admin atau Super Admin.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:space-y-0">
             <div>
@@ -146,6 +162,15 @@ export function AuditTrailInvoiceClient() {
                   {a === "all" ? "Semua" : ACTION_META[a].label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setNewestFirst((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium hover:bg-accent"
+                title="Ubah urutan"
+              >
+                <ArrowDownWideNarrow className="h-3 w-3" />
+                {newestFirst ? "Terbaru" : "Terlama"}
+              </button>
             </div>
           </CardHeader>
           <CardContent>
@@ -177,6 +202,7 @@ export function AuditTrailInvoiceClient() {
             </ol>
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );
