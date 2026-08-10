@@ -17,6 +17,7 @@ import {
   Copy,
   History,
   FileSpreadsheet,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 
@@ -69,6 +70,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Duplikat Record", href: "/duplikat-record", icon: Copy },
       { label: "Impor Excel", href: "/impor-excel", icon: FileSpreadsheet },
       { label: "Submit Daily Cost", href: "/submit-daily-cost", icon: Wallet },
+      { label: "Ekspor Excel", href: "/ekspor-excel", icon: Download },
     ],
   },
   {
