@@ -81,3 +81,65 @@ export function buildWorkflowsForSite(locationId: string): Workflow[] {
 export function workflowTotalSla(wf: Workflow): number {
   return wf.activities.reduce((sum, a) => sum + a.slaDays, 0);
 }
+
+// --- Excel/CSV upload parsing --------------------------------------------
+
+export type ParsedActivity = {
+  order: number;
+  name: string;
+  slaDays: number;
+  pic: string;
+  /** Non-empty when the row failed validation; kept so the UI can show it. */
+  error?: string;
+};
+
+export type WorkflowParseResult = {
+  activities: ParsedActivity[];
+  errorCount: number;
+};
+
+const HEADER_HINT = /aktivitas|activity|stage|tahap/i;
+
+/**
+ * Parse pasted/uploaded Excel-exported CSV text into staged workflow activities.
+ * Expected columns: `Aktivitas, PIC, SLA (hari)`. A header row is auto-detected
+ * and skipped. Each row is validated (non-empty name, SLA ≥ 0); invalid rows are
+ * returned with an `error` so the preview can flag them before saving. Frontend
+ * only — no file leaves the browser.
+ */
+export function parseWorkflowActivities(text: string): WorkflowParseResult {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length > 0 && HEADER_HINT.test(lines[0])) lines.shift();
+
+  const activities: ParsedActivity[] = [];
+  let errorCount = 0;
+
+  lines.forEach((line, i) => {
+    // Support comma or semicolon (Excel-in-ID often uses `;`).
+    const cols = line.split(/[;,\t]/).map((c) => c.trim());
+    const name = cols[0] ?? "";
+    const pic = cols[1] ?? "";
+    const slaRaw = cols[2] ?? "";
+    const slaDays = Number(slaRaw);
+
+    let error: string | undefined;
+    if (!name) error = "Nama aktivitas kosong";
+    else if (slaRaw === "" || Number.isNaN(slaDays)) error = "SLA tidak valid";
+    else if (slaDays < 0) error = "SLA tidak boleh negatif";
+
+    if (error) errorCount++;
+    activities.push({
+      order: i,
+      name,
+      slaDays: Number.isNaN(slaDays) ? 0 : slaDays,
+      pic: pic || picForStage(name),
+      error,
+    });
+  });
+
+  return { activities, errorCount };
+}
