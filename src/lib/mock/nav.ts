@@ -99,7 +99,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Lock Period", href: "/lock-period", icon: Settings2 },
       { label: "Kunci Periode", href: "/kunci-periode", icon: Lock },
       { label: "Unlock Period", href: "/unlock-period", icon: LockOpen },
-      { label: "Configuration", href: "/master/config", icon: Settings2 },
+      { label: "Parameter Sistem", href: "/parameter-sistem", icon: Settings2 },
       { label: "Workflow Default Approval", href: "/workflow-default-approval", icon: GitBranch },
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
       { label: "Workflow Timeframe", href: "/master-timeframe", icon: GitBranch },
