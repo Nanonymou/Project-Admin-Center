@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { FileText, ImageIcon, MapPin, Paperclip } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { FileText, ImageIcon, MapPin, Paperclip, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,7 +69,37 @@ export function PratinjauLampiranClient() {
     }));
   }, [ws]);
 
-  const [preview, setPreview] = useState<Attachment | null>(null);
+  // Index-based preview so the modal can navigate between attachments.
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const preview = previewIndex !== null ? attachments[previewIndex] ?? null : null;
+
+  function step(delta: number) {
+    setPreviewIndex((i) =>
+      i === null || attachments.length === 0 ? i : (i + delta + attachments.length) % attachments.length,
+    );
+  }
+
+  // Arrow-key navigation while the preview is open.
+  useEffect(() => {
+    if (previewIndex === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") step(1);
+      else if (e.key === "ArrowLeft") step(-1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewIndex, attachments.length]);
+
+  function download(a: Attachment) {
+    if (a.fileType !== "image") return;
+    const link = document.createElement("a");
+    link.href = placeholderImage(a.name, a.kind);
+    link.download = a.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   const invoiceNo = ws ? `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}` : "";
 
@@ -119,13 +149,13 @@ export function PratinjauLampiranClient() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-              {attachments.map((a) => {
+              {attachments.map((a, idx) => {
                 const Icon = a.fileType === "pdf" ? FileText : ImageIcon;
                 return (
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => setPreview(a)}
+                    onClick={() => setPreviewIndex(idx)}
                     className="group flex flex-col overflow-hidden rounded-lg border text-left transition hover:border-primary"
                   >
                     <div className="flex aspect-[4/3] items-center justify-center bg-muted">
@@ -151,15 +181,30 @@ export function PratinjauLampiranClient() {
       {/* Preview */}
       <Dialog
         open={preview !== null}
-        onClose={() => setPreview(null)}
+        onClose={() => setPreviewIndex(null)}
         title="Pratinjau Lampiran"
-        description={preview ? `${preview.kind} · ${preview.name} · ${preview.sizeLabel}` : undefined}
+        description={
+          preview
+            ? `${preview.kind} · ${preview.name} · ${preview.sizeLabel} · ${(previewIndex ?? 0) + 1}/${attachments.length}`
+            : undefined
+        }
         className="max-w-3xl"
         footer={
           preview && (
-            <div className="flex justify-end">
-              <Button size="sm" variant="outline" onClick={() => setPreview(null)}>
-                Tutup
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => step(-1)} disabled={attachments.length < 2}>
+                  <ChevronLeft className="h-4 w-4" />
+                  Sebelumnya
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => step(1)} disabled={attachments.length < 2}>
+                  Berikutnya
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => download(preview)} disabled={preview.fileType !== "image"}>
+                <Download className="h-4 w-4" />
+                Unduh
               </Button>
             </div>
           )
