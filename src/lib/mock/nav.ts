@@ -71,6 +71,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Impor Excel", href: "/impor-excel", icon: FileSpreadsheet },
       { label: "Submit Daily Cost", href: "/submit-daily-cost", icon: Wallet },
       { label: "Ekspor Excel", href: "/ekspor-excel", icon: Download },
+      { label: "Daily Cost Dana Cash", href: "/daily-cost-dana-cash", icon: PiggyBank },
     ],
   },
   {
