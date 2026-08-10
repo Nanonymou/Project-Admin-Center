@@ -413,6 +413,69 @@ export async function getDailyTransactionWithLines(
 }
 
 /**
+ * Copy an existing transaction into a new draft dated `targetDate`. The copy
+ * carries the source's category lines and totals, records `copied_from_id` for
+ * provenance, and writes a "copy" change-log entry. Returns the new draft
+ * header. Runs in one transaction so the header, lines and log stay consistent.
+ */
+export async function copyDailyTransaction(
+  sourceId: string,
+  targetDate: string,
+  actor: string,
+): Promise<DailyTransaction | null> {
+  const source = await getDailyTransactionWithLines(sourceId);
+  if (!source) return null;
+  const { header, lines } = source;
+
+  return db.transaction(async (tx) => {
+    const [copy] = await tx
+      .insert(dailyTransactions)
+      .values({
+        projectId: header.projectId,
+        locationId: header.locationId,
+        kind: header.kind,
+        trxDate: targetDate,
+        area: header.area,
+        areaId: header.areaId,
+        status: "draft",
+        subtotal: header.subtotal,
+        tax: header.tax,
+        total: header.total,
+        isLate: false,
+        copiedFromId: header.id,
+        createdBy: actor,
+      })
+      .returning();
+
+    if (lines.length) {
+      const rows: NewDailyTransactionLine[] = lines.map((l) => ({
+        transactionId: copy.id,
+        projectId: header.projectId,
+        locationId: header.locationId,
+        categoryKey: l.categoryKey,
+        label: l.label,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        isDeduction: l.isDeduction,
+      }));
+      await tx.insert(dailyTransactionLines).values(rows);
+    }
+
+    await tx.insert(dailyTransactionLogs).values({
+      transactionId: copy.id,
+      projectId: header.projectId,
+      locationId: header.locationId,
+      action: "copy",
+      actor,
+      detail: `Disalin dari entri ${header.trxDate} ke ${targetDate}.`,
+    });
+
+    return copy;
+  });
+}
+
+/**
  * Update a daily submission header and replace its line items atomically. Only a
  * transaction that is not yet locked may be edited; returns the updated header,
  * or null when the id does not exist or is locked.
