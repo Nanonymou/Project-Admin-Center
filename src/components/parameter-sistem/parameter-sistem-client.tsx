@@ -1,7 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { SlidersHorizontal, Search, ToggleRight, ToggleLeft, Hash, Type, List, Pencil } from "lucide-react";
+import {
+  SlidersHorizontal,
+  Search,
+  ToggleRight,
+  ToggleLeft,
+  Hash,
+  Type,
+  List,
+  Pencil,
+  History,
+  ArrowRight,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { formatDateTime } from "@/lib/utils";
 import {
   listSystemParameters,
   formatParameterValue,
@@ -50,6 +62,11 @@ export function ParameterSistemClient() {
   const valueOf = (p: SystemParameter) => overrides[p.key] ?? p.value;
   const isEdited = (key: string) => key in overrides;
 
+  // Change-history log (this session), newest first.
+  const [history, setHistory] = useState<
+    { id: string; label: string; before: string; after: string; editor: string; at: string }[]
+  >([]);
+
   const params = useMemo(() => {
     const q = query.trim().toLowerCase();
     return listSystemParameters().filter(
@@ -70,14 +87,32 @@ export function ParameterSistemClient() {
     else setDraft(String(current));
   }
 
+  function recordChange(p: SystemParameter, before: SystemParameter["value"], after: SystemParameter["value"]) {
+    if (formatParameterValue(p, before) === formatParameterValue(p, after)) return;
+    setHistory((prev) => [
+      {
+        id: `${p.key}-${Date.now()}`,
+        label: p.label,
+        before: formatParameterValue(p, before),
+        after: formatParameterValue(p, after),
+        editor: persona.name,
+        at: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+  }
+
   function saveEdit() {
     if (!editParam) return;
+    const before = valueOf(editParam);
     if (editParam.type === "boolean") {
       setOverrides((prev) => ({ ...prev, [editParam.key]: draftBool }));
+      recordChange(editParam, before, draftBool);
     } else {
       if (validateParameterValue(editParam, draft)) return;
       const value = editParam.type === "number" ? Number(draft) : draft;
       setOverrides((prev) => ({ ...prev, [editParam.key]: value }));
+      recordChange(editParam, before, value);
     }
     setEditParam(null);
   }
@@ -176,6 +211,50 @@ export function ParameterSistemClient() {
             </Card>
           ))
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Parameter
+            </CardTitle>
+            <CardDescription>
+              {history.length > 0
+                ? `${history.length} perubahan pada sesi ini.`
+                : "Perubahan parameter pada sesi ini akan tercatat di sini."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {history.length === 0 ? (
+              <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+                Belum ada perubahan.
+              </div>
+            ) : (
+              <ol className="space-y-3">
+                {history.map((h) => (
+                  <li key={h.id} className="flex items-start gap-3">
+                    <Badge variant="info" className="mt-0.5 shrink-0">
+                      Diubah
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium">{h.label}</span>
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <span className="text-muted-foreground line-through">{h.before}</span>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                          <span className="font-medium">{h.after}</span>
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {h.editor} · {formatDateTime(h.at)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog
