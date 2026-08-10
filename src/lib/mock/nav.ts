@@ -27,6 +27,7 @@ import {
   Shield,
   ShieldCheck,
   LayoutGrid,
+  MapPin,
   type LucideIcon,
 } from "lucide-react";
 
@@ -48,6 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
+      { label: "Workspace Site", href: "/site-workspace", icon: MapPin },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
       { label: "Dashboard Leader & Workspace", href: "/leader-workspace", icon: LayoutGrid },
