@@ -41,12 +41,26 @@ export function InvoiceTimelineClient() {
     [persona],
   );
   const [wsIndex, setWsIndex] = useState(0);
+  const [invoiceIndex, setInvoiceIndex] = useState(0);
   const ws = workspaces[wsIndex] ?? workspaces[0];
+
+  // A few invoices per site — switching them updates the timeline in place.
+  const invoiceCount = 3;
+  const invoiceOptions = useMemo(
+    () =>
+      ws
+        ? Array.from({ length: invoiceCount }, (_, i) => ({
+            index: i,
+            number: `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex * invoiceCount + i + 1).padStart(4, "0")}`,
+          }))
+        : [],
+    [ws, wsIndex],
+  );
 
   const stages = useMemo(() => {
     if (!ws) return [];
     const flow = getApprovalTimeframes(ws.projectCode, "invoice");
-    const seed = seedOf(ws.locationId);
+    const seed = seedOf(ws.locationId) + invoiceIndex * 7;
     const currentIdx = seed % flow.length; // stages before are done, after are pending
     const start = new Date();
     start.setDate(start.getDate() - flow.slice(0, currentIdx + 1).reduce((s, f) => s + f.slaDays, 0));
@@ -67,7 +81,7 @@ export function InvoiceTimelineClient() {
         breached,
       };
     });
-  }, [ws]);
+  }, [ws, invoiceIndex]);
 
   if (!ws) {
     return (
@@ -78,8 +92,10 @@ export function InvoiceTimelineClient() {
     );
   }
 
-  const seed = seedOf(ws.locationId);
-  const invoiceNo = `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}`;
+  const seed = seedOf(ws.locationId) + invoiceIndex * 7;
+  const invoiceNo =
+    invoiceOptions[invoiceIndex]?.number ??
+    `INV/${new Date().getFullYear()}/${ws.projectCode}/${String(wsIndex + 1).padStart(4, "0")}`;
   const amount = 80_000_000 + (seed % 40) * 1_000_000;
   const doneCount = stages.filter((s) => s.state === "done").length;
   const pct = Math.round((doneCount / stages.length) * 100);
@@ -112,12 +128,27 @@ export function InvoiceTimelineClient() {
           <label className="text-xs text-muted-foreground">Workspace</label>
           <select
             value={wsIndex}
-            onChange={(e) => setWsIndex(Number(e.target.value))}
+            onChange={(e) => {
+              setWsIndex(Number(e.target.value));
+              setInvoiceIndex(0);
+            }}
             className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           >
             {workspaces.map((w, i) => (
               <option key={w.locationId} value={i}>
                 {w.projectCode} — {w.locationName}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs text-muted-foreground">Invoice</label>
+          <select
+            value={invoiceIndex}
+            onChange={(e) => setInvoiceIndex(Number(e.target.value))}
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          >
+            {invoiceOptions.map((opt) => (
+              <option key={opt.index} value={opt.index}>
+                {opt.number}
               </option>
             ))}
           </select>
