@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createInvoice, listInvoices, type InvoiceFilter } from "@/db/repositories/invoice-repository";
 import type { NewInvoice } from "@/db/schema";
-import { computeInvoice, invoiceCalcColumns } from "@/lib/server/services/invoice-calculation-service";
-import { getInvoiceType, isInvoiceType } from "@/lib/mock/invoice-type-config";
-import { getBbmConfig } from "@/lib/mock/bbm-config";
+import {
+  computeInvoice,
+  invoiceCalcColumns,
+  parseInvoiceCalcInput,
+} from "@/lib/server/services/invoice-calculation-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -108,15 +110,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
   }
 
-  const projectId = typeof body.projectId === "string" ? body.projectId : "";
   const locationId = typeof body.locationId === "string" ? body.locationId : "";
   const number = typeof body.number === "string" ? body.number : "";
-  const subtotal = Number(body.subtotal);
-  if (!projectId || !locationId || !number || !Number.isFinite(subtotal)) {
-    return NextResponse.json(
-      { error: "projectId, locationId, number, dan subtotal wajib diisi." },
-      { status: 400 },
-    );
+
+  // Validate & resolve the financial inputs (subtotal/deduction/bbm + optional
+  // invoice type) through the shared server calculation validator; the invoice
+  // type profile supplies deduction/BBM defaults, mirroring /api/invoices/calculate.
+  const parsed = parseInvoiceCalcInput(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const { projectCode: projectId, subtotal, deduction, bbm } = parsed.value;
+
+  if (!locationId || !number) {
+    return NextResponse.json({ error: "locationId dan number wajib diisi." }, { status: 400 });
   }
 
   const authz = authorizeDashboard(persona, { projectId, locationId, scope: "tenant" });
@@ -127,26 +132,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
 
-  // Invoice type (optional) profiles the deduction/BBM defaults, mirroring the
-  // /api/invoices/calculate endpoint. Explicit body values still win.
-  const typeKey = typeof body.invoiceType === "string" ? body.invoiceType : "";
-  if (typeKey && !isInvoiceType(typeKey)) {
-    return NextResponse.json({ error: `Jenis invoice tidak dikenal: ${typeKey}.` }, { status: 400 });
-  }
-  const profile = getInvoiceType(typeKey);
-
-  const deduction = Number.isFinite(Number(body.deduction))
-    ? Math.max(0, Number(body.deduction))
-    : Math.round(subtotal * profile.deductionRate);
-  const bbmApplies = profile.hasBbm && getBbmConfig(projectId).applies;
-  const bbm = Number.isFinite(Number(body.bbm))
-    ? Math.max(0, Number(body.bbm))
-    : bbmApplies
-      ? Math.round(subtotal * profile.bbmRate)
-      : 0;
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const issuedDate = typeof body.issuedDate === "string" ? body.issuedDate : undefined;
   const pic = typeof body.pic === "string" ? body.pic : undefined;
+  // Overdue days is derived from the due date at save time (not the raw input).
   const overdueDays = overdueDaysOf(dueDate);
   const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, bbm, overdueDays });
 

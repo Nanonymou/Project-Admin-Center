@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
-import { getInvoiceType, isInvoiceType, listInvoiceTypes } from "@/lib/mock/invoice-type-config";
-import { getBbmConfig } from "@/lib/mock/bbm-config";
+import {
+  computeInvoice,
+  parseInvoiceCalcInput,
+} from "@/lib/server/services/invoice-calculation-service";
+import { listInvoiceTypes } from "@/lib/mock/invoice-type-config";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessProject } from "@/lib/personas";
 
@@ -41,15 +43,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
   }
 
-  const projectCode =
-    typeof body.projectCode === "string"
-      ? body.projectCode
-      : typeof body.projectId === "string"
-        ? body.projectId
-        : "";
-  if (!projectCode) {
-    return NextResponse.json({ error: "projectCode wajib diisi." }, { status: 400 });
+  const parsed = parseInvoiceCalcInput(body);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: parsed.error, types: listInvoiceTypes().map((t) => t.key) },
+      { status: parsed.status },
+    );
   }
+  const { projectCode, invoiceType, subtotal, deduction, bbm, overdueDays, bbmApplies } = parsed.value;
+
   if (!canAccessProject(persona, projectCode)) {
     return NextResponse.json(
       { error: `Tidak ada akses ke project ${projectCode}.`, role: persona.role },
@@ -57,43 +59,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const subtotal = Number(body.subtotal);
-  if (!Number.isFinite(subtotal) || subtotal < 0) {
-    return NextResponse.json({ error: "subtotal wajib berupa angka >= 0." }, { status: 400 });
-  }
-
-  const typeKey = typeof body.invoiceType === "string" ? body.invoiceType : "";
-  if (typeKey && !isInvoiceType(typeKey)) {
-    return NextResponse.json(
-      { error: `Jenis invoice tidak dikenal: ${typeKey}.`, types: listInvoiceTypes().map((t) => t.key) },
-      { status: 400 },
-    );
-  }
-  const profile = getInvoiceType(typeKey);
-
-  // Deduction: explicit body value wins, else derived from the type profile.
-  const deduction = Number.isFinite(Number(body.deduction))
-    ? Math.max(0, Number(body.deduction))
-    : Math.round(subtotal * profile.deductionRate);
-
-  // BBM: only meaningful when the type carries one and the project's config
-  // enables it. Explicit body value wins over the profile-derived default.
-  const bbmApplies = profile.hasBbm && getBbmConfig(projectCode).applies;
-  const bbm = Number.isFinite(Number(body.bbm))
-    ? Math.max(0, Number(body.bbm))
-    : bbmApplies
-      ? Math.round(subtotal * profile.bbmRate)
-      : 0;
-
-  const overdueDays = Number.isFinite(Number(body.overdueDays))
-    ? Math.max(0, Math.floor(Number(body.overdueDays)))
-    : 0;
-
   const calc = computeInvoice({ projectCode, subtotal, deduction, bbm, overdueDays });
 
   return NextResponse.json({
     projectCode,
-    invoiceType: { key: profile.key, label: profile.label },
+    invoiceType,
     input: { subtotal, deduction, bbm, overdueDays, bbmApplies },
     calc,
   });
