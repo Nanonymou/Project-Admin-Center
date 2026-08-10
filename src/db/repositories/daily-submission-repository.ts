@@ -163,8 +163,11 @@ export async function submitDailyBatch(input: SubmitBatchInput): Promise<DailySu
       )
       .limit(1);
 
+    let row: DailySubmission;
+    let fromStatus: string | null;
     if (existing) {
-      const [row] = await tx
+      fromStatus = existing.status;
+      [row] = await tx
         .update(dailySubmissions)
         .set({
           status: "submitted",
@@ -177,25 +180,38 @@ export async function submitDailyBatch(input: SubmitBatchInput): Promise<DailySu
         })
         .where(eq(dailySubmissions.id, existing.id))
         .returning();
-      return row;
+    } else {
+      fromStatus = null;
+      [row] = await tx
+        .insert(dailySubmissions)
+        .values({
+          projectId: input.projectId,
+          locationId: input.locationId,
+          kind: input.kind,
+          submissionDate: input.submissionDate,
+          status: "submitted",
+          totalAmount: input.totalAmount,
+          entryCount: input.entryCount,
+          submittedBy: input.submittedBy,
+          submittedAt: new Date(),
+          note: input.note,
+          createdBy: input.submittedBy,
+        } satisfies NewDailySubmission)
+        .returning();
     }
 
-    const [row] = await tx
-      .insert(dailySubmissions)
-      .values({
-        projectId: input.projectId,
-        locationId: input.locationId,
-        kind: input.kind,
-        submissionDate: input.submissionDate,
-        status: "submitted",
-        totalAmount: input.totalAmount,
-        entryCount: input.entryCount,
-        submittedBy: input.submittedBy,
-        submittedAt: new Date(),
-        note: input.note,
-        createdBy: input.submittedBy,
-      } satisfies NewDailySubmission)
-      .returning();
+    // Auto-record the submit action on the approval history.
+    await tx.insert(dailySubmissionHistory).values({
+      submissionId: row.id,
+      projectId: input.projectId,
+      locationId: input.locationId,
+      action: "submit",
+      fromStatus,
+      toStatus: "submitted",
+      actor: input.submittedBy,
+      reason: input.note,
+    });
+
     return row;
   });
 }
