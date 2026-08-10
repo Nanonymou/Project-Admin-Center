@@ -39,7 +39,20 @@ export function RiwayatPenjualanClient() {
     (t) => locationFilter === "all" || t.locationId === locationFilter,
   );
 
+  // Local state connects the Riwayat button to the modal; `viewedIds` records
+  // which transactions' history has been opened this session.
   const [historyOf, setHistoryOf] = useState<SalesTransaction | null>(null);
+  const [viewedIds, setViewedIds] = useState<Set<string>>(new Set());
+
+  function openHistory(t: SalesTransaction) {
+    setHistoryOf(t);
+    setViewedIds((prev) => {
+      if (prev.has(t.id)) return prev;
+      const next = new Set(prev);
+      next.add(t.id);
+      return next;
+    });
+  }
 
   return (
     <div>
@@ -101,15 +114,24 @@ export function RiwayatPenjualanClient() {
                         {formatCurrency(t.total)}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button size="sm" variant="outline" onClick={() => setHistoryOf(t)}>
-                          <History className="h-4 w-4" />
-                          Riwayat
-                          {t.editedCount > 0 && (
-                            <Badge variant="info" className="ml-1">
-                              {t.editedCount}
-                            </Badge>
+                        <div className="flex items-center justify-end gap-2">
+                          {viewedIds.has(t.id) && (
+                            <span className="text-[11px] text-muted-foreground">dilihat</span>
                           )}
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant={viewedIds.has(t.id) ? "ghost" : "outline"}
+                            onClick={() => openHistory(t)}
+                          >
+                            <History className="h-4 w-4" />
+                            Riwayat
+                            {t.editedCount > 0 && (
+                              <Badge variant="info" className="ml-1">
+                                {t.editedCount}
+                              </Badge>
+                            )}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
