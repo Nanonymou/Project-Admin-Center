@@ -13,6 +13,33 @@ export const dynamic = "force-dynamic";
 const ACTIONS: SubmissionAction[] = ["submit", "review", "approve", "reject", "resubmit"];
 /** Actions that require the approve capability (review decisions). */
 const REVIEW_ACTIONS = new Set<SubmissionAction>(["review", "approve", "reject"]);
+/** Actions a Site Admin may perform on their own site's submission. */
+const SITE_ACTIONS = new Set<SubmissionAction>(["submit", "resubmit"]);
+
+/**
+ * Role authorization for a submission action. Final approval is a Leader/Super
+ * Admin power; review and reject need the approve capability; submit/resubmit are
+ * open to any non-viewer with site access. Returns an error tuple or null.
+ */
+function authorizeAction(
+  role: string,
+  canApprove: boolean,
+  action: SubmissionAction,
+): { status: number; message: string } | null {
+  if (role === "viewer") {
+    return { status: 403, message: "Viewer tidak dapat memproses persetujuan." };
+  }
+  if (action === "approve" && !(role === "leader_admin" || role === "super_admin")) {
+    return { status: 403, message: "Approval final hanya untuk Leader/Super Admin." };
+  }
+  if (REVIEW_ACTIONS.has(action) && !canApprove) {
+    return { status: 403, message: "Tidak memiliki hak persetujuan." };
+  }
+  if (SITE_ACTIONS.has(action) && !(canApprove || role === "site_admin")) {
+    return { status: 403, message: "Tidak memiliki hak mengajukan." };
+  }
+  return null;
+}
 
 /**
  * POST /api/persetujuan-daily-sales/:id/action
@@ -44,8 +71,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (action === "reject" && (!reason || reason.length < 3)) {
     return NextResponse.json({ error: "Penolakan memerlukan reason (minimal 3 karakter)." }, { status: 422 });
   }
-  if (REVIEW_ACTIONS.has(action) && !persona.capabilities.canApprove) {
-    return NextResponse.json({ error: "Tidak memiliki hak persetujuan." }, { status: 403 });
+  const roleError = authorizeAction(persona.role, persona.capabilities.canApprove, action);
+  if (roleError) {
+    return NextResponse.json({ error: roleError.message, role: persona.role }, { status: roleError.status });
   }
 
   try {
