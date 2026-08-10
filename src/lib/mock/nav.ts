@@ -18,6 +18,7 @@ import {
   History,
   FileSpreadsheet,
   Download,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -84,6 +85,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Manajemen Periode", href: "/period-status", icon: CalendarDays },
       { label: "Kebijakan Cut-Off", href: "/cutoff-policy", icon: CalendarDays },
       { label: "Lock Period", href: "/lock-period", icon: Settings2 },
+      { label: "Kunci Periode", href: "/kunci-periode", icon: Lock },
       { label: "Configuration", href: "/master/config", icon: Settings2 },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
