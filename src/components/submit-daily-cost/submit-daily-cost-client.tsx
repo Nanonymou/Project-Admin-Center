@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Send, Wallet, CheckCircle2, Undo2 } from "lucide-react";
+import { Send, Wallet, CheckCircle2, Undo2, AlertTriangle, X } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +47,7 @@ export function SubmitDailyCostClient() {
   const [overrides, setOverrides] = useState<Record<string, ClosingState>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ locationId: string; locationName: string } | null>(null);
+  const [reminderDismissed, setReminderDismissed] = useState(false);
 
   const rows = baseline.map((r) => ({
     ...r,
@@ -84,6 +85,9 @@ export function SubmitDailyCostClient() {
 
   const isLeader = persona.role === "leader_admin" || persona.role === "super_admin";
 
+  // Sites still in draft — the reminder targets these un-submitted entries.
+  const draftSites = rows.filter((r) => r.costState === "draft");
+
   // Per-project recap for the Leader Admin — sites submitted vs still pending.
   const projectRecap = useMemo(() => {
     const map = new Map<string, { total: number; draft: number; inProgress: number; done: number }>();
@@ -110,6 +114,30 @@ export function SubmitDailyCostClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${sites.length} site`} />
+
+        {/* Reminder: sites with Daily Cost not yet submitted */}
+        {draftSites.length > 0 && !reminderDismissed && (
+          <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="flex-1">
+              <div className="font-medium">
+                {draftSites.length} site belum submit Daily Cost hari ini
+              </div>
+              <p className="mt-0.5 text-xs">
+                Segera submit sebelum cut-off:{" "}
+                {draftSites.map((s) => `${s.locationName} (${s.projectCode})`).join(", ")}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReminderDismissed(true)}
+              className="shrink-0 rounded p-1 text-amber-700 hover:bg-amber-100"
+              title="Tutup pengingat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {msg && (
           <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
