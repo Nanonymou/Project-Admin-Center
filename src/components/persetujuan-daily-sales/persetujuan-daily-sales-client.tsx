@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle, Check, X, Send } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,15 +66,48 @@ function approvalSteps(s: DailySalesSubmission): { label: string; state: "done" 
 export function PersetujuanDailySalesClient() {
   const { persona } = usePersona();
 
-  const submissions = useMemo(
+  const canApprove = persona.capabilities.canApprove;
+
+  const base = useMemo(
     () =>
       buildDailySalesSubmissions().filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
   );
 
+  // Session-local status overrides after an approve/reject/submit action.
+  const [overrides, setOverrides] = useState<Record<string, DsApprovalStatus>>({});
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const submissions = base.map((s) => ({ ...s, status: overrides[s.id] ?? s.status }));
+
   const [statusFilter, setStatusFilter] = useState<"all" | DsApprovalStatus>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [detail, setDetail] = useState<DailySalesSubmission | null>(null);
+
+  // Reject-with-reason dialog.
+  const [rejectTarget, setRejectTarget] = useState<DailySalesSubmission | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  function approve(s: DailySalesSubmission) {
+    if (!canApprove) return;
+    setOverrides((prev) => ({ ...prev, [s.id]: "approved" }));
+    setMsg(`Pengajuan ${s.locationName} ${formatDate(s.trxDate)} disetujui.`);
+  }
+
+  function resubmit(s: DailySalesSubmission) {
+    setOverrides((prev) => ({ ...prev, [s.id]: "submitted" }));
+    setMsg(`Pengajuan ${s.locationName} ${formatDate(s.trxDate)} diajukan ulang.`);
+  }
+
+  function confirmReject() {
+    if (!rejectTarget || rejectReason.trim().length < 3) return;
+    setOverrides((prev) => ({ ...prev, [rejectTarget.id]: "rejected" }));
+    setRejectReasons((prev) => ({ ...prev, [rejectTarget.id]: rejectReason.trim() }));
+    setMsg(`Pengajuan ${rejectTarget.locationName} ${formatDate(rejectTarget.trxDate)} ditolak.`);
+    setRejectTarget(null);
+    setRejectReason("");
+  }
 
   const locations = useMemo(() => {
     const map = new Map<string, string>();
@@ -108,6 +141,13 @@ export function PersetujuanDailySalesClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${locations.length} site`} />
+
+        {msg && (
+          <div className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{msg}</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {DS_APPROVAL_STATUSES.map((s) => {
@@ -183,7 +223,7 @@ export function PersetujuanDailySalesClient() {
                       <th className="px-3 py-2 text-right font-medium">Total</th>
                       <th className="px-3 py-2 text-left font-medium">Diajukan</th>
                       <th className="px-3 py-2 text-left font-medium">Status</th>
-                      <th className="px-3 py-2 text-right font-medium">Detail</th>
+                      <th className="px-3 py-2 text-right font-medium">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -204,10 +244,45 @@ export function PersetujuanDailySalesClient() {
                           <td className="px-3 py-2">
                             <Badge variant={meta.badge}>{meta.label}</Badge>
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            <Button size="sm" variant="outline" onClick={() => setDetail(s)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => setDetail(s)} title="Detail">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {canApprove && (s.status === "submitted" || s.status === "reviewed") && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => approve(s)}
+                                    title="Setujui"
+                                  >
+                                    <Check className="h-4 w-4 text-emerald-600" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setRejectTarget(s);
+                                      setRejectReason("");
+                                    }}
+                                    title="Tolak"
+                                  >
+                                    <X className="h-4 w-4 text-rose-600" />
+                                  </Button>
+                                </>
+                              )}
+                              {s.status === "rejected" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => resubmit(s)}
+                                  title="Ajukan ulang"
+                                >
+                                  <Send className="h-4 w-4 text-sky-600" />
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -235,6 +310,12 @@ export function PersetujuanDailySalesClient() {
               <span className="text-muted-foreground">Diajukan oleh {detail.submittedBy}</span>
               <span className="ml-auto font-medium tabular-nums">{formatCurrency(detail.total)}</span>
             </div>
+
+            {detail.status === "rejected" && rejectReasons[detail.id] && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                <b>Alasan penolakan:</b> {rejectReasons[detail.id]}
+              </div>
+            )}
 
             {/* Line items */}
             <div>
@@ -290,6 +371,45 @@ export function PersetujuanDailySalesClient() {
             </div>
           </div>
         )}
+      </Dialog>
+
+      {/* Reject with reason */}
+      <Dialog
+        open={rejectTarget !== null}
+        onClose={() => setRejectTarget(null)}
+        title="Tolak Pengajuan"
+        description={
+          rejectTarget ? `${rejectTarget.locationName} · ${formatDate(rejectTarget.trxDate)}` : undefined
+        }
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRejectTarget(null)}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              disabled={rejectReason.trim().length < 3}
+              onClick={confirmReject}
+            >
+              <X className="h-4 w-4" />
+              Tolak
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Berikan alasan penolakan. Admin site akan melihat alasan ini dan dapat mengajukan ulang.
+          </p>
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            rows={3}
+            placeholder="Contoh: qty meals melebihi headcount, mohon koreksi."
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
       </Dialog>
     </div>
   );
