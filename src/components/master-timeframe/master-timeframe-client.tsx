@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   MapPin,
@@ -11,6 +11,9 @@ import {
   ChevronRight,
   Upload,
   FileSpreadsheet,
+  CheckCircle2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -90,10 +93,33 @@ export function MasterTimeframeClient() {
   const validRows = parsed?.activities.filter((a) => !a.error) ?? [];
   const canSave = parsed !== null && parsed.errorCount === 0 && validRows.length > 0;
 
+  // Success/failure notification for the upload flow.
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  function processUpload() {
+    const result = parseWorkflowActivities(pasteText);
+    setParsed(result);
+    if (result.activities.length === 0) {
+      setNotice({ type: "error", text: "Gagal membaca data — tidak ada baris terbaca." });
+    }
+  }
+
   function saveUpload() {
-    if (!ws || !canSave) return;
+    if (!ws || !canSave) {
+      setNotice({ type: "error", text: "Gagal menyimpan — masih ada baris yang bermasalah." });
+      return;
+    }
     setApplied((prev) => ({ ...prev, [`${ws.locationId}:${uploadSubject}`]: validRows }));
     setUploadOpen(false);
+    setNotice({
+      type: "success",
+      text: `Berhasil menyimpan ${validRows.length} aktivitas untuk ${SUBJECT_LABEL[uploadSubject]} — ${ws.locationName}.`,
+    });
   }
 
   function openUpload() {
@@ -108,11 +134,8 @@ export function MasterTimeframeClient() {
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = () => setPasteText(String(reader.result ?? ""));
+    reader.onerror = () => setNotice({ type: "error", text: "Gagal membaca file." });
     reader.readAsText(file);
-  }
-
-  function processUpload() {
-    setParsed(parseWorkflowActivities(pasteText));
   }
 
   if (!ws) {
@@ -134,6 +157,33 @@ export function MasterTimeframeClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${workspaces.length} site`} />
+
+        {notice && (
+          <div
+            role="status"
+            className={cn(
+              "flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
+              notice.type === "success"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                : "border-rose-300 bg-rose-50 text-rose-800",
+            )}
+          >
+            {notice.type === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span className="flex-1">{notice.text}</span>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="rounded p-0.5 hover:bg-black/5"
+              aria-label="Tutup notifikasi"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <MapPin className="h-4 w-4 text-muted-foreground" />
