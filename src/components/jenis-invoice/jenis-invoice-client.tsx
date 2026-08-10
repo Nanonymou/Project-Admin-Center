@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { InvoiceTypeSelect } from "@/components/jenis-invoice/invoice-type-select";
 import { usePersona } from "@/components/providers/persona-provider";
 import { type Persona } from "@/lib/personas";
 import { listInvoiceTypes, type InvoiceTypeProfile } from "@/lib/mock/invoice-type-config";
@@ -60,8 +61,18 @@ export function JenisInvoiceClient() {
     return base;
   }, [customTypes, overrides, inactive]);
 
-  const activeCount = types.filter((t) => t.active).length;
+  const activeTypes = useMemo(() => types.filter((t) => t.active), [types]);
+  const activeCount = activeTypes.length;
   const isEdited = (key: string) => key in overrides;
+
+  // Preview selector — demonstrates the active-only dropdown consumed by
+  // invoice-creation flows. Falls back to the first active type if the current
+  // pick was deactivated.
+  const [previewKey, setPreviewKey] = useState("");
+  const selectedKey = activeTypes.some((t) => t.key === previewKey)
+    ? previewKey
+    : activeTypes[0]?.key ?? "";
+  const selectedType = activeTypes.find((t) => t.key === selectedKey);
 
   // Form state.
   const [formOpen, setFormOpen] = useState(false);
@@ -247,6 +258,43 @@ export function JenisInvoiceClient() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Pratinjau Pemilihan Jenis</CardTitle>
+            <CardDescription>
+              Dropdown ini hanya menampilkan jenis yang aktif — sama seperti saat membuat invoice.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="max-w-xs">
+              <InvoiceTypeSelect types={activeTypes} value={selectedKey} onChange={setPreviewKey} />
+            </div>
+            {selectedType ? (
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="secondary" className="font-mono">
+                  {selectedType.key}
+                </Badge>
+                <Badge variant="warning" className="gap-1">
+                  <Minus className="h-3 w-3" />
+                  Potongan {pct(selectedType.deductionRate)}
+                </Badge>
+                {selectedType.hasBbm ? (
+                  <Badge variant="info" className="gap-1">
+                    <Fuel className="h-3 w-3" />
+                    BBM {pct(selectedType.bbmRate)}
+                  </Badge>
+                ) : (
+                  <Badge variant="muted">Tanpa BBM</Badge>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Tidak ada jenis aktif. Aktifkan minimal satu jenis di daftar di atas.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
