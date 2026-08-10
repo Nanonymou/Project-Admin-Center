@@ -20,6 +20,11 @@ export type RecordActivityInput = {
   fromStage?: string | null;
   toStage?: string | null;
   detail?: string;
+  /** Structured context (e.g. changed fields with before/after values). */
+  metadata?: unknown;
+  /** Request provenance for the audit record. */
+  ipAddress?: string;
+  userAgent?: string;
 };
 
 /**
@@ -39,6 +44,9 @@ export async function recordInvoiceActivity(input: RecordActivityInput): Promise
     fromStage: input.fromStage ?? undefined,
     toStage: input.toStage ?? undefined,
     detail: input.detail,
+    metadata: input.metadata ?? undefined,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
   });
 }
 
