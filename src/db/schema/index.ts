@@ -28,6 +28,7 @@ export * from "./approval-overdue-view";
 export * from "./deadlines";
 export * from "./cutoff-monitoring";
 export * from "./lock-periods";
+export * from "./lock-period-history";
 export * from "./periods";
 export * from "./audit-logs";
 export * from "./backups";
