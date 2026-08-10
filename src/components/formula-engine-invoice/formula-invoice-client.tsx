@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessProject } from "@/lib/personas";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, terbilang } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
 import { getBbmConfig } from "@/lib/mock/bbm-config";
@@ -165,6 +165,9 @@ export function FormulaInvoiceClient() {
                   onChange={(e) => setSubtotal(Math.max(0, Number(e.target.value) || 0))}
                   className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
                 />
+                <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                  {formatCurrency(subtotal)}
+                </span>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground">Pengurang / backcharge (Rp)</span>
@@ -176,6 +179,9 @@ export function FormulaInvoiceClient() {
                   onChange={(e) => setDeduction(Math.max(0, Number(e.target.value) || 0))}
                   className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
                 />
+                <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                  {formatCurrency(deduction)}
+                </span>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground">
@@ -190,6 +196,9 @@ export function FormulaInvoiceClient() {
                   onChange={(e) => setBbm(Math.max(0, Number(e.target.value) || 0))}
                   className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                 />
+                <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                  {formatCurrency(bbmCfg?.applies ? bbm : 0)}
+                </span>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground">Hari terlambat</span>
@@ -251,6 +260,11 @@ export function FormulaInvoiceClient() {
                     <td className="px-4 py-3 text-base font-semibold">Total Invoice</td>
                     <td className="px-4 py-3 text-right text-base font-bold tabular-nums text-primary">
                       {formatCurrency(calc.total)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan={2} className="px-4 py-2 text-right text-[11px] capitalize italic text-muted-foreground">
+                      {terbilang(calc.total)}
                     </td>
                   </tr>
                 </tbody>
