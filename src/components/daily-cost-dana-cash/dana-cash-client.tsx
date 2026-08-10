@@ -1,16 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank } from "lucide-react";
+import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
-import { buildDanaCashLedger, danaCashOpeningBalance } from "@/lib/mock/dana-cash";
+import { getCostCategories } from "@/lib/mock/cost-config";
+import { buildDanaCashLedger, danaCashOpeningBalance, type DanaCashEntry } from "@/lib/mock/dana-cash";
 
 /**
  * Daily Cost Dana Cash — cash-fund ledger list. Shows the opening balance,
@@ -28,11 +30,49 @@ export function DanaCashClient() {
   const [wsIndex, setWsIndex] = useState(0);
   const ws = workspaces[wsIndex] ?? workspaces[0];
 
+  const canInput =
+    persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin";
+
   const opening = ws ? danaCashOpeningBalance(ws.locationId) : 0;
-  const ledger = useMemo(
+  const seededLedger = useMemo(
     () => (ws ? buildDanaCashLedger(ws.projectCode, ws.locationId) : []),
     [ws],
   );
+  const [added, setAdded] = useState<DanaCashEntry[]>([]);
+  // Reset session additions when the workspace changes.
+  const addedForWs = ws ? added : [];
+  const ledger = useMemo(() => {
+    const merged = [...seededLedger, ...addedForWs];
+    return merged.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }, [seededLedger, addedForWs]);
+
+  // Add-transaction form state.
+  const categories = useMemo(() => (ws ? getCostCategories(ws.projectCode) : []), [ws]);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [formDate, setFormDate] = useState(todayIso);
+  const [formType, setFormType] = useState<"expense" | "top_up">("expense");
+  const [formCategory, setFormCategory] = useState("");
+  const [formDesc, setFormDesc] = useState("");
+  const [formAmount, setFormAmount] = useState<number>(0);
+
+  const catKey = formCategory || categories[0]?.key || "misc";
+
+  function addTransaction() {
+    if (!ws || formAmount <= 0) return;
+    const cat = categories.find((c) => c.key === catKey);
+    const entry: DanaCashEntry = {
+      id: `local-${Date.now()}`,
+      date: formDate,
+      categoryKey: formType === "top_up" ? "top_up" : catKey,
+      categoryLabel: formType === "top_up" ? "Top-up Dana Cash" : cat?.label ?? "Pengeluaran",
+      description: formDesc.trim() || (formType === "top_up" ? "Pengisian ulang kas" : "Pengeluaran kas"),
+      amount: formType === "top_up" ? formAmount : -formAmount,
+      by: persona.roleLabel,
+    };
+    setAdded((prev) => [...prev, entry]);
+    setFormAmount(0);
+    setFormDesc("");
+  }
 
   // Compute the running balance per entry.
   const rows = useMemo(() => {
@@ -72,7 +112,10 @@ export function DanaCashClient() {
           <label className="text-xs text-muted-foreground">Workspace</label>
           <select
             value={wsIndex}
-            onChange={(e) => setWsIndex(Number(e.target.value))}
+            onChange={(e) => {
+              setWsIndex(Number(e.target.value));
+              setAdded([]);
+            }}
             className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           >
             {workspaces.map((w, i) => (
@@ -82,6 +125,83 @@ export function DanaCashClient() {
             ))}
           </select>
         </div>
+
+        {/* Add transaction form */}
+        {canInput && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-primary" />
+                Tambah Transaksi Kas
+              </CardTitle>
+              <CardDescription>Catat pengeluaran atau top-up dana cash.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Tanggal</span>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value || todayIso)}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Jenis</span>
+                  <select
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value as "expense" | "top_up")}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="expense">Pengeluaran</option>
+                    <option value="top_up">Top-up</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Kategori</span>
+                  <select
+                    value={catKey}
+                    disabled={formType === "top_up"}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs lg:col-span-1">
+                  <span className="text-muted-foreground">Keterangan</span>
+                  <input
+                    type="text"
+                    value={formDesc}
+                    onChange={(e) => setFormDesc(e.target.value)}
+                    placeholder="Opsional"
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Nominal (Rp)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(Math.max(0, Number(e.target.value) || 0))}
+                    className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <Button onClick={addTransaction} disabled={formAmount <= 0} className="h-9">
+                  <Plus className="h-4 w-4" />
+                  Tambah
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Balance summary */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
