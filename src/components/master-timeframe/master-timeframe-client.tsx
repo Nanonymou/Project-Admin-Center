@@ -59,25 +59,25 @@ export function MasterTimeframeClient() {
   const ws = workspaces[wsIndex] ?? workspaces[0];
 
   // Session-local uploaded activities that replace a workflow's defaults, keyed
-  // by `${locationId}:${subject}`.
+  // by `${locationId}:${subject}`, plus a per-workflow deactivated set.
   const [applied, setApplied] = useState<Record<string, ParsedActivity[]>>({});
+  const [inactiveWf, setInactiveWf] = useState<Record<string, boolean>>({});
 
   const workflows: Workflow[] = useMemo(() => {
     if (!ws) return [];
     return buildWorkflowsForSite(ws.locationId).map((wf) => {
       const override = applied[`${wf.locationId}:${wf.subject}`];
-      if (!override) return wf;
-      return {
-        ...wf,
-        activities: override.map((a, i) => ({
-          order: i,
-          name: a.name,
-          slaDays: a.slaDays,
-          pic: a.pic,
-        })),
-      };
+      const active = !inactiveWf[wf.id];
+      const activities = override
+        ? override.map((a, i) => ({ order: i, name: a.name, slaDays: a.slaDays, pic: a.pic }))
+        : wf.activities;
+      return { ...wf, activities, active };
     });
-  }, [ws, applied]);
+  }, [ws, applied, inactiveWf]);
+
+  function toggleWorkflow(wf: Workflow) {
+    setInactiveWf((prev) => ({ ...prev, [wf.id]: !prev[wf.id] }));
+  }
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const editable = canUpload(persona);
@@ -249,6 +249,22 @@ export function MasterTimeframeClient() {
                       <Badge variant={wf.active ? "success" : "muted"}>
                         {wf.active ? "Aktif" : "Nonaktif"}
                       </Badge>
+                      {editable && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleWorkflow(wf);
+                          }}
+                          className={cn(
+                            "h-7 px-2 text-xs",
+                            wf.active ? "text-rose-600" : "text-emerald-600",
+                          )}
+                        >
+                          {wf.active ? "Nonaktifkan" : "Aktifkan"}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
