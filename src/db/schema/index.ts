@@ -24,6 +24,7 @@ export * from "./master-timeframes";
 export * from "./sla-targets";
 export * from "./invoices";
 export * from "./invoice-lines";
+export * from "./invoice-stage-progress";
 export * from "./invoice-by-site-view";
 export * from "./approvals";
 export * from "./approval-by-site-view";
