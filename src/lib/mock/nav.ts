@@ -104,6 +104,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
+      { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
       { label: "Import/Export", href: "/import-export", icon: Settings2 },
