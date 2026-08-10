@@ -87,8 +87,19 @@ export async function POST(req: NextRequest) {
   const locationId = typeof body.locationId === "string" ? body.locationId : "";
   const periodLabel = typeof body.periodLabel === "string" ? body.periodLabel : "";
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-  const periodStart = typeof body.periodStart === "string" ? body.periodStart : undefined;
-  const periodEnd = typeof body.periodEnd === "string" ? body.periodEnd : undefined;
+  let periodStart = typeof body.periodStart === "string" ? body.periodStart : undefined;
+  let periodEnd = typeof body.periodEnd === "string" ? body.periodEnd : undefined;
+
+  // Derive month bounds from a YYYY-MM period label when explicit bounds are not
+  // supplied, so the unlock reliably cascades the status update to the period's
+  // transactions (locked → submitted).
+  if ((!periodStart || !periodEnd) && /^\d{4}-\d{2}$/.test(periodLabel)) {
+    const [y, m] = periodLabel.split("-").map(Number);
+    const start = new Date(Date.UTC(y, m - 1, 1));
+    const end = new Date(Date.UTC(y, m, 0)); // last day of the month
+    periodStart = periodStart ?? start.toISOString().slice(0, 10);
+    periodEnd = periodEnd ?? end.toISOString().slice(0, 10);
+  }
 
   if (!projectId || !locationId || !periodLabel) {
     return NextResponse.json(
@@ -151,7 +162,7 @@ export async function POST(req: NextRequest) {
         actor: persona.name,
         entityType: "lock_period",
         entityId: periodLabel,
-        detail: `Periode ${periodLabel} dibuka — ${reason}.`,
+        detail: `Periode ${periodLabel} dibuka — ${reason}. ${affected} transaksi dikembalikan ke status submitted.`,
       });
     } catch {
       /* best-effort */
