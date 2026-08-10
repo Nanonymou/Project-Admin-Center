@@ -75,6 +75,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Ekspor Excel", href: "/ekspor-excel", icon: Download },
       { label: "Daily Cost Dana Cash", href: "/daily-cost-dana-cash", icon: PiggyBank },
       { label: "Persetujuan Daily Sales", href: "/persetujuan-daily-sales", icon: BadgeCheck },
+      { label: "Riwayat Perubahan Penjualan", href: "/riwayat-perubahan-penjualan", icon: History },
     ],
   },
   {
