@@ -1,12 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  createDailySubmission,
+  copyDailyTransaction,
   findLatestTransaction,
   getDailyTransactionById,
-  getDailyTransactionWithLines,
-  type DailySubmissionInput,
 } from "@/db/repositories/daily-transaction-repository";
 import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
@@ -15,13 +14,6 @@ import { canAccessLocation } from "@/lib/personas";
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function isLateFor(trxDate: string, ref = new Date()): boolean {
-  const today = ref.toISOString().slice(0, 10);
-  const a = new Date(`${trxDate}T00:00:00Z`).getTime();
-  const b = new Date(`${today}T00:00:00Z`).getTime();
-  return Math.round((b - a) / 86_400_000) > 1;
-}
 
 /**
  * POST /api/daily-sales/duplicate
@@ -97,31 +89,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const withLines = await getDailyTransactionWithLines(source.id);
-    const lines = withLines?.lines ?? [];
-    const input: DailySubmissionInput = {
-      projectId: source.projectId,
-      locationId: source.locationId,
-      kind: source.kind,
-      trxDate: targetDate,
-      area: source.area ?? undefined,
-      areaId: source.areaId ?? undefined,
-      subtotal: source.subtotal,
-      tax: source.tax,
-      total: source.total,
-      isLate: isLateFor(targetDate),
-      submittedBy: persona.name,
-      lines: lines.map((l) => ({
-        categoryKey: l.categoryKey,
-        label: l.label,
-        qty: l.qty,
-        unitPrice: l.unitPrice,
-        amount: l.amount,
-        isDeduction: l.isDeduction,
-      })),
-    };
-
-    const created = await createDailySubmission(input);
+    // Create an editable DRAFT copy with `copied_from_id` provenance and a
+    // "copy" change-log entry (see copyDailyTransaction). A draft doesn't affect
+    // KPIs until submitted, but revalidate so any draft-aware views refresh.
+    const created = await copyDailyTransaction(source.id, targetDate, persona.name);
+    if (!created) {
+      return NextResponse.json({ error: "Gagal menduplikasi transaksi." }, { status: 500 });
+    }
+    try {
+      await writeAuditLog({
+        projectId: source.projectId,
+        locationId: source.locationId,
+        category: "daily_transaction",
+        action: "duplicate",
+        actor: persona.name,
+        entityType: `daily_${source.kind}`,
+        entityId: created.id,
+        detail: `Duplikasi entri ${source.trxDate} → ${targetDate} (dari ${source.id}).`,
+      });
+    } catch {
+      // best-effort
+    }
     revalidateKpi();
     return NextResponse.json({ source: "db", copiedFrom: source.id, entry: created }, { status: 201 });
   } catch (err) {
