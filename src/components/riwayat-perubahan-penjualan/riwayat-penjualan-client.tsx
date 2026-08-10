@@ -1,16 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ShoppingCart, History, ArrowRight } from "lucide-react";
+import { ShoppingCart, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog } from "@/components/ui/dialog";
+import { ChangeHistoryModal } from "@/components/riwayat-perubahan-penjualan/change-history-modal";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { buildSalesTransactions, type SalesTransaction } from "@/lib/mock/sales-change-log";
 
 /**
@@ -121,44 +121,7 @@ export function RiwayatPenjualanClient() {
       </div>
 
       {/* Per-transaction change history */}
-      <Dialog
-        open={historyOf !== null}
-        onClose={() => setHistoryOf(null)}
-        title="Riwayat Perubahan Transaksi"
-        description={
-          historyOf
-            ? `${historyOf.categoryLabel} · ${historyOf.locationName} · ${formatDate(historyOf.trxDate)}`
-            : undefined
-        }
-        className="max-w-lg"
-      >
-        {historyOf && (
-          <ol className="space-y-3">
-            {historyOf.history.map((h, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <Badge variant={h.action === "create" ? "success" : "info"} className="mt-0.5 shrink-0">
-                  {h.action === "create" ? "Dibuat" : "Diubah"}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium capitalize">{h.field}</span>
-                    {h.action === "update" && (
-                      <span className="flex items-center gap-1.5 text-xs tabular-nums">
-                        <span className="text-muted-foreground line-through">{h.before}</span>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium">{h.after}</span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {h.editor} · {formatDateTime(h.at)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Dialog>
+      <ChangeHistoryModal transaction={historyOf} onClose={() => setHistoryOf(null)} />
     </div>
   );
 }
