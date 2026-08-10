@@ -5,6 +5,7 @@ import {
   recordLockHistory,
   setPeriodLock,
 } from "@/db/repositories/lock-period-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -125,7 +126,8 @@ export async function POST(req: NextRequest) {
       to: periodEnd,
       locked,
     });
-    // Append the lock/unlock action to the period-lock history.
+    // Append the lock/unlock action to the period-lock history and the general
+    // activity/audit log (both best-effort).
     try {
       await recordLockHistory({
         projectId,
@@ -137,6 +139,20 @@ export async function POST(req: NextRequest) {
       });
     } catch {
       // history is best-effort
+    }
+    try {
+      await writeAuditLog({
+        projectId,
+        locationId,
+        category: "lock_period",
+        action: locked ? "lock" : "unlock",
+        actor: persona.name,
+        entityType: "lock_period",
+        entityId: periodLabel,
+        detail: `Periode ${periodLabel} ${locked ? "dikunci" : "dibuka"}${reason ? ` — ${reason}` : ""}.`,
+      });
+    } catch {
+      // audit is best-effort
     }
     revalidateKpi();
     return NextResponse.json({ source: "db", lock, affectedTransactions: affected });
