@@ -49,6 +49,11 @@ export function EksporExcelClient() {
   const [wsIndex, setWsIndex] = useState(0);
   const ws = workspaces[wsIndex] ?? workspaces[0];
 
+  // Export period (YYYY-MM) — used in filenames so exports are traceable.
+  const currentPeriod = new Date().toISOString().slice(0, 7);
+  const [period, setPeriod] = useState(currentPeriod);
+  const fileBase = ws ? `daily-sales_${ws.projectCode}_${ws.locationId}_${period}` : "daily-sales";
+
   const rows = useMemo<SalesRow[]>(() => {
     if (!ws) return [];
     const cats = getPricedCategories(ws.projectCode, ws.locationId).filter((c) => !c.deduction);
@@ -82,10 +87,7 @@ export function EksporExcelClient() {
       r.price,
       r.qty * r.price,
     ]);
-    downloadTextFile(
-      `daily-sales-${ws.projectCode}-${ws.locationId}.csv`,
-      toCsv([EXPORT_HEADER, ...data]),
-    );
+    downloadTextFile(`${fileBase}.csv`, toCsv([EXPORT_HEADER, ...data]));
   }
 
   function exportXlsx() {
@@ -99,18 +101,14 @@ export function EksporExcelClient() {
       r.price,
       r.qty * r.price,
     ]);
-    downloadXlsx(
-      `daily-sales-${ws.projectCode}-${ws.locationId}.xlsx`,
-      [EXPORT_HEADER, ...data],
-      `Daily Sales ${ws.projectCode}`,
-    );
+    downloadXlsx(`${fileBase}.xlsx`, [EXPORT_HEADER, ...data], `Daily Sales ${ws.projectCode}`);
   }
 
   function exportJson() {
     if (!ws) return;
-    const objects = rows.map((r) => ({ ...r, total: r.qty * r.price, project: ws.projectCode }));
+    const objects = rows.map((r) => ({ ...r, total: r.qty * r.price, project: ws.projectCode, period }));
     downloadTextFile(
-      `daily-sales-${ws.projectCode}-${ws.locationId}.json`,
+      `${fileBase}.json`,
       JSON.stringify(objects, null, 2),
       "application/json;charset=utf-8",
     );
@@ -141,6 +139,13 @@ export function EksporExcelClient() {
               </option>
             ))}
           </select>
+          <label className="text-xs text-muted-foreground">Periode</label>
+          <input
+            type="month"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value || currentPeriod)}
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          />
           <div className="ml-auto flex items-center gap-2">
             <Button size="sm" disabled={!canExport || rows.length === 0} onClick={exportXlsx}>
               <FileSpreadsheet className="h-4 w-4" />
@@ -156,6 +161,11 @@ export function EksporExcelClient() {
             </Button>
           </div>
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          Nama berkas: <code className="rounded bg-muted px-1 py-0.5">{fileBase}.xlsx</code> · nominal
+          diekspor sebagai angka murni (tanpa pemisah ribuan) agar terbaca sebagai angka oleh Excel.
+        </p>
 
         <Card>
           <CardHeader>
