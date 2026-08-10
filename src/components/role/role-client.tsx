@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Shield, Users, ChevronDown, ChevronRight, Check, Minus, Plus } from "lucide-react";
+import { Shield, Users, ChevronDown, ChevronRight, Check, Minus, Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,7 +49,16 @@ export function RoleClient() {
   const canManage = persona.role === "super_admin" || persona.role === "leader_admin";
 
   const [customRoles, setCustomRoles] = useState<EditableRole[]>([]);
-  const roles: EditableRole[] = useMemo(() => [...listRoles(), ...customRoles], [customRoles]);
+  // Session-local field overrides for built-in roles, keyed by role key.
+  const [overrides, setOverrides] = useState<
+    Record<string, Pick<EditableRole, "label" | "description" | "permissions">>
+  >({});
+
+  const roles: EditableRole[] = useMemo(
+    () => [...listRoles(), ...customRoles].map((r) => ({ ...r, ...(overrides[r.role] ?? {}) })),
+    [customRoles, overrides],
+  );
+  const isEdited = (key: string) => key in overrides;
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -65,17 +74,33 @@ export function RoleClient() {
   const moduleAccessCount = (role: EditableRole) =>
     modules.filter((m) => role.permissions[m].length > 0).length;
 
-  // Add-role form state.
-  const [addOpen, setAddOpen] = useState(false);
+  // Add/edit-role form state. `editKey` = null → add; otherwise the role's key.
+  const [formOpen, setFormOpen] = useState(false);
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editCustom, setEditCustom] = useState(false);
   const [formLabel, setFormLabel] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formPerms, setFormPerms] = useState<Record<RbacModule, RbacAction[]>>(emptyPermissions());
 
   function openAdd() {
+    setEditKey(null);
+    setEditCustom(false);
     setFormLabel("");
     setFormDesc("");
     setFormPerms(emptyPermissions());
-    setAddOpen(true);
+    setFormOpen(true);
+  }
+
+  function openEdit(role: EditableRole) {
+    setEditKey(role.role);
+    setEditCustom(Boolean(role.custom));
+    setFormLabel(role.label);
+    setFormDesc(role.description);
+    // Clone the permission record so edits don't mutate the source.
+    const perms = emptyPermissions();
+    for (const m of modules) perms[m] = [...role.permissions[m]];
+    setFormPerms(perms);
+    setFormOpen(true);
   }
 
   function togglePerm(m: RbacModule, a: RbacAction) {
@@ -85,21 +110,23 @@ export function RoleClient() {
     });
   }
 
-  function saveAdd() {
+  function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
-    const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
-    setCustomRoles((prev) => [
-      ...prev,
-      {
-        role: key,
-        label,
-        description: formDesc.trim() || "Role kustom.",
-        permissions: formPerms,
-        custom: true,
-      },
-    ]);
-    setAddOpen(false);
+    const description = formDesc.trim() || "Role kustom.";
+    if (editKey) {
+      if (editCustom) {
+        setCustomRoles((prev) =>
+          prev.map((r) => (r.role === editKey ? { ...r, label, description, permissions: formPerms } : r)),
+        );
+      } else {
+        setOverrides((prev) => ({ ...prev, [editKey]: { label, description, permissions: formPerms } }));
+      }
+    } else {
+      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+      setCustomRoles((prev) => [...prev, { role: key, label, description, permissions: formPerms, custom: true }]);
+    }
+    setFormOpen(false);
   }
 
   return (
@@ -141,6 +168,7 @@ export function RoleClient() {
                         <Shield className="h-4 w-4 text-primary" />
                         {role.label}
                         {role.custom && <Badge variant="success">Kustom</Badge>}
+                        {!role.custom && isEdited(role.role) && <Badge variant="warning">Diubah</Badge>}
                         <Badge variant={ROLE_BADGE[role.role] ?? "muted"} className="font-mono text-[10px]">
                           {role.role}
                         </Badge>
@@ -155,6 +183,20 @@ export function RoleClient() {
                       <Badge variant="info">
                         {moduleAccessCount(role)}/{modules.length} modul
                       </Badge>
+                      {canManage && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(role);
+                          }}
+                          className="h-7 gap-1 px-2 text-xs"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Ubah
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -199,17 +241,17 @@ export function RoleClient() {
       </div>
 
       <Dialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        title="Tambah Role"
-        description="Buat role baru dan tentukan hak aksesnya per modul."
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editKey ? "Ubah Role" : "Tambah Role"}
+        description="Tentukan nama, deskripsi, dan hak akses role per modul."
         className="max-w-2xl"
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setAddOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
               Batal
             </Button>
-            <Button size="sm" onClick={saveAdd} disabled={!formLabel.trim()}>
+            <Button size="sm" onClick={saveForm} disabled={!formLabel.trim()}>
               Simpan
             </Button>
           </div>
