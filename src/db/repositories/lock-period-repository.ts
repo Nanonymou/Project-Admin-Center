@@ -1,6 +1,37 @@
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { dailyTransactions, lockPeriods, type LockPeriod } from "@/db/schema";
+
+export type LockPeriodFilter = {
+  projectId?: string;
+  locationId?: string;
+  locked?: boolean;
+  scope?: "tenant" | "executive";
+  limit?: number;
+};
+
+/**
+ * List period-lock rows (the current lock status per site/period), newest first.
+ * Tenant scope requires a projectId; executive scope may span projects.
+ */
+export async function listLockPeriods(filter: LockPeriodFilter): Promise<LockPeriod[]> {
+  const conds: SQL[] = [];
+  if (filter.scope !== "executive") {
+    if (!filter.projectId) throw new Error("projectId is required for tenant-scoped lock queries");
+    conds.push(eq(lockPeriods.projectId, filter.projectId));
+  } else if (filter.projectId) {
+    conds.push(eq(lockPeriods.projectId, filter.projectId));
+  }
+  if (filter.locationId) conds.push(eq(lockPeriods.locationId, filter.locationId));
+  if (filter.locked !== undefined) conds.push(eq(lockPeriods.locked, filter.locked));
+  const limit = Math.min(Math.max(filter.limit ?? 200, 1), 1000);
+  return db
+    .select()
+    .from(lockPeriods)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(lockPeriods.periodLabel))
+    .limit(limit);
+}
 
 export type SetLockInput = {
   projectId: string;

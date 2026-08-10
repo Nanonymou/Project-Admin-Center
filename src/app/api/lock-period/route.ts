@@ -1,13 +1,56 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   applyLockToTransactions,
+  listLockPeriods,
   setPeriodLock,
 } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { buildPeriodLocks } from "@/lib/mock/lock-period";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/lock-period?projectId=&locationId=&locked=&scope=
+ *
+ * Returns the lock status per site/period, scoped to the persona. Falls back to
+ * the config-derived mock lock schedule when the database is unavailable so the
+ * Kunci Periode page always has data.
+ */
+export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
+  const projectId = sp.get("projectId") ?? undefined;
+  const locationId = sp.get("locationId") ?? undefined;
+  const lockedRaw = sp.get("locked");
+  const locked = lockedRaw === "true" ? true : lockedRaw === "false" ? false : undefined;
+  const scope = (sp.get("scope") as "tenant" | "executive" | null) ?? (projectId ? "tenant" : "executive");
+
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+
+  const authz = authorizeDashboard(persona, { projectId, locationId, scope });
+  if (!authz.ok) {
+    return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
+  }
+
+  try {
+    const rows = (await listLockPeriods({ projectId, locationId, locked, scope })).filter((r) =>
+      canAccessLocation(persona, r.locationId, r.projectId),
+    );
+    if (rows.length === 0) throw new Error("empty");
+    return NextResponse.json({ source: "db", count: rows.length, periods: rows });
+  } catch {
+    let sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
+    if (projectId) sites = sites.filter((s) => s.projectCode === projectId);
+    if (locationId) sites = sites.filter((s) => s.locationId === locationId);
+    let periods = buildPeriodLocks(sites);
+    if (locked !== undefined) periods = periods.filter((p) => (p.state === "locked") === locked);
+    return NextResponse.json({ source: "mock", count: periods.length, periods });
+  }
+}
 
 /**
  * POST /api/lock-period
