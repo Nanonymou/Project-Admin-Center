@@ -1,15 +1,39 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, Clock, MapPin, User, FileCheck2, ArrowRight, GitBranch } from "lucide-react";
+import {
+  CalendarClock,
+  Clock,
+  MapPin,
+  User,
+  FileCheck2,
+  ArrowRight,
+  GitBranch,
+  CheckCircle2,
+  ListChecks,
+  Trash2,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getApprovalTimeframes } from "@/lib/mock/approval-timeframe-config";
+
+type ConfirmedWorkflow = {
+  id: string;
+  projectCode: string;
+  projectName: string;
+  locationName: string;
+  subject: "invoice" | "daily_closing";
+  stageCount: number;
+  totalSla: number;
+  confirmedAt: string;
+};
 
 type SubjectType = "invoice" | "daily_closing";
 
@@ -56,6 +80,38 @@ export function UploadTimeframeClient() {
     [ws, subject],
   );
   const totalSla = stages.reduce((s, f) => s + f.slaDays, 0);
+
+  // Confirmation flow: preview → confirm → added to the confirmed workflow list.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmed, setConfirmed] = useState<ConfirmedWorkflow[]>([]);
+
+  function confirmPreview() {
+    if (!ws) return;
+    setConfirmed((prev) => [
+      {
+        id: `${ws.locationId}-${subject}-${Date.now()}`,
+        projectCode: ws.projectCode,
+        projectName: ws.projectName,
+        locationName: ws.locationName,
+        subject,
+        stageCount: stages.length,
+        totalSla,
+        confirmedAt: new Date().toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+      ...prev,
+    ]);
+    setConfirmOpen(false);
+  }
+
+  function removeConfirmed(id: string) {
+    setConfirmed((prev) => prev.filter((c) => c.id !== id));
+  }
 
   if (!ws) {
     return (
@@ -115,13 +171,21 @@ export function UploadTimeframeClient() {
         {/* Workflow preview (from mock/config data) */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-primary" />
-              Pratinjau Workflow
-            </CardTitle>
-            <CardDescription>
-              Alur tahapan approval dengan SLA per tahap (data tiruan).
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-primary" />
+                  Pratinjau Workflow
+                </CardTitle>
+                <CardDescription>
+                  Alur tahapan approval dengan SLA per tahap (data tiruan).
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={() => setConfirmOpen(true)} className="gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Konfirmasi Pratinjau
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {/* Flow diagram */}
@@ -240,7 +304,95 @@ export function UploadTimeframeClient() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Confirmed workflow list */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4 text-primary" />
+              Daftar Workflow Terkonfirmasi
+            </CardTitle>
+            <CardDescription>
+              {confirmed.length === 0
+                ? "Belum ada workflow yang dikonfirmasi. Konfirmasi pratinjau untuk menambahkannya."
+                : `${confirmed.length} workflow dikonfirmasi.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {confirmed.length === 0 ? (
+              <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+                Belum ada data.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {confirmed.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2 text-sm"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <span className="font-medium">
+                      {c.projectCode} · {c.locationName}
+                    </span>
+                    <Badge variant="info">{c.subject === "invoice" ? "Invoice" : "Daily Closing"}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {c.stageCount} tahap · SLA {c.totalSla} hari
+                    </span>
+                    <span className="text-xs text-muted-foreground">· {c.confirmedAt}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeConfirmed(c.id)}
+                      className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-rose-600"
+                      aria-label="Hapus"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Konfirmasi Pratinjau Workflow"
+        description="Tambahkan workflow yang sedang dipratinjau ke daftar terkonfirmasi."
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={confirmPreview} className="gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              Konfirmasi
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Site</span>
+            <span className="font-medium">
+              {ws.projectName} — {ws.locationName}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Jenis Dokumen</span>
+            <span className="font-medium">{subject === "invoice" ? "Invoice" : "Daily Closing"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Jumlah Tahapan</span>
+            <span className="font-medium">{stages.length}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total SLA</span>
+            <span className="font-medium">{totalSla} hari</span>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
