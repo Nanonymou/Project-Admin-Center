@@ -3,6 +3,7 @@ import {
   findLatestTransaction,
   copyDailyTransaction,
 } from "@/db/repositories/daily-transaction-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { validatePeriodInput } from "@/lib/server/guards/period-input-guard";
@@ -60,6 +61,21 @@ export async function POST(req: NextRequest) {
     const copy = await copyDailyTransaction(source.id, targetDate, persona.name);
     if (!copy) {
       return NextResponse.json({ error: "Gagal menyalin data." }, { status: 500 });
+    }
+    // Activity log: record the copy on the cross-entity audit trail.
+    try {
+      await writeAuditLog({
+        projectId,
+        locationId,
+        category: "daily_transaction",
+        action: "copy",
+        actor: persona.name,
+        entityType: `daily_${kind}`,
+        entityId: copy.id,
+        detail: `Salin data ${kind} ${source.trxDate} → ${targetDate} (dari ${source.id}).`,
+      });
+    } catch {
+      // audit trail is best-effort; never fail the copy on log error
     }
     return NextResponse.json({ source: "db", copiedFrom: source.trxDate, transaction: copy }, { status: 201 });
   } catch {
