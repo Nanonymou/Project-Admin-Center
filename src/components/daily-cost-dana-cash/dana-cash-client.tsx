@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { AttachmentCenter } from "@/components/attachments/attachment-center";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getCostCategories } from "@/lib/mock/cost-config";
 import { buildDanaCashLedger, danaCashOpeningBalance, type DanaCashEntry } from "@/lib/mock/dana-cash";
@@ -296,6 +297,23 @@ export function DanaCashClient() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Evidence upload + preview for cash transactions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Bukti Transaksi Kas — {ws.locationName}</CardTitle>
+            <CardDescription>
+              Unggah bukti pengeluaran/top-up (nota, kwitansi) dan pratinjau langsung.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AttachmentCenter
+              title="Bukti Dana Cash"
+              accept="image/*,.pdf"
+              readOnly={!canInput}
+            />
           </CardContent>
         </Card>
       </div>
