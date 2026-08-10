@@ -114,12 +114,23 @@ export function KunciPeriodeClient() {
                     {visible.map((r) => {
                       const locked = r.state === "locked";
                       return (
-                        <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <tr
+                          key={r.id}
+                          className={cn(
+                            "border-b last:border-0 hover:bg-muted/30",
+                            locked && "bg-rose-50/40",
+                          )}
+                        >
                           <td className="px-3 py-2">
                             <span className="font-medium">{r.locationName}</span>
                             <span className="ml-1 text-[11px] text-muted-foreground">{r.projectCode}</span>
                           </td>
-                          <td className="px-3 py-2">{r.periodLabel}</td>
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center gap-1.5">
+                              {locked && <Lock className="h-3.5 w-3.5 text-rose-500" />}
+                              {r.periodLabel}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(r.salesTotal)}
                           </td>
@@ -127,7 +138,8 @@ export function KunciPeriodeClient() {
                             {formatCurrency(r.costTotal)}
                           </td>
                           <td className="px-3 py-2">
-                            <Badge variant={locked ? "danger" : "success"}>
+                            <Badge variant={locked ? "danger" : "success"} className="inline-flex items-center gap-1">
+                              {locked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
                               {locked ? "Terkunci" : "Terbuka"}
                             </Badge>
                             {locked && r.lockedBy && (
