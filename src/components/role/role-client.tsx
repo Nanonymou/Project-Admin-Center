@@ -92,6 +92,19 @@ export function RoleClient() {
   const moduleAccessCount = (role: EditableRole) =>
     modules.filter((m) => role.permissions[m].length > 0).length;
 
+  /** Access level of a role on a module: none / partial / full. */
+  function moduleLevel(role: EditableRole, m: RbacModule): "none" | "partial" | "full" {
+    const n = role.permissions[m].length;
+    if (n === 0) return "none";
+    return n === actions.length ? "full" : "partial";
+  }
+
+  const LEVEL_STYLE: Record<"none" | "partial" | "full", string> = {
+    none: "bg-muted text-muted-foreground/60",
+    partial: "bg-amber-100 text-amber-800",
+    full: "bg-emerald-100 text-emerald-800",
+  };
+
   // Add/edit-role form state. `editKey` = null → add; otherwise the role's key.
   const [formOpen, setFormOpen] = useState(false);
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -166,6 +179,19 @@ export function RoleClient() {
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="font-medium">Indikator akses per modul:</span>
+          <span className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded bg-emerald-200" /> Penuh
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded bg-amber-200" /> Sebagian
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded bg-muted" /> Tanpa akses
+          </span>
+        </div>
+
         <div className="space-y-4">
           {roles.map((role) => {
             const isOpen = expanded === role.role;
@@ -193,6 +219,23 @@ export function RoleClient() {
                         </Badge>
                       </CardTitle>
                       <CardDescription className="mt-1">{role.description}</CardDescription>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {modules.map((m) => {
+                          const level = moduleLevel(role, m);
+                          const granted = role.permissions[m].map((a) => RBAC_ACTION_LABEL[a]).join(", ");
+                          return (
+                            <span
+                              key={m}
+                              title={`${RBAC_MODULE_LABEL[m]}: ${granted || "tanpa akses"}`}
+                              className={
+                                "rounded px-1.5 py-0.5 text-[10px] font-medium " + LEVEL_STYLE[level]
+                              }
+                            >
+                              {RBAC_MODULE_LABEL[m]}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Badge variant="secondary" className="gap-1">
