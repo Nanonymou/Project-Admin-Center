@@ -244,6 +244,9 @@ export function DanaCashClient() {
                     onChange={(e) => setFormAmount(Math.max(0, Number(e.target.value) || 0))}
                     className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
                   />
+                  <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                    {formatCurrency(formAmount)}
+                  </span>
                 </label>
                 <Button onClick={addTransaction} disabled={formAmount <= 0} className="h-9">
                   <Plus className="h-4 w-4" />
@@ -449,6 +452,9 @@ export function DanaCashClient() {
                 onChange={(e) => setEditAmount(Math.max(0, Number(e.target.value) || 0))}
                 className="h-9 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
               />
+              <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                {formatCurrency(editAmount)}
+              </span>
             </label>
             <label className="flex flex-col gap-1 text-xs">
               <span className="text-muted-foreground">Keterangan</span>
