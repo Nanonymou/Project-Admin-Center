@@ -509,6 +509,7 @@ export function DailySalesEngine() {
                 touched={touched}
                 onToggleCategory={toggleCategory}
                 onChangeLine={setLine}
+                masterPrices={priceList}
                 readOnly={isPeriodLocked}
               />
 

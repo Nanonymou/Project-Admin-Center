@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Plus, X, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   lineTotal,
@@ -25,6 +25,7 @@ export function DynamicSalesTable({
   touched,
   onToggleCategory,
   onChangeLine,
+  masterPrices,
   readOnly = false,
 }: {
   categories: ServiceCategory[];
@@ -34,6 +35,8 @@ export function DynamicSalesTable({
   touched: boolean;
   onToggleCategory: (key: string) => void;
   onChangeLine: (key: string, field: "qty" | "price", raw: string) => void;
+  /** Config-driven Harga Meals master price per category (Rupiah). */
+  masterPrices?: Record<string, number>;
   readOnly?: boolean;
 }) {
   const activeSet = new Set(activeKeys);
@@ -134,14 +137,48 @@ export function DynamicSalesTable({
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        disabled={readOnly}
-                        value={line?.price ?? 0}
-                        onChange={(e) => onChangeLine(cat.key, "price", e.target.value)}
-                        className={cn("h-8 w-28 text-right", readOnly && "opacity-60")}
-                      />
+                      {(() => {
+                        const master = masterPrices?.[cat.key];
+                        const differs = master !== undefined && (line?.price ?? 0) !== master;
+                        return (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <Input
+                              type="number"
+                              min={0}
+                              disabled={readOnly}
+                              value={line?.price ?? 0}
+                              onChange={(e) => onChangeLine(cat.key, "price", e.target.value)}
+                              className={cn(
+                                "h-8 w-28 text-right",
+                                differs && !readOnly && "border-amber-400",
+                                readOnly && "opacity-60",
+                              )}
+                            />
+                            {master !== undefined && (
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                {differs ? (
+                                  <>
+                                    <span className="text-amber-600">Master {formatCurrency(master)}</span>
+                                    {!readOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onChangeLine(cat.key, "price", String(master))}
+                                        className="inline-flex items-center gap-0.5 rounded px-1 text-primary hover:bg-accent"
+                                        aria-label={`Kembalikan harga master ${cat.label}`}
+                                      >
+                                        <RotateCcw className="h-2.5 w-2.5" />
+                                        Reset
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span>Harga master</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className={cn("px-3 py-2 text-right tabular-nums font-medium", cat.deduction && "text-rose-600")}>
                       {cat.deduction && lineTotal(line) > 0 ? "−" : ""}
