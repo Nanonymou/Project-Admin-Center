@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Users, MapPin, Shield, Search, Mail, UserPlus } from "lucide-react";
+import { Users, MapPin, Shield, Search, Mail, UserPlus, Check, Minus } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,11 @@ import {
   getRoleDefinition,
   describeSiteAccess,
   countAccessibleSites,
+  roleCan,
+  rbacModules,
+  rbacActions,
+  RBAC_MODULE_LABEL,
+  RBAC_ACTION_LABEL,
   USER_STATUS_META,
   type ManagedUser,
   type SiteGrant,
@@ -80,16 +85,19 @@ export function KelolaPenggunaClient() {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PersonaRole | "all">("all");
 
-  // Session-local site-access overrides keyed by user id, and newly-created accounts.
+  // Session-local overrides keyed by user id (site access + role) and new accounts.
   const [accessOverrides, setAccessOverrides] = useState<Record<string, SiteGrant[]>>({});
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, PersonaRole>>({});
   const [customUsers, setCustomUsers] = useState<ManagedUser[]>([]);
 
   const allUsers: ManagedUser[] = useMemo(
     () =>
-      [...customUsers, ...listManagedUsers()].map((u) =>
-        accessOverrides[u.id] ? { ...u, siteAccess: accessOverrides[u.id] } : u,
-      ),
-    [accessOverrides, customUsers],
+      [...customUsers, ...listManagedUsers()].map((u) => ({
+        ...u,
+        role: roleOverrides[u.id] ?? u.role,
+        siteAccess: accessOverrides[u.id] ?? u.siteAccess,
+      })),
+    [accessOverrides, roleOverrides, customUsers],
   );
 
   const users: ManagedUser[] = useMemo(() => {
@@ -107,12 +115,14 @@ export function KelolaPenggunaClient() {
     return s;
   }, [allUsers]);
 
-  // Location-assignment modal state.
+  // Role & location modal state.
   const [assignUser, setAssignUser] = useState<ManagedUser | null>(null);
+  const [assignRole, setAssignRole] = useState<PersonaRole>("site_admin");
   const [selectedLocs, setSelectedLocs] = useState<string[]>([]);
 
   function openAssign(u: ManagedUser) {
     setAssignUser(u);
+    setAssignRole(u.role);
     setSelectedLocs(grantedLocationIds(u));
   }
 
@@ -122,7 +132,12 @@ export function KelolaPenggunaClient() {
 
   function saveAssign() {
     if (!assignUser) return;
-    setAccessOverrides((prev) => ({ ...prev, [assignUser.id]: locationsToGrants(selectedLocs) }));
+    setRoleOverrides((prev) => ({ ...prev, [assignUser.id]: assignRole }));
+    // Org-wide roles get full access; scoped roles keep the picked sites.
+    setAccessOverrides((prev) => ({
+      ...prev,
+      [assignUser.id]: assignRole === "super_admin" ? [] : locationsToGrants(selectedLocs),
+    }));
     setAssignUser(null);
   }
 
@@ -290,16 +305,10 @@ export function KelolaPenggunaClient() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openAssign(u)}
-                                disabled={u.role === "super_admin"}
                                 className="h-7 gap-1 px-2"
-                                title={
-                                  u.role === "super_admin"
-                                    ? "Super Admin selalu punya akses penuh"
-                                    : undefined
-                                }
                               >
-                                <MapPin className="h-3.5 w-3.5" />
-                                Penugasan
+                                <Shield className="h-3.5 w-3.5" />
+                                Peran &amp; Lokasi
                               </Button>
                             </td>
                           )}
@@ -312,55 +321,140 @@ export function KelolaPenggunaClient() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              Matriks Peran &amp; Izin
+            </CardTitle>
+            <CardDescription>
+              Izin per modul untuk setiap peran (RBAC). Site Admin dibatasi pada operasional sitenya.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="px-2 py-2 font-medium">Modul</th>
+                    {listRoles().map((r) => (
+                      <th key={r.role} className="px-2 py-2 text-center font-medium">
+                        {r.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rbacModules().map((m) => (
+                    <tr key={m} className="border-b last:border-b-0">
+                      <td className="px-2 py-2 font-medium">{RBAC_MODULE_LABEL[m]}</td>
+                      {listRoles().map((r) => {
+                        const allowed = rbacActions().filter((a) => roleCan(r.role, m, a));
+                        return (
+                          <td key={r.role} className="px-2 py-2 text-center">
+                            {allowed.length === 0 ? (
+                              <Minus className="mx-auto h-3.5 w-3.5 text-muted-foreground/50" />
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 text-emerald-700"
+                                title={allowed.map((a) => RBAC_ACTION_LABEL[a]).join(", ")}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                {allowed.length}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Angka = jumlah aksi yang diizinkan (arahkan kursor untuk detail). — = tanpa akses.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog
         open={assignUser !== null}
         onClose={() => setAssignUser(null)}
-        title="Penugasan Lokasi"
-        description={
-          assignUser
-            ? `Pilih site yang dapat diakses oleh ${assignUser.name} (${getRoleDefinition(assignUser.role).label}).`
-            : undefined
-        }
+        title="Peran & Lokasi"
+        description={assignUser ? `Atur peran dan cakupan site untuk ${assignUser.name}.` : undefined}
         className="max-w-lg"
         footer={
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">{selectedLocs.length} site dipilih</span>
+            <span className="text-xs text-muted-foreground">
+              {assignRole === "super_admin" ? "Akses penuh" : `${selectedLocs.length} site dipilih`}
+            </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setAssignUser(null)}>
                 Batal
               </Button>
-              <Button size="sm" onClick={saveAssign} disabled={selectedLocs.length === 0}>
+              <Button
+                size="sm"
+                onClick={saveAssign}
+                disabled={assignRole !== "super_admin" && selectedLocs.length === 0}
+              >
                 Simpan
               </Button>
             </div>
           </div>
         }
       >
-        <div className="max-h-72 space-y-1 overflow-y-auto text-sm">
-          {MOCK_WORKSPACES.map((w) => {
-            const checked = selectedLocs.includes(w.locationId);
-            return (
-              <label
-                key={w.locationId}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleLoc(w.locationId)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{w.locationName}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {w.projectName} · {w.projectCode}
-                  </div>
-                </div>
-              </label>
-            );
-          })}
+        <div className="space-y-3 text-sm">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Peran</label>
+            <select
+              value={assignRole}
+              onChange={(e) => setAssignRole(e.target.value as PersonaRole)}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {listRoles().map((r) => (
+                <option key={r.role} value={r.role}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">{getRoleDefinition(assignRole).description}</p>
+          </div>
+
+          {assignRole === "super_admin" ? (
+            <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+              Super Admin memiliki akses ke semua project & site secara otomatis.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Penugasan Lokasi</label>
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-1">
+                {MOCK_WORKSPACES.map((w) => {
+                  const checked = selectedLocs.includes(w.locationId);
+                  return (
+                    <label
+                      key={w.locationId}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleLoc(w.locationId)}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{w.locationName}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {w.projectName} · {w.projectCode}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </Dialog>
 
