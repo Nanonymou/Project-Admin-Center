@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, ShoppingCart, MapPin, FileJson } from "lucide-react";
+import { Download, ShoppingCart, MapPin, FileJson, FileSpreadsheet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { toCsv, downloadTextFile } from "@/lib/csv";
+import { downloadXlsx } from "@/lib/xlsx";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getPricedCategories } from "@/lib/mock/pricing-config";
 import { getAreasFor } from "@/lib/mock/area-config";
@@ -87,6 +88,24 @@ export function EksporExcelClient() {
     );
   }
 
+  function exportXlsx() {
+    if (!ws) return;
+    const data: (string | number)[][] = rows.map((r) => [
+      r.trxDate,
+      r.area,
+      r.categoryKey,
+      r.categoryLabel,
+      r.qty,
+      r.price,
+      r.qty * r.price,
+    ]);
+    downloadXlsx(
+      `daily-sales-${ws.projectCode}-${ws.locationId}.xlsx`,
+      [EXPORT_HEADER, ...data],
+      `Daily Sales ${ws.projectCode}`,
+    );
+  }
+
   function exportJson() {
     if (!ws) return;
     const objects = rows.map((r) => ({ ...r, total: r.qty * r.price, project: ws.projectCode }));
@@ -123,9 +142,13 @@ export function EksporExcelClient() {
             ))}
           </select>
           <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" disabled={!canExport || rows.length === 0} onClick={exportCsv}>
+            <Button size="sm" disabled={!canExport || rows.length === 0} onClick={exportXlsx}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Ekspor XLSX
+            </Button>
+            <Button size="sm" variant="outline" disabled={!canExport || rows.length === 0} onClick={exportCsv}>
               <Download className="h-4 w-4" />
-              Ekspor CSV
+              CSV
             </Button>
             <Button size="sm" variant="outline" disabled={!canExport || rows.length === 0} onClick={exportJson}>
               <FileJson className="h-4 w-4" />
