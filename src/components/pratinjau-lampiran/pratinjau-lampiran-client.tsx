@@ -92,9 +92,17 @@ export function PratinjauLampiranClient() {
   }, [previewIndex, attachments.length]);
 
   function download(a: Attachment) {
-    if (a.fileType !== "image") return;
+    // Images download the placeholder render; other formats (no inline preview)
+    // fall back to a small text stub so the download action still works.
+    let href: string;
+    if (a.fileType === "image") {
+      href = placeholderImage(a.name, a.kind);
+    } else {
+      const stub = `Dokumen contoh: ${a.kind}\nBerkas: ${a.name}\nUkuran: ${a.sizeLabel}\n\n(Placeholder — berkas asli tidak tersedia pada data contoh.)`;
+      href = `data:text/plain;charset=utf-8,${encodeURIComponent(stub)}`;
+    }
     const link = document.createElement("a");
-    link.href = placeholderImage(a.name, a.kind);
+    link.href = href;
     link.download = a.name;
     document.body.appendChild(link);
     link.click();
@@ -202,7 +210,7 @@ export function PratinjauLampiranClient() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-              <Button size="sm" variant="outline" onClick={() => download(preview)} disabled={preview.fileType !== "image"}>
+              <Button size="sm" variant="outline" onClick={() => download(preview)}>
                 <Download className="h-4 w-4" />
                 Unduh
               </Button>
@@ -221,10 +229,17 @@ export function PratinjauLampiranClient() {
                 className={cn("mx-auto max-h-[60vh] w-auto rounded-md border")}
               />
             ) : (
-              <div className="flex flex-col items-center gap-2 rounded-md border border-amber-200 bg-amber-50 py-12 text-center text-sm text-amber-900">
+              <div className="flex flex-col items-center gap-3 rounded-md border border-amber-200 bg-amber-50 py-12 text-center text-sm text-amber-900">
                 <FileText className="h-10 w-10 text-amber-500" />
-                <div className="font-medium">Pratinjau PDF tidak tersedia untuk data contoh</div>
-                <div className="text-xs text-muted-foreground">{preview.name}</div>
+                <div className="font-medium">Pratinjau tidak tersedia untuk format ini</div>
+                <p className="max-w-xs text-xs">
+                  Berkas <b>{preview.name}</b> tidak dapat ditampilkan langsung. Unduh untuk membukanya di
+                  aplikasi lain.
+                </p>
+                <Button size="sm" onClick={() => download(preview)}>
+                  <Download className="h-4 w-4" />
+                  Unduh Berkas
+                </Button>
               </div>
             )}
           </div>
