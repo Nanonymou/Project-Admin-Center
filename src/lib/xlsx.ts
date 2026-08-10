@@ -31,7 +31,15 @@ function colName(index: number): string {
   return name;
 }
 
-function buildSheetXml(rows: XlsxCell[][]): string {
+function buildColsXml(widths: number[]): string {
+  if (widths.length === 0) return "";
+  const cols = widths
+    .map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`)
+    .join("");
+  return `<cols>${cols}</cols>`;
+}
+
+function buildSheetXml(rows: XlsxCell[][], widths: number[] = []): string {
   const rowXml = rows
     .map((cells, r) => {
       const cellXml = cells
@@ -47,7 +55,29 @@ function buildSheetXml(rows: XlsxCell[][]): string {
     })
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${buildColsXml(widths)}<sheetData>${rowXml}</sheetData></worksheet>`;
+}
+
+/**
+ * A typed column for the record-based builder: a header label, the key used to
+ * pull the value from each record, and an optional display width (in Excel
+ * character units). Numeric-looking values are written as numbers.
+ */
+export type XlsxColumn<T> = {
+  header: string;
+  value: (record: T) => XlsxCell;
+  width?: number;
+};
+
+/** Turn a typed column spec + records into a header row + data rows and widths. */
+export function columnsToRows<T>(
+  columns: XlsxColumn<T>[],
+  records: T[],
+): { rows: XlsxCell[][]; widths: number[] } {
+  const header = columns.map((c) => c.header);
+  const data = records.map((rec) => columns.map((c) => c.value(rec)));
+  const widths = columns.map((c) => c.width ?? Math.max(10, c.header.length + 2));
+  return { rows: [header, ...data], widths };
 }
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -175,20 +205,28 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Build an XLSX Blob from a single sheet of rows (first row usually a header). */
-export function buildXlsxBlob(rows: XlsxCell[][], sheetName = "Sheet1"): Blob {
+/**
+ * Build an XLSX Blob from a single sheet of rows (first row usually a header).
+ * Optional per-column widths set the sheet's column display widths.
+ */
+export function buildXlsxBlob(rows: XlsxCell[][], sheetName = "Sheet1", widths: number[] = []): Blob {
   return zipStore([
     { name: "[Content_Types].xml", content: CONTENT_TYPES },
     { name: "_rels/.rels", content: ROOT_RELS },
     { name: "xl/workbook.xml", content: buildWorkbookXml(sheetName) },
     { name: "xl/_rels/workbook.xml.rels", content: WORKBOOK_RELS },
-    { name: "xl/worksheets/sheet1.xml", content: buildSheetXml(rows) },
+    { name: "xl/worksheets/sheet1.xml", content: buildSheetXml(rows, widths) },
   ]);
 }
 
 /** Build an XLSX and trigger a browser download. */
-export function downloadXlsx(filename: string, rows: XlsxCell[][], sheetName = "Sheet1"): void {
-  const blob = buildXlsxBlob(rows, sheetName);
+export function downloadXlsx(
+  filename: string,
+  rows: XlsxCell[][],
+  sheetName = "Sheet1",
+  widths: number[] = [],
+): void {
+  const blob = buildXlsxBlob(rows, sheetName, widths);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

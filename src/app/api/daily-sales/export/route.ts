@@ -10,7 +10,26 @@ import { buildXlsxBlob } from "@/lib/xlsx";
 
 export const dynamic = "force-dynamic";
 
-const HEADER = ["trxDate", "projectCode", "locationId", "area", "status", "subtotal", "tax", "total", "isLate"];
+// Complete column set with display widths (Excel character units).
+const COLUMNS: { header: string; width: number }[] = [
+  { header: "trxDate", width: 12 },
+  { header: "projectCode", width: 14 },
+  { header: "locationId", width: 16 },
+  { header: "locationName", width: 20 },
+  { header: "area", width: 20 },
+  { header: "status", width: 12 },
+  { header: "subtotal", width: 16 },
+  { header: "tax", width: 14 },
+  { header: "total", width: 16 },
+  { header: "isLate", width: 8 },
+];
+const HEADER = COLUMNS.map((c) => c.header);
+const WIDTHS = COLUMNS.map((c) => c.width);
+
+/** Resolve a location's display name from the shared site config. */
+function locationNameOf(locationId: string): string {
+  return SITE_KPI.find((s) => s.locationId === locationId)?.locationName ?? locationId;
+}
 
 /**
  * GET /api/daily-sales/export?projectId=&locationId=&period=&from=&to=&scope=
@@ -53,6 +72,7 @@ export async function GET(req: NextRequest) {
       r.trxDate,
       r.projectId,
       r.locationId,
+      locationNameOf(r.locationId),
       r.area ?? "",
       r.status,
       r.subtotal,
@@ -69,7 +89,7 @@ export async function GET(req: NextRequest) {
       if (!detail) return [];
       return detail.daily30d
         .filter((d) => (!filter.from || d.iso >= filter.from) && (!filter.to || d.iso <= filter.to))
-        .map((d) => [d.iso, s.projectCode, s.locationId, "", "approved", d.sales, 0, d.sales, "0"]);
+        .map((d) => [d.iso, s.projectCode, s.locationId, s.locationName, "", "approved", d.sales, 0, d.sales, "0"]);
     });
     // Mock rows are all "approved" — honour a status filter for anything else.
     if (statusFilter && statusFilter !== "approved") dataRows = [];
@@ -77,7 +97,7 @@ export async function GET(req: NextRequest) {
 
   const suffix = projectId ? `-${projectId}` : "";
   if (format === "xlsx") {
-    const blob = buildXlsxBlob([HEADER, ...dataRows], "Daily Sales");
+    const blob = buildXlsxBlob([HEADER, ...dataRows], "Daily Sales", WIDTHS);
     return new NextResponse(blob, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
