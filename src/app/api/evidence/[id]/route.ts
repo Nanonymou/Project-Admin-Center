@@ -4,6 +4,7 @@ import {
   setEvidenceStatus,
   softDeleteEvidence,
 } from "@/db/repositories/evidence-attachment-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { classifyPreview, isPreviewable } from "@/lib/server/file-types";
@@ -71,6 +72,20 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: "Tidak ada akses ke lampiran ini." }, { status: 403 });
     }
     const row = await setEvidenceStatus(id, existing.projectId, status, persona.name, note);
+    try {
+      await writeAuditLog({
+        projectId: existing.projectId,
+        locationId: existing.locationId,
+        category: "evidence",
+        action: status === "verified" ? "verify" : status === "rejected" ? "reject" : "reopen",
+        actor: persona.name,
+        entityType: "evidence_attachment",
+        entityId: id,
+        detail: `Status bukti ${existing.fileName} → ${status}${note ? ` (${note})` : ""}`,
+      });
+    } catch {
+      // best-effort
+    }
     return NextResponse.json({ source: "db", evidence: row });
   } catch {
     return NextResponse.json({ error: "Database tidak tersedia." }, { status: 503 });
@@ -98,6 +113,22 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Tidak ada akses ke lampiran ini." }, { status: 403 });
     }
     const ok = await softDeleteEvidence(id, existing.projectId, persona.name);
+    if (ok) {
+      try {
+        await writeAuditLog({
+          projectId: existing.projectId,
+          locationId: existing.locationId,
+          category: "evidence",
+          action: "delete",
+          actor: persona.name,
+          entityType: "evidence_attachment",
+          entityId: id,
+          detail: `Hapus bukti ${existing.fileName}`,
+        });
+      } catch {
+        // best-effort
+      }
+    }
     return NextResponse.json({ source: "db", deleted: ok });
   } catch {
     return NextResponse.json({ error: "Database tidak tersedia." }, { status: 503 });

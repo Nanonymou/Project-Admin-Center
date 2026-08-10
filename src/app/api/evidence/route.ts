@@ -5,6 +5,7 @@ import {
   type EvidenceFilter,
 } from "@/db/repositories/evidence-attachment-repository";
 import type { NewEvidenceAttachment } from "@/db/schema";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { isAllowedUpload } from "@/lib/server/file-types";
@@ -110,6 +111,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const row = await createEvidence(values);
+    // Activity log: record the upload for the site's audit trail.
+    try {
+      await writeAuditLog({
+        projectId,
+        locationId,
+        category: "evidence",
+        action: "upload",
+        actor: persona.name,
+        entityType: "evidence_attachment",
+        entityId: row.id,
+        detail: `Unggah bukti ${kind}: ${fileName}`,
+      });
+    } catch {
+      // audit trail is best-effort; never fail the upload on log error
+    }
     return NextResponse.json({ source: "db", evidence: row }, { status: 201 });
   } catch {
     return NextResponse.json(
