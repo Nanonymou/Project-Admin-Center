@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GitBranch, ArrowRight, Clock, CheckCircle2, CircleDashed } from "lucide-react";
+import { GitBranch, ArrowRight, Clock, CheckCircle2, CircleDashed, User, CalendarClock } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +10,20 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessProject } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getApprovalTimeframes } from "@/lib/mock/approval-timeframe-config";
+import { formatDate } from "@/lib/utils";
 
 type SubjectType = "invoice" | "daily_closing";
+
+/** PIC (person-in-charge role) responsible for each approval stage. */
+function picForStage(stage: string): string {
+  const s = stage.toLowerCase();
+  if (s.includes("site")) return "Admin Site";
+  if (s.includes("leader")) return "Leader Admin";
+  if (s.includes("finance")) return "Finance";
+  if (s.includes("client")) return "Admin Site";
+  if (s.includes("payment")) return "Client";
+  return "Admin Site";
+}
 
 type StageStatus = "done" | "current" | "pending";
 
@@ -87,15 +99,33 @@ export function WorkflowApprovalClient() {
     if (frames.length === 0) return [];
     // Seed a "current stage" deterministically so the demo shows a plausible
     // in-flight workflow: earlier stages done, one running, the rest pending.
-    const currentIndex = seedOf(`${project}:${subject}`) % frames.length;
+    const seed = seedOf(`${project}:${subject}`);
+    const currentIndex = seed % frames.length;
+    // Seed a workflow start date a few weeks back so cumulative target dates land
+    // around "now". Target date of a stage = start + cumulative SLA up to it.
+    const start = new Date("2026-08-10T00:00:00Z");
+    start.setDate(start.getDate() - (frames.reduce((a, f) => a + f.slaDays, 0) - 5));
+    let cumulative = 0;
     return frames.map((f, i) => {
+      cumulative += f.slaDays;
       const status: StageStatus =
         i < currentIndex ? "done" : i === currentIndex ? "current" : "pending";
-      return { ...f, status };
+      const targetDate = new Date(start);
+      targetDate.setDate(targetDate.getDate() + cumulative);
+      // Done stages have an actual date; slip is seeded deterministically (−1..+2 days).
+      let actualDate: Date | null = null;
+      if (status === "done") {
+        const slip = ((seed >> (i + 1)) % 4) - 1; // -1..+2
+        actualDate = new Date(targetDate);
+        actualDate.setDate(actualDate.getDate() + slip);
+      }
+      return { ...f, status, pic: picForStage(f.stage), targetDate, actualDate };
     });
   }, [project, subject]);
   const totalSla = stages.reduce((s, f) => s + f.slaDays, 0);
   const doneCount = stages.filter((s) => s.status === "done").length;
+  const currentStage = stages.find((s) => s.status === "current");
+  const currentPos = stages.findIndex((s) => s.status === "current") + 1;
 
   if (projects.length === 0) {
     return (
@@ -162,6 +192,24 @@ export function WorkflowApprovalClient() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Current stage position */}
+            {currentStage && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-sky-500/40 bg-sky-500/5 px-3 py-2 text-xs">
+                <Clock className="h-4 w-4 text-sky-600" />
+                <span className="font-medium text-sky-700 dark:text-sky-400">
+                  Posisi saat ini: tahap {currentPos} dari {stages.length} — {currentStage.stage}
+                </span>
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <User className="h-3 w-3" />
+                  PIC {currentStage.pic}
+                </span>
+                <span className="ml-auto inline-flex items-center gap-1 text-muted-foreground">
+                  <CalendarClock className="h-3 w-3" />
+                  Target {formatDate(currentStage.targetDate)}
+                </span>
+              </div>
+            )}
+
             {/* Status legend */}
             <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               {(["done", "current", "pending"] as const).map((st) => (
@@ -199,6 +247,32 @@ export function WorkflowApprovalClient() {
                           <Icon className="h-3 w-3" />
                           {meta.label}
                         </Badge>
+                      </div>
+                      <div className="mt-2 space-y-1 border-t pt-2 text-[11px]">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <User className="h-3 w-3" />
+                          <span className="font-medium text-foreground">{s.pic}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Target</span>
+                          <span className="font-medium">{formatDate(s.targetDate)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Aktual</span>
+                          {s.actualDate ? (
+                            <span
+                              className={
+                                s.actualDate > s.targetDate
+                                  ? "font-medium text-rose-600"
+                                  : "font-medium text-emerald-600"
+                              }
+                            >
+                              {formatDate(s.actualDate)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {i < stages.length - 1 && (
