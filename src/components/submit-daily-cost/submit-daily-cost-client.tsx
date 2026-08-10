@@ -49,6 +49,12 @@ export function SubmitDailyCostClient() {
   const [confirm, setConfirm] = useState<{ locationId: string; locationName: string } | null>(null);
   const [reminderDismissed, setReminderDismissed] = useState(false);
 
+  // List filters.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [dateFilter, setDateFilter] = useState(todayIso);
+  const [siteFilter, setSiteFilter] = useState<string>("all");
+  const [stateFilter, setStateFilter] = useState<"all" | "draft" | "in_progress" | "done">("all");
+
   const rows = baseline.map((r) => ({
     ...r,
     costState: overrides[r.locationId] ?? r.costState,
@@ -87,6 +93,18 @@ export function SubmitDailyCostClient() {
 
   // Sites still in draft — the reminder targets these un-submitted entries.
   const draftSites = rows.filter((r) => r.costState === "draft");
+
+  function stateBucket(s: ClosingState): "draft" | "in_progress" | "done" {
+    if (s === "draft") return "draft";
+    if (s === "submitted" || s === "reviewed") return "in_progress";
+    return "done";
+  }
+
+  const visibleRows = rows.filter(
+    (r) =>
+      (siteFilter === "all" || r.locationId === siteFilter) &&
+      (stateFilter === "all" || stateBucket(r.costState) === stateFilter),
+  );
 
   // Per-project recap for the Leader Admin — sites submitted vs still pending.
   const projectRecap = useMemo(() => {
@@ -221,16 +239,66 @@ export function SubmitDailyCostClient() {
         )}
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-primary" />
-              Status Submit Daily Cost per Site
-            </CardTitle>
-            <CardDescription>Submit hanya tersedia untuk entri berstatus draft.</CardDescription>
+          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-primary" />
+                Status Submit Daily Cost per Site
+              </CardTitle>
+              <CardDescription>
+                {visibleRows.length} site · periode {dateFilter}. Submit hanya untuk entri draft.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value || todayIso)}
+                className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+              />
+              <select
+                value={siteFilter}
+                onChange={(e) => setSiteFilter(e.target.value)}
+                className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">Semua Site</option>
+                {rows.map((r) => (
+                  <option key={r.locationId} value={r.locationId}>
+                    {r.locationName} · {r.projectCode}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1.5 text-xs">
+                {(
+                  [
+                    ["all", "Semua"],
+                    ["draft", "Draft"],
+                    ["in_progress", "Proses"],
+                    ["done", "Selesai"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStateFilter(key)}
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-[11px] font-medium",
+                      stateFilter === key
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
-            {rows.length === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">Tidak ada site dalam cakupan Anda.</div>
+            {visibleRows.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                Tidak ada site sesuai filter.
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -244,7 +312,7 @@ export function SubmitDailyCostClient() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => {
+                    {visibleRows.map((r) => {
                       const meta = CLOSING_STATE_META[r.costState];
                       return (
                         <tr key={r.locationId} className="border-b last:border-0 hover:bg-muted/30">
