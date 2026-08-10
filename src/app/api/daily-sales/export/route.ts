@@ -57,9 +57,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
   }
 
-  // Optional status filter and output format.
+  // Validate optional status filter and output format.
   const statusFilter = sp.get("status")?.trim().toLowerCase() || undefined;
-  const format = sp.get("format") === "xlsx" ? "xlsx" : "csv";
+  const ALLOWED_STATUS = ["draft", "submitted", "approved", "locked"];
+  if (statusFilter && !ALLOWED_STATUS.includes(statusFilter)) {
+    return NextResponse.json(
+      { error: `status tidak valid. Pilihan: ${ALLOWED_STATUS.join(", ")}.` },
+      { status: 400 },
+    );
+  }
+  const formatRaw = sp.get("format")?.trim().toLowerCase() ?? "csv";
+  if (formatRaw !== "csv" && formatRaw !== "xlsx") {
+    return NextResponse.json({ error: "format harus csv atau xlsx." }, { status: 400 });
+  }
+  const format = formatRaw;
+  // Validate the resolved period range.
+  if (period.from && period.to && period.from > period.to) {
+    return NextResponse.json({ error: "Rentang periode tidak valid (from > to)." }, { status: 400 });
+  }
 
   let dataRows: (string | number)[][];
   try {
@@ -95,13 +110,25 @@ export async function GET(req: NextRequest) {
     if (statusFilter && statusFilter !== "approved") dataRows = [];
   }
 
-  const suffix = projectId ? `-${projectId}` : "";
+  // Descriptive, filesystem-safe filename built from the active filters:
+  // daily-sales_<project|all>_<location?>_<from>_<to>[_<status>].<ext>
+  const safe = (s: string) => s.replace(/[^a-zA-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  const parts = [
+    "daily-sales",
+    projectId ? safe(projectId) : "all",
+    filter.locationId ? safe(filter.locationId) : null,
+    period.from ? safe(period.from) : null,
+    period.to ? safe(period.to) : null,
+    statusFilter ? safe(statusFilter) : null,
+  ].filter(Boolean);
+  const fileBase = parts.join("_");
+
   if (format === "xlsx") {
     const blob = buildXlsxBlob([HEADER, ...dataRows], "Daily Sales", WIDTHS);
     return new NextResponse(blob, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="daily-sales${suffix}.xlsx"`,
+        "Content-Disposition": `attachment; filename="${fileBase}.xlsx"`,
       },
     });
   }
@@ -110,7 +137,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv;charset=utf-8",
-      "Content-Disposition": `attachment; filename="daily-sales${suffix}.csv"`,
+      "Content-Disposition": `attachment; filename="${fileBase}.csv"`,
     },
   });
 }
