@@ -91,5 +91,6 @@ export const config = {
     "/api/evidence/:path*",
     "/api/cost-items/:path*",
     "/api/entry-change-history/:path*",
+    "/api/submit-daily-cost/:path*",
   ],
 };
