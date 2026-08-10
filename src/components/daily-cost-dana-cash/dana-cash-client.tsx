@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus, Pencil, Trash2, History } from "lucide-react";
+import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus, Pencil, Trash2, History, Lock } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { AttachmentCenter } from "@/components/attachments/attachment-center";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getCostCategories } from "@/lib/mock/cost-config";
 import { buildDanaCashLedger, danaCashOpeningBalance, type DanaCashEntry } from "@/lib/mock/dana-cash";
+import { isPeriodLockedFor } from "@/lib/mock/lock-period";
 
 /**
  * Daily Cost Dana Cash — cash-fund ledger list. Shows the opening balance,
@@ -59,6 +60,10 @@ export function DanaCashClient() {
 
   const catKey = formCategory || categories[0]?.key || "misc";
 
+  // Input is blocked when the chosen date falls inside a locked period.
+  const periodLocked = ws ? isPeriodLockedFor(ws.locationId, formDate) : false;
+  const canAddNow = canInput && !periodLocked;
+
   // Session change log for the history panel.
   type ChangeAction = "add" | "edit" | "delete";
   type ChangeLogRow = { id: string; action: ChangeAction; label: string; amount: number; at: string };
@@ -78,7 +83,7 @@ export function DanaCashClient() {
   }
 
   function addTransaction() {
-    if (!ws || formAmount <= 0) return;
+    if (!ws || formAmount <= 0 || periodLocked) return;
     const cat = categories.find((c) => c.key === catKey);
     const amount = formType === "top_up" ? formAmount : -formAmount;
     const label = formType === "top_up" ? "Top-up Dana Cash" : cat?.label ?? "Pengeluaran";
@@ -248,11 +253,20 @@ export function DanaCashClient() {
                     {formatCurrency(formAmount)}
                   </span>
                 </label>
-                <Button onClick={addTransaction} disabled={formAmount <= 0} className="h-9">
+                <Button onClick={addTransaction} disabled={!canAddNow || formAmount <= 0} className="h-9">
                   <Plus className="h-4 w-4" />
                   Tambah
                 </Button>
               </div>
+              {periodLocked && (
+                <div className="mt-3 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                  <Lock className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Periode {formDate.slice(0, 7)} terkunci — input dan edit transaksi dinonaktifkan.
+                    Pilih tanggal pada periode yang masih terbuka.
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -347,14 +361,24 @@ export function DanaCashClient() {
                         <td className="px-3 py-2 text-muted-foreground">{r.by}</td>
                         <td className="px-3 py-2 text-right">
                           {r.id.startsWith("local-") && canInput ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Ubah">
-                                <Pencil className="h-4 w-4 text-muted-foreground" />
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => deleteEntry(r)} title="Hapus">
-                                <Trash2 className="h-4 w-4 text-rose-500" />
-                              </Button>
-                            </div>
+                            isPeriodLockedFor(ws.locationId, r.date) ? (
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] text-rose-600"
+                                title="Periode terkunci"
+                              >
+                                <Lock className="h-3.5 w-3.5" />
+                                Terkunci
+                              </span>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Ubah">
+                                  <Pencil className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => deleteEntry(r)} title="Hapus">
+                                  <Trash2 className="h-4 w-4 text-rose-500" />
+                                </Button>
+                              </div>
+                            )
                           ) : (
                             <span className="text-[11px] text-muted-foreground">—</span>
                           )}

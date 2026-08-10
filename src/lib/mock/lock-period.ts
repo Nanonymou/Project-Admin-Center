@@ -61,3 +61,20 @@ export function buildPeriodLocks(sites: SiteKpi[], months = 4): PeriodLockRow[] 
   }
   return out.sort((a, b) => (a.periodKey < b.periodKey ? 1 : a.periodKey > b.periodKey ? -1 : a.locationName.localeCompare(b.locationName)));
 }
+
+/**
+ * Whether a given location's period (the YYYY-MM of `dateIso`) is locked, per the
+ * deterministic mock lock schedule. Input pages use this to disable editing for
+ * closed periods without wiring shared state.
+ */
+export function isPeriodLockedFor(locationId: string, dateIso: string, months = 4): boolean {
+  const periodKey = dateIso.slice(0, 7);
+  const now = new Date();
+  for (let m = 0; m < months; m++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (key === periodKey) return m > 0; // past months locked, current open
+  }
+  // Older than the tracked window → treated as locked (closed long ago).
+  return periodKey < `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
