@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Shield, Users, ChevronDown, ChevronRight, Check, Minus, Plus, Pencil } from "lucide-react";
+import { Shield, Users, ChevronDown, ChevronRight, Check, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,11 +54,29 @@ export function RoleClient() {
     Record<string, Pick<EditableRole, "label" | "description" | "permissions">>
   >({});
 
+  // Deactivated role keys. Super Admin cannot be deactivated (system role).
+  const [inactive, setInactive] = useState<string[]>([]);
+
   const roles: EditableRole[] = useMemo(
     () => [...listRoles(), ...customRoles].map((r) => ({ ...r, ...(overrides[r.role] ?? {}) })),
     [customRoles, overrides],
   );
   const isEdited = (key: string) => key in overrides;
+  const isActive = (key: string) => !inactive.includes(key);
+
+  // Deactivating asks for confirmation; reactivating is immediate.
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  const confirmRole = confirmKey ? roles.find((r) => r.role === confirmKey) : null;
+
+  function requestToggle(role: EditableRole) {
+    if (isActive(role.role)) setConfirmKey(role.role);
+    else setInactive((prev) => prev.filter((k) => k !== role.role));
+  }
+
+  function confirmDeactivate() {
+    if (confirmKey) setInactive((prev) => (prev.includes(confirmKey) ? prev : [...prev, confirmKey]));
+    setConfirmKey(null);
+  }
 
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -152,7 +170,7 @@ export function RoleClient() {
           {roles.map((role) => {
             const isOpen = expanded === role.role;
             return (
-              <Card key={role.role}>
+              <Card key={role.role} className={isActive(role.role) ? "" : "opacity-60"}>
                 <CardHeader
                   className="cursor-pointer"
                   onClick={() => setExpanded(isOpen ? null : role.role)}
@@ -169,6 +187,7 @@ export function RoleClient() {
                         {role.label}
                         {role.custom && <Badge variant="success">Kustom</Badge>}
                         {!role.custom && isEdited(role.role) && <Badge variant="warning">Diubah</Badge>}
+                        {!isActive(role.role) && <Badge variant="danger">Nonaktif</Badge>}
                         <Badge variant={ROLE_BADGE[role.role] ?? "muted"} className="font-mono text-[10px]">
                           {role.role}
                         </Badge>
@@ -184,18 +203,46 @@ export function RoleClient() {
                         {moduleAccessCount(role)}/{modules.length} modul
                       </Badge>
                       {canManage && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(role);
-                          }}
-                          className="h-7 gap-1 px-2 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Ubah
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEdit(role);
+                            }}
+                            className="h-7 gap-1 px-2 text-xs"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Ubah
+                          </Button>
+                          {role.role !== "super_admin" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestToggle(role);
+                              }}
+                              className={
+                                "h-7 gap-1 px-2 text-xs " +
+                                (isActive(role.role) ? "text-rose-600" : "text-emerald-600")
+                              }
+                            >
+                              {isActive(role.role) ? (
+                                <>
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Nonaktifkan
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Aktifkan
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -303,6 +350,33 @@ export function RoleClient() {
             </div>
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmKey !== null}
+        onClose={() => setConfirmKey(null)}
+        title="Nonaktifkan Role?"
+        description={
+          confirmRole
+            ? `Role "${confirmRole.label}" tidak dapat dipilih untuk pengguna baru sampai diaktifkan kembali.`
+            : undefined
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmKey(null)}>
+              Batal
+            </Button>
+            <Button variant="destructive" size="sm" onClick={confirmDeactivate}>
+              Nonaktifkan
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          {confirmRole && (usersByRole[confirmRole.role] ?? 0) > 0
+            ? `${usersByRole[confirmRole.role]} pengguna saat ini memakai role ini — akses mereka perlu ditinjau ulang.`
+            : "Tidak ada pengguna aktif pada role ini."}
+        </p>
       </Dialog>
     </div>
   );
