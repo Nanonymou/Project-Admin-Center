@@ -173,3 +173,27 @@ export function formatParameterValue(p: SystemParameter, value: SystemParameter[
   if (p.type === "number") return `${value}${p.unit ? ` ${p.unit}` : ""}`;
   return String(value);
 }
+
+/**
+ * Validate a raw (string) input against a parameter's type/bounds. Returns an
+ * error message, or null when valid. Boolean params are edited via a toggle and
+ * never fail here.
+ */
+export function validateParameterValue(p: SystemParameter, raw: string): string | null {
+  if (p.type === "text") {
+    if (!raw.trim()) return "Nilai tidak boleh kosong.";
+    return null;
+  }
+  if (p.type === "select") {
+    if (!p.options?.some((o) => o.value === raw)) return "Pilihan tidak valid.";
+    return null;
+  }
+  if (p.type === "number") {
+    if (raw.trim() === "" || Number.isNaN(Number(raw))) return "Harus berupa angka.";
+    const n = Number(raw);
+    if (p.min !== undefined && n < p.min) return `Minimal ${p.min}${p.unit ? ` ${p.unit}` : ""}.`;
+    if (p.max !== undefined && n > p.max) return `Maksimal ${p.max}${p.unit ? ` ${p.unit}` : ""}.`;
+    return null;
+  }
+  return null;
+}
