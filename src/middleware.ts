@@ -96,5 +96,6 @@ export const config = {
     "/api/unlock-period/:path*",
     "/api/persetujuan-daily-sales/:path*",
     "/api/sales-change-history/:path*",
+    "/api/workflow-approval/:path*",
   ],
 };
