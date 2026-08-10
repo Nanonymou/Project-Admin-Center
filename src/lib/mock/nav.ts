@@ -80,6 +80,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Detail Invoice", href: "/detail-invoice", icon: FileText },
       { label: "Pratinjau Lampiran", href: "/pratinjau-lampiran", icon: FileText },
       { label: "Audit Trail Invoice", href: "/audit-trail-invoice", icon: History },
+      { label: "Invoice Processing Timeline", href: "/invoice-processing-timeline", icon: GanttChartSquare },
     ],
   },
   {
