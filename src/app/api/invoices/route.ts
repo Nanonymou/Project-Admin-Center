@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createInvoice, listInvoices, type InvoiceFilter } from "@/db/repositories/invoice-repository";
 import type { NewInvoice } from "@/db/schema";
-import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
+import { computeInvoice, invoiceCalcColumns } from "@/lib/server/services/invoice-calculation-service";
+import { getInvoiceType, isInvoiceType } from "@/lib/mock/invoice-type-config";
+import { getBbmConfig } from "@/lib/mock/bbm-config";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -125,8 +127,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
 
-  const deduction = Number.isFinite(Number(body.deduction)) ? Number(body.deduction) : 0;
-  const bbm = Number.isFinite(Number(body.bbm)) ? Number(body.bbm) : 0;
+  // Invoice type (optional) profiles the deduction/BBM defaults, mirroring the
+  // /api/invoices/calculate endpoint. Explicit body values still win.
+  const typeKey = typeof body.invoiceType === "string" ? body.invoiceType : "";
+  if (typeKey && !isInvoiceType(typeKey)) {
+    return NextResponse.json({ error: `Jenis invoice tidak dikenal: ${typeKey}.` }, { status: 400 });
+  }
+  const profile = getInvoiceType(typeKey);
+
+  const deduction = Number.isFinite(Number(body.deduction))
+    ? Math.max(0, Number(body.deduction))
+    : Math.round(subtotal * profile.deductionRate);
+  const bbmApplies = profile.hasBbm && getBbmConfig(projectId).applies;
+  const bbm = Number.isFinite(Number(body.bbm))
+    ? Math.max(0, Number(body.bbm))
+    : bbmApplies
+      ? Math.round(subtotal * profile.bbmRate)
+      : 0;
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const issuedDate = typeof body.issuedDate === "string" ? body.issuedDate : undefined;
   const pic = typeof body.pic === "string" ? body.pic : undefined;
@@ -152,10 +169,7 @@ export async function POST(req: NextRequest) {
     projectId,
     locationId,
     number,
-    subtotal: calc.subtotal.toFixed(2),
-    deduction: calc.deduction.toFixed(2),
-    tax: (calc.taxAmount + calc.penaltyAmount).toFixed(2),
-    amount: calc.total.toFixed(2),
+    ...invoiceCalcColumns(calc, overdueDays),
     status,
     stage,
     agingBucket: agingBucketOf(overdueDays),

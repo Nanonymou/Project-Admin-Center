@@ -34,6 +34,32 @@ function round2(n: number): number {
 }
 
 /**
+ * Map a computed invoice to its persistable column values (numerics formatted as
+ * strings the way Drizzle's `numeric` expects). `overdueDays` is a calc input —
+ * not part of the result — so it is passed through to record what drove the
+ * penalty. Shared by the save (POST) and update (PATCH) routes so the full
+ * Formula Engine breakdown is persisted consistently. Returns plain column
+ * values (no schema import), keeping this module client-importable.
+ */
+export function invoiceCalcColumns(calc: InvoiceCalc, overdueDays: number) {
+  return {
+    subtotal: calc.subtotal.toFixed(2),
+    deduction: calc.deduction.toFixed(2),
+    base: calc.base.toFixed(2),
+    bbmAmount: calc.bbmAmount.toFixed(2),
+    taxableBase: calc.taxableBase.toFixed(2),
+    taxCode: calc.taxCode,
+    taxRate: calc.taxRate.toFixed(4),
+    tax: calc.taxAmount.toFixed(2),
+    overdueDays: Math.max(0, Math.floor(overdueDays)),
+    penaltyRate: calc.penaltyRate.toFixed(4),
+    penaltyMonths: calc.penaltyMonths,
+    penaltyAmount: calc.penaltyAmount.toFixed(2),
+    amount: calc.total.toFixed(2),
+  };
+}
+
+/**
  * Compute an invoice's financials, config-driven per project:
  *  - BBM (fuel) surcharge is added when the project's config enables it; it may
  *    be part of the taxable base per that config.
