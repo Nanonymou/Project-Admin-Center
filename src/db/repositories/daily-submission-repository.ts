@@ -44,6 +44,77 @@ export async function listDailySubmissionsBatch(
     .limit(limit);
 }
 
+export type SubmissionAction = "submit" | "review" | "approve" | "reject" | "resubmit";
+type SubmissionStatus = "draft" | "submitted" | "reviewed" | "approved" | "rejected";
+
+/** Allowed status transitions per action; the target status each action moves to. */
+const TRANSITIONS: Record<SubmissionAction, { from: SubmissionStatus[]; to: SubmissionStatus }> = {
+  submit: { from: ["draft"], to: "submitted" },
+  review: { from: ["submitted"], to: "reviewed" },
+  approve: { from: ["submitted", "reviewed"], to: "approved" },
+  reject: { from: ["submitted", "reviewed"], to: "rejected" },
+  resubmit: { from: ["rejected"], to: "submitted" },
+};
+
+export type TransitionResult =
+  | { ok: true; submission: DailySubmission }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Apply an approval action to a submission, validating the transition against
+ * its current status, updating the status, and appending an approval-history
+ * row — all in one transaction. Returns a typed result the route maps to HTTP.
+ */
+export async function transitionDailySubmission(
+  id: string,
+  action: SubmissionAction,
+  actor: string,
+  reason?: string,
+): Promise<TransitionResult> {
+  const spec = TRANSITIONS[action];
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(dailySubmissions)
+      .where(eq(dailySubmissions.id, id))
+      .limit(1);
+    if (!current) return { ok: false as const, status: 404, message: "Pengajuan tidak ditemukan." };
+    if (!spec.from.includes(current.status as SubmissionStatus)) {
+      return {
+        ok: false as const,
+        status: 409,
+        message: `Aksi "${action}" tidak valid dari status "${current.status}".`,
+      };
+    }
+
+    const isReview = action === "review" || action === "approve" || action === "reject";
+    const [updated] = await tx
+      .update(dailySubmissions)
+      .set({
+        status: spec.to,
+        reviewedBy: isReview ? actor : current.reviewedBy,
+        reviewedAt: isReview ? new Date() : current.reviewedAt,
+        note: reason ?? current.note,
+        updatedAt: new Date(),
+      })
+      .where(eq(dailySubmissions.id, id))
+      .returning();
+
+    await tx.insert(dailySubmissionHistory).values({
+      submissionId: id,
+      projectId: current.projectId,
+      locationId: current.locationId,
+      action,
+      fromStatus: current.status,
+      toStatus: spec.to,
+      actor,
+      reason,
+    });
+
+    return { ok: true as const, submission: updated };
+  });
+}
+
 /** Fetch one batch submission by id. */
 export async function getDailySubmissionById(id: string): Promise<DailySubmission | null> {
   const [row] = await db.select().from(dailySubmissions).where(eq(dailySubmissions.id, id)).limit(1);
