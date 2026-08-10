@@ -2,7 +2,9 @@ import { and, desc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dailySubmissions,
+  dailySubmissionHistory,
   type DailySubmission,
+  type DailySubmissionHistory,
   type NewDailySubmission,
 } from "@/db/schema";
 
@@ -40,6 +42,23 @@ export async function listDailySubmissionsBatch(
     .where(buildWhere(filter))
     .orderBy(desc(dailySubmissions.submissionDate))
     .limit(limit);
+}
+
+/** Fetch one batch submission by id. */
+export async function getDailySubmissionById(id: string): Promise<DailySubmission | null> {
+  const [row] = await db.select().from(dailySubmissions).where(eq(dailySubmissions.id, id)).limit(1);
+  return row ?? null;
+}
+
+/** List a submission's approval history, newest first. */
+export async function listDailySubmissionHistory(
+  submissionId: string,
+): Promise<DailySubmissionHistory[]> {
+  return db
+    .select()
+    .from(dailySubmissionHistory)
+    .where(eq(dailySubmissionHistory.submissionId, submissionId))
+    .orderBy(desc(dailySubmissionHistory.createdAt));
 }
 
 export type SubmitBatchInput = {

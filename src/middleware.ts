@@ -94,5 +94,6 @@ export const config = {
     "/api/submit-daily-cost/:path*",
     "/api/dana-cash/:path*",
     "/api/unlock-period/:path*",
+    "/api/persetujuan-daily-sales/:path*",
   ],
 };
