@@ -4,6 +4,7 @@ import {
   updateDanaCashTransaction,
   softDeleteDanaCashTransaction,
 } from "@/db/repositories/dana-cash-repository";
+import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 
@@ -36,6 +37,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!existing) return NextResponse.json({ error: "Transaksi tidak ditemukan." }, { status: 404 });
     if (!canAccessLocation(persona, existing.locationId, existing.projectId)) {
       return NextResponse.json({ error: "Tidak ada akses ke transaksi ini." }, { status: 403 });
+    }
+    // Locked-period guard: cannot edit a transaction whose current or target
+    // date falls in a locked period.
+    const targetDate =
+      typeof body.trxDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.trxDate)
+        ? body.trxDate
+        : existing.trxDate;
+    try {
+      if (await isPeriodLocked(existing.projectId, existing.locationId, targetDate)) {
+        return NextResponse.json({ error: "Periode terkunci — transaksi tidak dapat diubah." }, { status: 409 });
+      }
+    } catch {
+      // lock table unavailable → allow
     }
 
     const patch: Record<string, unknown> = {};

@@ -5,6 +5,7 @@ import {
   type DanaCashFilter,
 } from "@/db/repositories/dana-cash-repository";
 import type { NewDanaCashTransaction } from "@/db/schema";
+import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { danaCashOpeningBalance } from "@/lib/mock/dana-cash";
@@ -101,6 +102,14 @@ export async function POST(req: NextRequest) {
   }
   if (!canAccessLocation(persona, locationId, projectId)) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+  // Locked-period guard: reject a cash movement dated in a locked period.
+  try {
+    if (await isPeriodLocked(projectId, locationId, trxDate)) {
+      return NextResponse.json({ error: "Periode terkunci — transaksi tidak dapat dicatat." }, { status: 409 });
+    }
+  } catch {
+    // lock table unavailable → mock mode, allow
   }
 
   const values: NewDanaCashTransaction = {

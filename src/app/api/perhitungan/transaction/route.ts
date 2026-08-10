@@ -4,8 +4,10 @@ import {
   type DailySubmissionLine,
 } from "@/db/repositories/daily-transaction-repository";
 import { listMasterPrices } from "@/db/repositories/master-price-repository";
+import { isPeriodLocked } from "@/db/repositories/lock-period-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
+import { validatePeriodInput } from "@/lib/server/guards/period-input-guard";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import { getCostCategories } from "@/lib/mock/cost-config";
 import { getPriceFor } from "@/lib/mock/pricing-config";
@@ -53,6 +55,20 @@ export async function POST(req: NextRequest) {
   }
   if (!canAccessLocation(persona, locationId, projectId)) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+
+  // Cut-off / H+1 guard: cannot write into a closed period.
+  const policy = validatePeriodInput(projectId, trxDate);
+  if (!policy.ok) {
+    return NextResponse.json({ error: policy.error }, { status: policy.status });
+  }
+  // Locked-period guard: reject a save when the target period is locked.
+  try {
+    if (await isPeriodLocked(projectId, locationId, trxDate)) {
+      return NextResponse.json({ error: "Periode terkunci — data tidak dapat diubah." }, { status: 409 });
+    }
+  } catch {
+    // If the lock table is unavailable, fall through (mock mode).
   }
 
   const lineInputs: LineInput[] = [];
