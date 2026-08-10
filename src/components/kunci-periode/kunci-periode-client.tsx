@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Lock, LockOpen, CalendarDays, ShieldCheck } from "lucide-react";
+import { Lock, LockOpen, CalendarDays, ShieldCheck, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -43,10 +44,21 @@ export function KunciPeriodeClient() {
 
   const lockedCount = rows.filter((r) => r.state === "locked").length;
 
-  function toggle(id: string, label: string, current: PeriodLockState) {
-    const next: PeriodLockState = current === "locked" ? "open" : "locked";
-    setOverrides((prev) => ({ ...prev, [id]: next }));
-    setMsg(`Periode ${label} ${next === "locked" ? "dikunci" : "dibuka"}.`);
+  const [confirmRow, setConfirmRow] = useState<{ id: string; label: string; state: PeriodLockState } | null>(
+    null,
+  );
+
+  function requestToggle(id: string, label: string, current: PeriodLockState) {
+    if (!canManageLocks) return;
+    setConfirmRow({ id, label, state: current });
+  }
+
+  function applyToggle() {
+    if (!confirmRow) return;
+    const next: PeriodLockState = confirmRow.state === "locked" ? "open" : "locked";
+    setOverrides((prev) => ({ ...prev, [confirmRow.id]: next }));
+    setMsg(`Periode ${confirmRow.label} ${next === "locked" ? "dikunci" : "dibuka"} oleh ${persona.roleLabel}.`);
+    setConfirmRow(null);
   }
 
   return (
@@ -67,6 +79,16 @@ export function KunciPeriodeClient() {
           <div className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
             <ShieldCheck className="h-4 w-4 shrink-0" />
             <span>{msg}</span>
+          </div>
+        )}
+
+        {!canManageLocks && (
+          <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span>
+              Aksi kunci/buka periode hanya untuk <b>Leader Admin</b> atau <b>Super Admin</b>. Anda dapat
+              melihat status, namun tidak dapat mengubah kunci.
+            </span>
           </div>
         )}
 
@@ -154,7 +176,14 @@ export function KunciPeriodeClient() {
                               size="sm"
                               variant={locked ? "outline" : "default"}
                               disabled={!canManageLocks}
-                              onClick={() => toggle(r.id, `${r.locationName} ${r.periodLabel}`, r.state)}
+                              title={
+                                canManageLocks
+                                  ? locked
+                                    ? "Buka kunci periode"
+                                    : "Kunci periode"
+                                  : "Hanya Leader/Super Admin"
+                              }
+                              onClick={() => requestToggle(r.id, `${r.locationName} ${r.periodLabel}`, r.state)}
                               className={cn(locked && "text-emerald-700")}
                             >
                               {locked ? (
@@ -180,6 +209,40 @@ export function KunciPeriodeClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Lock/unlock confirmation */}
+      <Dialog
+        open={confirmRow !== null}
+        onClose={() => setConfirmRow(null)}
+        title={confirmRow?.state === "locked" ? "Buka kunci periode?" : "Kunci periode?"}
+        description={confirmRow?.label}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmRow(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={applyToggle}>
+              {confirmRow?.state === "locked" ? (
+                <>
+                  <LockOpen className="h-4 w-4" />
+                  Buka Kunci
+                </>
+              ) : (
+                <>
+                  <Lock className="h-4 w-4" />
+                  Kunci
+                </>
+              )}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          {confirmRow?.state === "locked"
+            ? "Membuka kunci mengizinkan kembali perubahan Daily Sales & Cost pada periode ini."
+            : "Mengunci periode akan mencegah perubahan Daily Sales & Cost pada periode ini. Hanya Leader/Super Admin yang dapat membukanya kembali."}
+        </p>
+      </Dialog>
     </div>
   );
 }
