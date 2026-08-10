@@ -24,6 +24,7 @@ import {
   CalendarClock,
   UtensilsCrossed,
   ShieldCheck,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,6 +48,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
+      { label: "Dashboard Leader & Workspace", href: "/leader-workspace", icon: LayoutGrid },
       { label: "Dashboard Margin", href: "/margin", icon: PiggyBank },
       { label: "Site Performance", href: "/performance", icon: Trophy },
       { label: "Peringkat Project", href: "/project-performance", icon: Trophy },
