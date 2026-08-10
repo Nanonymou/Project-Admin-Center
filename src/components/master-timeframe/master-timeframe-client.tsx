@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation, type Persona } from "@/lib/personas";
+import { cn } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import {
   buildWorkflowsForSite,
@@ -29,6 +30,7 @@ import {
   type Workflow,
   type WorkflowSubject,
   type WorkflowParseResult,
+  type ParsedActivity,
 } from "@/lib/mock/workflow-config";
 
 /** Site admins/leaders can upload workflow timeframes; viewers are read-only. */
@@ -53,10 +55,26 @@ export function MasterTimeframeClient() {
   const [wsIndex, setWsIndex] = useState(0);
   const ws = workspaces[wsIndex] ?? workspaces[0];
 
-  const workflows: Workflow[] = useMemo(
-    () => (ws ? buildWorkflowsForSite(ws.locationId) : []),
-    [ws],
-  );
+  // Session-local uploaded activities that replace a workflow's defaults, keyed
+  // by `${locationId}:${subject}`.
+  const [applied, setApplied] = useState<Record<string, ParsedActivity[]>>({});
+
+  const workflows: Workflow[] = useMemo(() => {
+    if (!ws) return [];
+    return buildWorkflowsForSite(ws.locationId).map((wf) => {
+      const override = applied[`${wf.locationId}:${wf.subject}`];
+      if (!override) return wf;
+      return {
+        ...wf,
+        activities: override.map((a, i) => ({
+          order: i,
+          name: a.name,
+          slaDays: a.slaDays,
+          pic: a.pic,
+        })),
+      };
+    });
+  }, [ws, applied]);
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const editable = canUpload(persona);
@@ -68,6 +86,15 @@ export function MasterTimeframeClient() {
   const [pasteText, setPasteText] = useState("");
   const [fileName, setFileName] = useState("");
   const [parsed, setParsed] = useState<WorkflowParseResult | null>(null);
+
+  const validRows = parsed?.activities.filter((a) => !a.error) ?? [];
+  const canSave = parsed !== null && parsed.errorCount === 0 && validRows.length > 0;
+
+  function saveUpload() {
+    if (!ws || !canSave) return;
+    setApplied((prev) => ({ ...prev, [`${ws.locationId}:${uploadSubject}`]: validRows }));
+    setUploadOpen(false);
+  }
 
   function openUpload() {
     setUploadSubject("invoice");
@@ -221,10 +248,13 @@ export function MasterTimeframeClient() {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setUploadOpen(false)}>
-              Tutup
+              Batal
             </Button>
-            <Button size="sm" onClick={processUpload} disabled={!pasteText.trim()}>
+            <Button variant="outline" size="sm" onClick={processUpload} disabled={!pasteText.trim()}>
               Proses
+            </Button>
+            <Button size="sm" onClick={saveUpload} disabled={!canSave}>
+              Simpan
             </Button>
           </div>
         }
@@ -280,12 +310,62 @@ export function MasterTimeframeClient() {
           </div>
 
           {parsed && (
-            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-              <span className="font-medium">{parsed.activities.length}</span> aktivitas terbaca
-              {parsed.errorCount > 0 && (
-                <span className="ml-1 text-rose-600">· {parsed.errorCount} baris bermasalah</span>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-semibold">Pratinjau ({SUBJECT_LABEL[uploadSubject]})</span>
+                <Badge variant="success">{validRows.length} valid</Badge>
+                {parsed.errorCount > 0 && (
+                  <Badge variant="danger">{parsed.errorCount} bermasalah</Badge>
+                )}
+                {validRows.length > 0 && (
+                  <Badge variant="warning" className="gap-1">
+                    <Clock className="h-3 w-3" />
+                    {validRows.reduce((s, a) => s + a.slaDays, 0)} hari SLA
+                  </Badge>
+                )}
+              </div>
+              {parsed.activities.length === 0 ? (
+                <div className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
+                  Tidak ada baris terbaca.
+                </div>
+              ) : (
+                <div className="max-h-52 overflow-y-auto rounded-md border">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted/60">
+                      <tr className="text-left text-[11px] text-muted-foreground">
+                        <th className="px-2 py-1.5 font-medium">#</th>
+                        <th className="px-2 py-1.5 font-medium">Aktivitas</th>
+                        <th className="px-2 py-1.5 font-medium">PIC</th>
+                        <th className="px-2 py-1.5 text-right font-medium">SLA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsed.activities.map((a) => (
+                        <tr
+                          key={a.order}
+                          className={cn(
+                            "border-t",
+                            a.error && "bg-rose-50 text-rose-700",
+                          )}
+                        >
+                          <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{a.order + 1}</td>
+                          <td className="px-2 py-1.5 font-medium">
+                            {a.name || <span className="italic text-muted-foreground">(kosong)</span>}
+                            {a.error && <span className="ml-1 text-[10px]">· {a.error}</span>}
+                          </td>
+                          <td className="px-2 py-1.5">{a.pic}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{a.slaDays}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-              . Pratinjau &amp; simpan tersedia pada langkah berikutnya.
+              {parsed.errorCount > 0 && (
+                <p className="text-[11px] text-rose-600">
+                  Perbaiki baris bermasalah sebelum menyimpan.
+                </p>
+              )}
             </div>
           )}
         </div>
