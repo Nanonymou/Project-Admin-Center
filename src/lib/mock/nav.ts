@@ -76,6 +76,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Daily Cost Dana Cash", href: "/daily-cost-dana-cash", icon: PiggyBank },
       { label: "Persetujuan Daily Sales", href: "/persetujuan-daily-sales", icon: BadgeCheck },
       { label: "Riwayat Perubahan Penjualan", href: "/riwayat-perubahan-penjualan", icon: History },
+      { label: "Formula Engine Invoice", href: "/formula-engine-invoice", icon: Calculator },
     ],
   },
   {
