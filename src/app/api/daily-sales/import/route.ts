@@ -5,8 +5,11 @@ import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { isInputClosedForDate } from "@/lib/server/services/cutoff-policy-service";
 import { canAccessLocation } from "@/lib/personas";
-import { parseCsv } from "@/lib/csv";
 import { prepareDailySalesSubmission } from "@/lib/server/services/daily-sales-submission-service";
+import {
+  validateImport,
+  DAILY_SALES_IMPORT_SPEC,
+} from "@/lib/server/services/import-validation-service";
 import type { SalesEntryInput } from "@/lib/mock/service-config";
 
 export const dynamic = "force-dynamic";
@@ -52,32 +55,27 @@ export async function POST(req: NextRequest) {
   }
 
   // Parse CSV and resolve column indices from the header row.
-  const rows = parseCsv(csv).filter((r) => r.length && r.some((c) => c.trim() !== ""));
-  if (rows.length < 2) {
+  // Validate & detect duplicates with the shared import-validation service.
+  const validation = validateImport(csv, DAILY_SALES_IMPORT_SPEC);
+  if (!validation) {
     return NextResponse.json({ error: "CSV kosong atau tanpa baris data." }, { status: 422 });
   }
-  const header = rows[0].map((h) => h.trim().toLowerCase());
-  const idx = {
-    trxDate: header.indexOf("trxdate"),
-    categoryKey: header.indexOf("categorykey"),
-    qty: header.indexOf("qty"),
-    price: header.indexOf("price"),
-  };
-  if (idx.trxDate < 0 || idx.categoryKey < 0 || idx.qty < 0) {
+  if (!validation.headerOk) {
     return NextResponse.json(
-      { error: "Header wajib memuat kolom: trxDate, categoryKey, qty (price opsional)." },
+      { error: "Header wajib memuat kolom: trxDate, categoryKey, qty, price." },
       { status: 422 },
     );
   }
 
-  // Group rows into per-date value maps.
+  // Group only valid, non-duplicate rows into per-date value maps. Columns are
+  // [trxDate, categoryKey, qty, price] per the spec.
   const byDate = new Map<string, SalesEntryInput>();
-  for (const r of rows.slice(1)) {
-    const trxDate = (r[idx.trxDate] ?? "").trim();
-    const categoryKey = (r[idx.categoryKey] ?? "").trim();
-    if (!trxDate || !categoryKey) continue;
-    const qty = Number(r[idx.qty]);
-    const price = idx.price >= 0 ? Number(r[idx.price]) : 0;
+  for (const r of validation.rows) {
+    if (!r.valid || r.duplicate) continue;
+    const trxDate = (r.cells[0] ?? "").trim();
+    const categoryKey = (r.cells[1] ?? "").trim();
+    const qty = Number(r.cells[2]);
+    const price = Number(r.cells[3]);
     const entry = byDate.get(trxDate) ?? {};
     entry[categoryKey] = { qty: Number.isFinite(qty) ? qty : 0, price: Number.isFinite(price) ? price : 0 };
     byDate.set(trxDate, entry);
@@ -116,5 +114,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (created > 0) revalidateKpi();
-  return NextResponse.json({ imported: created, total: byDate.size, results });
+  return NextResponse.json({
+    source: "db",
+    summary: {
+      totalRows: validation.total,
+      validRows: validation.valid,
+      invalidRows: validation.invalid,
+      duplicateRows: validation.duplicateCount,
+      datesTotal: byDate.size,
+      datesImported: created,
+      datesFailed: results.filter((r) => !r.ok).length,
+    },
+    imported: created,
+    total: byDate.size,
+    results,
+  });
 }
