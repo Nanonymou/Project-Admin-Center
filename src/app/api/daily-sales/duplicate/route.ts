@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   copyDailyTransaction,
+  countTransactionsForDate,
   findLatestTransaction,
   getDailyTransactionById,
 } from "@/db/repositories/daily-transaction-repository";
@@ -44,8 +45,15 @@ export async function POST(req: NextRequest) {
   if (!DATE_RE.test(targetDate)) {
     return NextResponse.json({ error: "targetDate (YYYY-MM-DD) wajib diisi." }, { status: 400 });
   }
+  // Validation: the target date cannot be in the future.
+  const today = new Date().toISOString().slice(0, 10);
+  if (targetDate > today) {
+    return NextResponse.json({ error: "targetDate tidak boleh di masa depan." }, { status: 422 });
+  }
   const sourceId = typeof body.sourceId === "string" ? body.sourceId : undefined;
   const kind = body.kind === "cost" ? "cost" : "sales";
+  // `allowDuplicate` overrides the same-date guard when the caller intends it.
+  const allowDuplicate = body.allowDuplicate === true;
 
   try {
     // Resolve the source transaction: explicit id, or the latest prior entry.
@@ -87,6 +95,26 @@ export async function POST(req: NextRequest) {
         { error: "Periode target sudah melewati cut-off — input ditutup." },
         { status: 409 },
       );
+    }
+
+    // Validation: refuse to create a second entry for the same date unless the
+    // caller explicitly opts in via `allowDuplicate`.
+    if (!allowDuplicate) {
+      const existing = await countTransactionsForDate(
+        source.projectId,
+        source.locationId,
+        source.kind,
+        targetDate,
+      );
+      if (existing > 0) {
+        return NextResponse.json(
+          {
+            error: `Sudah ada ${existing} entri ${source.kind} untuk ${targetDate}. Sertakan allowDuplicate=true untuk tetap menduplikasi.`,
+            existing,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     // Create an editable DRAFT copy with `copied_from_id` provenance and a

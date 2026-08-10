@@ -399,6 +399,31 @@ export async function findLatestTransaction(
   return row ?? null;
 }
 
+/**
+ * Count non-deleted transactions for a site on an exact date and kind. Used to
+ * reject duplicating into a date that already has an entry.
+ */
+export async function countTransactionsForDate(
+  projectId: string,
+  locationId: string,
+  kind: "sales" | "cost",
+  trxDate: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(dailyTransactions)
+    .where(
+      and(
+        eq(dailyTransactions.projectId, projectId),
+        eq(dailyTransactions.locationId, locationId),
+        eq(dailyTransactions.kind, kind),
+        eq(dailyTransactions.trxDate, trxDate),
+        isNull(dailyTransactions.deletedAt),
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
 /** Fetch a daily transaction header together with its line items, or null. */
 export async function getDailyTransactionWithLines(
   id: string,
