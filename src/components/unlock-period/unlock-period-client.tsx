@@ -7,6 +7,7 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
@@ -52,10 +53,21 @@ export function UnlockPeriodClient() {
       !unlockedIds.has(r.id) && (projectFilter === "all" || r.projectCode === projectFilter),
   );
 
-  function unlock(id: string, label: string) {
+  // Confirmation modal state.
+  const [target, setTarget] = useState<{ id: string; label: string } | null>(null);
+  const [reason, setReason] = useState("");
+
+  function requestUnlock(id: string, label: string) {
     if (!canUnlock) return;
-    setUnlockedIds((prev) => new Set(prev).add(id));
-    setMsg(`Periode ${label} dibuka oleh ${persona.roleLabel}.`);
+    setTarget({ id, label });
+    setReason("");
+  }
+
+  function confirmUnlock() {
+    if (!target || reason.trim().length < 3) return;
+    setUnlockedIds((prev) => new Set(prev).add(target.id));
+    setMsg(`Periode ${target.label} dibuka oleh ${persona.roleLabel}. Alasan: ${reason.trim()}`);
+    setTarget(null);
   }
 
   return (
@@ -166,7 +178,7 @@ export function UnlockPeriodClient() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => unlock(r.id, `${r.locationName} ${r.periodLabel}`)}
+                              onClick={() => requestUnlock(r.id, `${r.locationName} ${r.periodLabel}`)}
                             >
                               <LockOpen className="h-4 w-4" />
                               Buka Kunci
@@ -184,6 +196,42 @@ export function UnlockPeriodClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Unlock confirmation modal */}
+      <Dialog
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title="Buka kunci periode?"
+        description={target?.label}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTarget(null)}>
+              Batal
+            </Button>
+            <Button size="sm" disabled={reason.trim().length < 3} onClick={confirmUnlock}>
+              <LockOpen className="h-4 w-4" />
+              Buka Kunci
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Membuka kunci mengizinkan kembali perubahan Daily Sales &amp; Cost pada periode ini. Tindakan
+            ini tercatat pada log audit. Berikan alasan pembukaan:
+          </p>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="Contoh: koreksi nominal invoice sesuai temuan finance."
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          {reason.trim().length > 0 && reason.trim().length < 3 && (
+            <p className="text-[11px] text-rose-600">Alasan minimal 3 karakter.</p>
+          )}
+        </div>
+      </Dialog>
     </div>
   );
 }
