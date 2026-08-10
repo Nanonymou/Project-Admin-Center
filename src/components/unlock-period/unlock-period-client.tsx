@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks } from "@/lib/mock/lock-period";
 
@@ -76,10 +76,12 @@ export function UnlockPeriodClient() {
   const [sessionHistory, setSessionHistory] = useState<UnlockActivity[]>([]);
   const history = [...sessionHistory, ...seededHistory];
 
-  const visible = lockedPeriods.filter(
-    (r) =>
-      !unlockedIds.has(r.id) && (projectFilter === "all" || r.projectCode === projectFilter),
-  );
+  // Keep unlocked rows visible but flip their state locally to "open".
+  const visible = lockedPeriods
+    .filter((r) => projectFilter === "all" || r.projectCode === projectFilter)
+    .map((r) => ({ ...r, locallyOpen: unlockedIds.has(r.id) }));
+
+  const stillLockedCount = visible.filter((r) => !r.locallyOpen).length;
 
   // Confirmation modal state.
   const [target, setTarget] = useState<{ id: string; label: string } | null>(null);
@@ -145,7 +147,7 @@ export function UnlockPeriodClient() {
         <div className="flex flex-wrap items-center gap-3">
           <CalendarDays className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
-            {lockedPeriods.length} periode terkunci pada cakupan Anda
+            {stillLockedCount} dari {lockedPeriods.length} periode masih terkunci
           </span>
           <select
             value={projectFilter}
@@ -193,14 +195,24 @@ export function UnlockPeriodClient() {
                   </thead>
                   <tbody>
                     {visible.map((r) => (
-                      <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <tr
+                        key={r.id}
+                        className={cn(
+                          "border-b last:border-0 hover:bg-muted/30",
+                          r.locallyOpen && "bg-emerald-50/40",
+                        )}
+                      >
                         <td className="px-3 py-2">
                           <span className="font-medium">{r.locationName}</span>
                           <span className="ml-1 text-[11px] text-muted-foreground">{r.projectCode}</span>
                         </td>
                         <td className="px-3 py-2">
                           <span className="inline-flex items-center gap-1.5">
-                            <Lock className="h-3.5 w-3.5 text-rose-500" />
+                            {r.locallyOpen ? (
+                              <LockOpen className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5 text-rose-500" />
+                            )}
                             {r.periodLabel}
                           </span>
                         </td>
@@ -211,14 +223,25 @@ export function UnlockPeriodClient() {
                           {formatCurrency(r.costTotal)}
                         </td>
                         <td className="px-3 py-2">
-                          <Badge variant="danger">Terkunci</Badge>
-                          <div className="text-[11px] text-muted-foreground">
-                            {r.lockedBy ?? "System"}
-                            {r.lockedAt ? ` · ${r.lockedAt}` : ""}
-                          </div>
+                          {r.locallyOpen ? (
+                            <Badge variant="success">Terbuka</Badge>
+                          ) : (
+                            <>
+                              <Badge variant="danger">Terkunci</Badge>
+                              <div className="text-[11px] text-muted-foreground">
+                                {r.lockedBy ?? "System"}
+                                {r.lockedAt ? ` · ${r.lockedAt}` : ""}
+                              </div>
+                            </>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          {canUnlock ? (
+                          {r.locallyOpen ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Sudah dibuka
+                            </span>
+                          ) : canUnlock ? (
                             <Button
                               size="sm"
                               variant="outline"
