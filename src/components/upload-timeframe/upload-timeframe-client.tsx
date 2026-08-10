@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, Clock, MapPin, User, FileCheck2 } from "lucide-react";
+import { CalendarClock, Clock, MapPin, User, FileCheck2, ArrowRight, GitBranch } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,6 +111,73 @@ export function UploadTimeframeClient() {
             Total SLA {totalSla} hari
           </Badge>
         </div>
+
+        {/* Workflow preview (from mock/config data) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-primary" />
+              Pratinjau Workflow
+            </CardTitle>
+            <CardDescription>
+              Alur tahapan approval dengan SLA per tahap (data tiruan).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Flow diagram */}
+            <div className="flex flex-col items-stretch gap-3 md:flex-row md:items-center md:overflow-x-auto md:pb-2">
+              {stages.map((s, i) => {
+                const type = typeForStage(s.stage);
+                return (
+                  <div key={s.stage} className="flex items-center gap-3 md:shrink-0">
+                    <div className="flex min-w-[170px] flex-col rounded-lg border bg-card p-3 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                          {i + 1}
+                        </span>
+                        <span className="text-sm font-medium">{s.stage}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          SLA {s.slaDays} hari
+                        </span>
+                        <Badge variant={type.variant}>{type.label}</Badge>
+                      </div>
+                      <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <User className="h-3 w-3" />
+                        {roleForStage(s.stage)}
+                      </div>
+                    </div>
+                    {i < stages.length - 1 && (
+                      <ArrowRight className="hidden h-5 w-5 shrink-0 text-muted-foreground md:block" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* SLA distribution bar */}
+            <div className="mt-6">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">Distribusi SLA</div>
+              <div className="flex h-6 overflow-hidden rounded-md border">
+                {stages.map((s, i) => (
+                  <div
+                    key={s.stage}
+                    className="flex items-center justify-center border-r text-[10px] text-white last:border-r-0"
+                    style={{
+                      width: `${totalSla > 0 ? (s.slaDays / totalSla) * 100 : 0}%`,
+                      backgroundColor: `hsl(${210 - i * 25} 70% 55%)`,
+                    }}
+                    title={`${s.stage}: ${s.slaDays} hari`}
+                  >
+                    {s.slaDays}h
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
