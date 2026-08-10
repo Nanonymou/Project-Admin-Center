@@ -102,6 +102,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Configuration", href: "/master/config", icon: Settings2 },
       { label: "Workflow Default Approval", href: "/workflow-default-approval", icon: GitBranch },
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
+      { label: "Workflow Timeframe", href: "/master-timeframe", icon: GitBranch },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
