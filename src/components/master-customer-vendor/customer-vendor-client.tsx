@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-import { Contact, Building2, Truck, Mail, Phone, MapPin } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Contact, Building2, Truck, Mail, Phone, MapPin, Search } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   listCustomerVendors,
   PARTY_TYPE_META,
   PARTY_STATUS_META,
+  type PartyStatus,
+  type PartyType,
 } from "@/lib/mock/customer-vendor";
 
 /**
@@ -20,14 +23,33 @@ import {
  */
 export function CustomerVendorClient() {
   const { persona } = usePersona();
-  const parties = listCustomerVendors();
+  const all = listCustomerVendors();
+
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<PartyType | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<PartyStatus | "all">("all");
 
   const stats = useMemo(() => {
-    const customers = parties.filter((p) => p.type === "customer").length;
-    const vendors = parties.filter((p) => p.type === "vendor").length;
-    const active = parties.filter((p) => p.status === "active").length;
-    return { total: parties.length, customers, vendors, active };
-  }, [parties]);
+    const customers = all.filter((p) => p.type === "customer").length;
+    const vendors = all.filter((p) => p.type === "vendor").length;
+    const active = all.filter((p) => p.status === "active").length;
+    return { total: all.length, customers, vendors, active };
+  }, [all]);
+
+  const parties = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return all.filter(
+      (p) =>
+        (typeFilter === "all" || p.type === typeFilter) &&
+        (statusFilter === "all" || p.status === statusFilter) &&
+        (!q ||
+          p.name.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          p.contactPerson.toLowerCase().includes(q) ||
+          p.city.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q)),
+    );
+  }, [all, query, typeFilter, statusFilter]);
 
   return (
     <div>
@@ -62,6 +84,39 @@ export function CustomerVendorClient() {
           })}
         </div>
 
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari nama, kode, kontak, kota…"
+              className="h-8 w-64 pl-8 text-xs"
+            />
+          </div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as PartyType | "all")}
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">Semua tipe</option>
+            <option value="customer">Customer</option>
+            <option value="vendor">Vendor</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as PartyStatus | "all")}
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">Semua status</option>
+            <option value="active">Aktif</option>
+            <option value="inactive">Nonaktif</option>
+          </select>
+          <Badge variant="default" className="ml-auto">
+            {parties.length} hasil
+          </Badge>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -71,6 +126,11 @@ export function CustomerVendorClient() {
             <CardDescription>Data mitra bisnis beserta kontak dan status.</CardDescription>
           </CardHeader>
           <CardContent>
+            {parties.length === 0 ? (
+              <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+                Tidak ada data yang cocok dengan pencarian/filter.
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
@@ -123,6 +183,7 @@ export function CustomerVendorClient() {
                 </tbody>
               </table>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
