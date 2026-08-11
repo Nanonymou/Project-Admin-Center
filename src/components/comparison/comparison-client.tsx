@@ -85,6 +85,7 @@ export function ComparisonClient() {
   const [sortKey, setSortKey] = useState<SortKey>("netMargin");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [chartMetric, setChartMetric] = useState<"netMargin" | "sales" | "cost" | "marginPct">("netMargin");
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
@@ -151,6 +152,19 @@ export function ComparisonClient() {
   );
 
   const maxSales = useMemo(() => Math.max(1, ...rows.map((r) => r.sales)), [rows]);
+
+  const METRIC_LABEL: Record<typeof chartMetric, string> = {
+    netMargin: "Net Margin",
+    sales: "Sales",
+    cost: "Cost",
+    marginPct: "Margin %",
+  };
+  const isPercentMetric = chartMetric === "marginPct";
+  const maxMetric = useMemo(
+    () => Math.max(1, ...rows.map((r) => Math.abs(r[chartMetric]))),
+    [rows, chartMetric],
+  );
+  const fmtMetric = (v: number) => (isPercentMetric ? `${v.toFixed(1)}%` : formatCurrencyCompact(v));
   const maxValue = useMemo(
     () => Math.max(1, ...rows.flatMap((r) => [r.sales, r.cost])),
     [rows],
@@ -234,6 +248,58 @@ export function ComparisonClient() {
                   </div>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <GitCompareArrows className="h-5 w-5" />
+                  Grafik Perbandingan {METRIC_LABEL[chartMetric]}
+                </CardTitle>
+                <CardDescription>Bandingkan satu metrik antar {mode === "project" ? "project" : "lokasi"}.</CardDescription>
+              </div>
+              <select
+                value={chartMetric}
+                onChange={(e) => setChartMetric(e.target.value as typeof chartMetric)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                aria-label="Pilih metrik"
+              >
+                <option value="netMargin">Net Margin</option>
+                <option value="sales">Sales</option>
+                <option value="cost">Cost</option>
+                <option value="marginPct">Margin %</option>
+              </select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {rows.map((r) => {
+                const value = r[chartMetric];
+                const widthPct = (Math.abs(value) / maxMetric) * 100;
+                return (
+                  <div key={r.key} className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 truncate text-xs" title={r.label}>
+                      {r.label}
+                    </span>
+                    <div className="flex flex-1 items-center gap-2">
+                      <div className="h-5 flex-1 overflow-hidden rounded bg-muted">
+                        <div
+                          className="flex h-full items-center justify-end rounded bg-indigo-500 pr-1"
+                          style={{ width: `${Math.max(widthPct, 8)}%` }}
+                        >
+                          <span className="text-[10px] font-medium text-white">{fmtMetric(value)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
