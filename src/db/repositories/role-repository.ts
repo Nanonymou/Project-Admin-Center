@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { roles, type Role, type NewRole } from "@/db/schema";
+import { roles, rolePermissions, type Role, type NewRole, type RolePermissionRow } from "@/db/schema";
 import type { RbacModule, RbacAction } from "@/lib/mock/rbac";
 
 /**
@@ -63,4 +63,37 @@ export async function deleteCustomRole(role: string): Promise<boolean> {
   if (!existing || existing.isSystem) return false;
   await db.delete(roles).where(eq(roles.role, role));
   return true;
+}
+
+/** List the normalized (role, module, action) permission grants for a role. */
+export async function listRolePermissions(role: string): Promise<RolePermissionRow[]> {
+  return db.select().from(rolePermissions).where(eq(rolePermissions.role, role));
+}
+
+/**
+ * Set a role's permission matrix with immediate effect: updates the jsonb matrix
+ * on the role row AND replaces the normalized role_permissions rows in one
+ * transaction, so every permission check — whether it reads the matrix or the
+ * flattened rows — sees the new grants at once. Returns false when the role
+ * does not exist (permissions are never created for an unknown role).
+ */
+export async function setRolePermissions(
+  role: string,
+  permissions: Record<RbacModule, RbacAction[]>,
+  changedBy?: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select({ role: roles.role }).from(roles).where(eq(roles.role, role)).limit(1);
+    if (!existing) return false;
+
+    await tx.update(roles).set({ permissions, updatedAt: new Date() }).where(eq(roles.role, role));
+
+    // Rebuild the flattened grants so the two representations never drift.
+    await tx.delete(rolePermissions).where(eq(rolePermissions.role, role));
+    const flat = Object.entries(permissions).flatMap(([module, actions]) =>
+      (actions as RbacAction[]).map((action) => ({ role, module, action, createdBy: changedBy })),
+    );
+    if (flat.length > 0) await tx.insert(rolePermissions).values(flat);
+    return true;
+  });
 }
