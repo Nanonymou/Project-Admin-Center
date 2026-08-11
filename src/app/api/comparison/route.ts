@@ -18,6 +18,23 @@ type CompareRow = {
   siteCount: number;
 };
 
+/** One row per location (no grouping). */
+function aggregateByLocation(sites: SiteKpi[]): CompareRow[] {
+  return sites
+    .map((s) => ({
+      key: s.locationId,
+      label: s.locationName,
+      sub: s.projectCode,
+      sales: s.sales,
+      cost: s.cost,
+      netMargin: s.sales - s.cost,
+      marginPct: s.sales > 0 ? ((s.sales - s.cost) / s.sales) * 100 : 0,
+      slaPct: s.slaPct,
+      siteCount: 1,
+    }))
+    .sort((a, b) => b.netMargin - a.netMargin);
+}
+
 /** Aggregate the scoped sites grouped by project. */
 function aggregateByProject(sites: SiteKpi[]): CompareRow[] {
   const byProject = new Map<string, SiteKpi[]>();
@@ -44,12 +61,13 @@ function aggregateByProject(sites: SiteKpi[]): CompareRow[] {
 }
 
 /**
- * GET /api/comparison?mode=project
+ * GET /api/comparison?mode=project|location
  *
- * Aggregated cross-project comparison data (sales / cost / net margin / margin% /
- * SLA per project) across the persona's accessible sites. Cross-site comparison
- * is a portfolio view, so it is restricted to Leader/Super Admin. Config-derived
- * from SITE_KPI. (Location mode is served by the same endpoint's later addition.)
+ * Aggregated comparison data across the persona's accessible sites: grouped by
+ * project (`mode=project`, default) or broken out per location (`mode=location`),
+ * with sales / cost / net margin / margin% / SLA and portfolio totals. Cross-site
+ * comparison is a portfolio view, so it is restricted to Leader/Super Admin.
+ * Config-derived from SITE_KPI.
  */
 export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
@@ -59,8 +77,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Perbandingan lintas site hanya untuk Leader/Super Admin." }, { status: 403 });
   }
 
+  const modeRaw = req.nextUrl.searchParams.get("mode");
+  const mode = modeRaw === "location" ? "location" : "project";
+
   const sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
-  const rows = aggregateByProject(sites);
+  const rows = mode === "location" ? aggregateByLocation(sites) : aggregateByProject(sites);
 
   const totals = {
     sales: rows.reduce((s, r) => s + r.sales, 0),
@@ -68,5 +89,5 @@ export async function GET(req: NextRequest) {
     netMargin: rows.reduce((s, r) => s + r.netMargin, 0),
   };
 
-  return NextResponse.json({ source: "config", mode: "project", count: rows.length, totals, rows });
+  return NextResponse.json({ source: "config", mode, count: rows.length, totals, rows });
 }
