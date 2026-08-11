@@ -78,3 +78,30 @@ export function buildInvoiceTrend(baseMonthly: number, baseSiteCount: number): I
     return { month, count, issued, paid };
   });
 }
+
+const WEEKS_6 = ["W-5", "W-4", "W-3", "W-2", "W-1", "Ini"];
+
+export type ApprovalTrendPoint = {
+  week: string;
+  approved: number;
+  pending: number;
+  /** Average completion time for the week, in days. */
+  avgDurationDays: number;
+};
+
+/**
+ * Deterministic 6-week approval trend (approved vs pending counts + average
+ * completion duration) from a base weekly volume. Seeded to stay stable across
+ * calls; approvals dominate with a small pending tail, and duration eases as the
+ * backlog clears.
+ */
+export function buildApprovalTrend(baseWeekly: number): ApprovalTrendPoint[] {
+  const base = Math.max(6, baseWeekly);
+  return WEEKS_6.map((week, i) => {
+    const wave = 0.8 + Math.abs(Math.sin((i + 1) * 1.3)) * 0.5;
+    const total = Math.round(base * wave);
+    const pending = Math.max(0, Math.round(total * (0.1 + Math.abs(Math.sin((i + 3) * 2.1)) * 0.2)));
+    const avgDurationDays = Math.round((1.5 + Math.abs(Math.sin((i + 2) * 1.9)) * 2.5) * 10) / 10;
+    return { week, approved: total - pending, pending, avgDurationDays };
+  });
+}
