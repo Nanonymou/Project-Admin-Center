@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Activity,
+  Bell,
   ShoppingCart,
   Wallet,
   FileText,
@@ -55,6 +56,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Executive Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Activity Dashboard", href: "/activity", icon: Activity, badge: "Live" },
       { label: "Activity Log", href: "/activity-log", icon: History },
+      { label: "Notification Center", href: "/notification-center", icon: Bell },
       { label: "Workspace Site", href: "/site-workspace", icon: MapPin },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
