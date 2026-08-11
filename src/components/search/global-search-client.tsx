@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search, MapPin, Users, Building2, LayoutGrid, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -50,6 +51,7 @@ const KIND_META: Record<ResultKind, { label: string; icon: typeof Search; varian
  */
 export function GlobalSearchClient() {
   const { persona } = usePersona();
+  const router = useRouter();
   const [query, setQuery] = useState("");
 
   const index = useMemo<SearchResult[]>(() => {
@@ -90,7 +92,7 @@ export function GlobalSearchClient() {
           kind: "user",
           title: u.name,
           subtitle: `${u.email} · ${u.role}`,
-          href: "/hak-akses",
+          href: `/hak-akses?user=${u.id}`,
           info: [
             { label: u.role, tone: "muted" },
             { label: u.status, tone: u.status === "active" ? "success" : u.status === "invited" ? "warning" : "danger" },
@@ -105,7 +107,7 @@ export function GlobalSearchClient() {
         kind: "party",
         title: p.name,
         subtitle: `${p.code} · ${p.category}`,
-        href: "/master-customer-vendor",
+        href: `/master-customer-vendor?code=${encodeURIComponent(p.code)}`,
         info: [
           { label: p.type === "customer" ? "Customer" : "Vendor", tone: "muted" },
           { label: p.status === "active" ? "Aktif" : "Nonaktif", tone: p.status === "active" ? "success" : "danger" },
@@ -144,9 +146,18 @@ export function GlobalSearchClient() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter opens the top result's detail page.
+            if (e.key === "Enter" && results.length > 0) router.push(results[0].href);
+          }}
           placeholder="Ketik untuk mencari halaman, site, invoice, PIC…"
           className="h-12 w-full rounded-lg border bg-background pl-11 pr-4 text-base outline-none focus:ring-2 focus:ring-ring"
         />
+        {results.length > 0 && (
+          <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1 text-[11px] text-muted-foreground md:inline-flex">
+            <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> buka teratas
+          </span>
+        )}
       </div>
 
       {query.trim() === "" ? (
