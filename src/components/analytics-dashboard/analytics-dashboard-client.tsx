@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { KpiCard } from "@/components/common/kpi-card";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { SalesCostChart } from "@/components/site/sales-cost-chart";
+import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-chart";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -96,6 +97,19 @@ export function AnalyticsDashboardClient() {
           ) : (
             <SalesCostChart data={salesTrend} />
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Cost Trend (7 hari)
+          </CardTitle>
+          <CardDescription>Biaya harian agregat dan rasio biaya terhadap penjualan.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CostTrendChart data={salesTrend} />
         </CardContent>
       </Card>
 
