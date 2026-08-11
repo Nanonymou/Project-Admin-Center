@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { listAuditLogs, type AuditLogFilter } from "@/db/repositories/audit-log-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
+import { canViewAuditLog } from "@/lib/mock/access-config";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,10 @@ export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const persona = auth.persona;
+  // The audit trail is a privileged view — Leader/Super Admin only.
+  if (!canViewAuditLog(persona.role)) {
+    return NextResponse.json({ error: "Audit Log hanya untuk Leader/Super Admin." }, { status: 403 });
+  }
   const authz = authorizeDashboard(persona, { projectId, locationId, scope });
   if (!authz.ok) {
     return NextResponse.json({ error: authz.message, role: persona.role }, { status: authz.status });
