@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Coins, Layers, Building2, Tag, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
+import { Coins, Layers, Building2, Tag, Minus, Plus, Pencil, Ban, RotateCcw, History, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,13 +11,21 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessProject } from "@/lib/personas";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { MOCK_WORKSPACES, type Workspace } from "@/lib/mock/workspaces";
 import { getServiceCategories, type ServiceCategory } from "@/lib/mock/service-config";
 import { getPriceFor } from "@/lib/mock/pricing-config";
+import { buildPriceChanges, type PriceChangeEntry, type PriceChangeAction } from "@/lib/mock/price-change-log";
 
 type ProjectOption = { projectCode: string; projectName: string; locations: Workspace[] };
 type PriceCategory = ServiceCategory & { custom?: boolean };
+
+const ACTION_META: Record<PriceChangeAction, { label: string; variant: "success" | "info" | "warning" | "danger" }> = {
+  create: { label: "Dibuat", variant: "success" },
+  update: { label: "Diubah", variant: "info" },
+  activate: { label: "Diaktifkan", variant: "warning" },
+  deactivate: { label: "Dinonaktifkan", variant: "danger" },
+};
 
 /**
  * Master Pricing Engine — the central, config-driven price master per project
@@ -58,12 +66,37 @@ export function MasterPricingClient() {
   const projInactive = inactive[projectCode] ?? [];
   const isInactive = (key: string) => projInactive.includes(key);
 
+  // This session's price-change entries per project.
+  const [sessionLog, setSessionLog] = useState<Record<string, PriceChangeEntry[]>>({});
+  function recordChange(
+    categoryKey: string,
+    categoryLabel: string,
+    action: PriceChangeAction,
+    before: number | null,
+    after: number | null,
+  ) {
+    const entry: PriceChangeEntry = {
+      id: `session-${projectCode}-${categoryKey}-${action}-${Date.now()}`,
+      categoryKey,
+      categoryLabel,
+      action,
+      before,
+      after,
+      editor: persona.name,
+      at: new Date().toISOString(),
+    };
+    setSessionLog((prev) => ({ ...prev, [projectCode]: [entry, ...(prev[projectCode] ?? [])] }));
+  }
+
   function toggleActive(key: string) {
+    const willDeactivate = !isInactive(key);
+    const label = categories.find((c) => c.key === key)?.label ?? key;
     setInactive((prev) => {
       const cur = prev[projectCode] ?? [];
       const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
       return { ...prev, [projectCode]: next };
     });
+    recordChange(key, label, willDeactivate ? "deactivate" : "activate", null, null);
   }
 
   /** Effective price of a category at a location, honoring project overrides. */
@@ -77,6 +110,14 @@ export function MasterPricingClient() {
     () => (project ? [...getServiceCategories(project.projectCode), ...(customCats[projectCode] ?? [])] : []),
     [project, customCats, projectCode],
   );
+
+  // Change history: this session's edits first, then a seeded master baseline
+  // (from the project's first location), newest first.
+  const history: PriceChangeEntry[] = useMemo(() => {
+    if (!project) return [];
+    const baseline = buildPriceChanges(project.projectCode, project.locations[0]?.locationId ?? "");
+    return [...(sessionLog[projectCode] ?? []), ...baseline];
+  }, [project, sessionLog, projectCode]);
 
   // Add-category form.
   const [formOpen, setFormOpen] = useState(false);
@@ -106,6 +147,7 @@ export function MasterPricingClient() {
       custom: true,
     };
     setCustomCats((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), cat] }));
+    recordChange(cat.key, cat.label, "create", null, cat.defaultPrice);
     setFormOpen(false);
   }
 
@@ -127,10 +169,17 @@ export function MasterPricingClient() {
   function saveEdit() {
     if (!editCat) return;
     const price = Math.max(0, Math.round(Number(editPrice) || 0));
+    const before =
+      editCat.key in projOverrides
+        ? projOverrides[editCat.key]
+        : editCat.custom
+          ? editCat.defaultPrice
+          : getPriceFor(projectCode, project?.locations[0]?.locationId ?? "", editCat.key);
     setPriceOverrides((prev) => ({
       ...prev,
       [projectCode]: { ...(prev[projectCode] ?? {}), [editCat.key]: price },
     }));
+    if (price !== before) recordChange(editCat.key, editCat.label, "update", before, price);
     setEditCat(null);
   }
 
@@ -281,6 +330,57 @@ export function MasterPricingClient() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Harga
+            </CardTitle>
+            <CardDescription>
+              Jejak perubahan harga master untuk {project.projectName} (termasuk perubahan sesi ini).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {history.length === 0 ? (
+              <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+                Belum ada riwayat perubahan.
+              </div>
+            ) : (
+              <ol className="space-y-3">
+                {history.slice(0, 20).map((e) => (
+                  <li key={e.id} className="flex items-start gap-3">
+                    <Badge variant={ACTION_META[e.action].variant} className="mt-0.5 shrink-0">
+                      {ACTION_META[e.action].label}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium">{e.categoryLabel}</span>
+                        {e.action === "update" && (
+                          <span className="flex items-center gap-1.5 text-xs tabular-nums">
+                            <span className="text-muted-foreground line-through">
+                              {e.before !== null ? formatCurrency(e.before) : "—"}
+                            </span>
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-medium">
+                              {e.after !== null ? formatCurrency(e.after) : "—"}
+                            </span>
+                          </span>
+                        )}
+                        {e.action === "create" && e.after !== null && (
+                          <span className="text-xs font-medium tabular-nums">{formatCurrency(e.after)}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {e.editor} · {formatDateTime(e.at)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
       </div>
