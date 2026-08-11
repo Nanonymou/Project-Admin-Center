@@ -66,6 +66,15 @@ export function DashboardCalendarClient() {
     [allDeadlines],
   );
 
+  // Overdue approvals — sorted by how many days late, most overdue first.
+  const approvalsOverdue = useMemo(
+    () =>
+      allDeadlines
+        .filter((d) => d.kind === "approval" && d.status === "overdue")
+        .sort((a, b) => a.daysRelative - b.daysRelative),
+    [allDeadlines],
+  );
+
   const [selectedDate, setSelectedDate] = useState<string>("");
   const dateDetail = useMemo(() => {
     if (!selectedDate) return null;
@@ -123,6 +132,47 @@ export function DashboardCalendarClient() {
                   <span className="ml-auto text-xs font-medium text-amber-700">{d.dueLabel}</span>
                 </li>
               ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className={approvalsOverdue.length > 0 ? "border-rose-300" : undefined}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-rose-600" />
+            Approval Overdue
+            {approvalsOverdue.length > 0 && (
+              <Badge variant="danger" className="ml-1">
+                {approvalsOverdue.length}
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>Persetujuan yang sudah melewati tenggat, diurut dari paling terlambat.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {approvalsOverdue.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Tidak ada approval yang terlambat. 🎉</p>
+          ) : (
+            <ul className="space-y-2">
+              {approvalsOverdue.map((d) => {
+                const daysLate = Math.abs(d.daysRelative);
+                return (
+                  <li
+                    key={d.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-rose-200 bg-rose-50 p-2.5 text-sm"
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                    <span className="font-medium">{d.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {d.locationName} · {d.projectCode} · PIC {d.owner}
+                    </span>
+                    <Badge variant="danger" className="ml-auto">
+                      Terlambat {daysLate} hari
+                    </Badge>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
