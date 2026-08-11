@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
-import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
-import { DeadlineCalendar } from "@/components/calendar/deadline-calendar";
+import { DeadlineCalendar, isInvoiceDeadline } from "@/components/calendar/deadline-calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -26,7 +26,13 @@ export function DashboardCalendarClient() {
     [persona],
   );
 
-  const deadlines = useMemo(() => buildDeadlines(scopedSites), [scopedSites]);
+  const allDeadlines = useMemo(() => buildDeadlines(scopedSites), [scopedSites]);
+  const [invoiceOnly, setInvoiceOnly] = useState(false);
+  const deadlines = useMemo(
+    () => (invoiceOnly ? allDeadlines.filter((d) => isInvoiceDeadline(d.kind)) : allDeadlines),
+    [allDeadlines, invoiceOnly],
+  );
+  const invoiceCount = useMemo(() => allDeadlines.filter((d) => isInvoiceDeadline(d.kind)).length, [allDeadlines]);
 
   const summary = useMemo(() => {
     const overdue = deadlines.filter((d) => d.status === "overdue").length;
@@ -63,11 +69,28 @@ export function DashboardCalendarClient() {
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              Kalender Tenggat
-            </CardTitle>
-            <CardDescription>{deadlines.length} tenggat pada cakupan Anda</CardDescription>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5" />
+                  Kalender Tenggat
+                </CardTitle>
+                <CardDescription>{deadlines.length} tenggat pada cakupan Anda</CardDescription>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvoiceOnly((v) => !v)}
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm ${
+                  invoiceOnly ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+                }`}
+              >
+                <Receipt className="h-4 w-4" />
+                Deadline invoice ({invoiceCount})
+              </button>
+            </div>
+            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <Receipt className="h-3 w-3" /> Penanda ini menandai tenggat terkait invoice (submit & pembayaran).
+            </p>
           </CardHeader>
           <CardContent>
             <DeadlineCalendar items={deadlines} />
