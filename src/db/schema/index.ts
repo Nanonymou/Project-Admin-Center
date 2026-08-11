@@ -54,3 +54,4 @@ export * from "./customer-vendor";
 export * from "./master-price-history";
 export * from "./formula-parameters";
 export * from "./master-locks";
+export * from "./number-formats";
