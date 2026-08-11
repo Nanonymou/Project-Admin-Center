@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, unique, uuid, varchar } from "drizzle-orm/pg-core";
 import { auditColumns } from "./columns";
 import type { RbacModule, RbacAction } from "@/lib/mock/rbac";
 
@@ -26,7 +26,9 @@ export const roles = pgTable(
     ...auditColumns,
   },
   (t) => ({
-    roleIdx: uniqueIndex("roles_role_idx").on(t.role),
+    // A UNIQUE constraint (not just an index) so users.role / role_permissions.role
+    // can reference roles.role as a foreign key.
+    roleUnique: unique("roles_role_key").on(t.role),
   }),
 );
 
