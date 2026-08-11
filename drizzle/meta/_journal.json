@@ -358,6 +358,55 @@
       "when": 1786354989558,
       "tag": "0050_little_puff_adder",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1786362069299,
+      "tag": "0051_nostalgic_king_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1786362776143,
+      "tag": "0052_clammy_purifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1786362915207,
+      "tag": "0053_ancient_fabian_cortez",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1786363525870,
+      "tag": "0054_icy_prism",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1786363813493,
+      "tag": "0055_outstanding_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1786364217164,
+      "tag": "0056_jazzy_raider",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1786364961346,
+      "tag": "0057_tearful_mentallo",
+      "breakpoints": true
     }
   ]
 }

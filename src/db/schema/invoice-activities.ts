@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { index, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { index, jsonb, pgEnum, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { tenancyColumns } from "./columns";
 import { invoices } from "./invoices";
 
@@ -43,6 +43,12 @@ export const invoiceActivities = pgTable(
     fromStage: varchar("from_stage", { length: 64 }),
     toStage: varchar("to_stage", { length: 64 }),
     detail: varchar("detail", { length: 512 }),
+    // Structured context for a complete audit record — e.g. changed fields with
+    // their before/after values, or amounts involved in the event.
+    metadata: jsonb("metadata"),
+    // Request provenance for tamper-evidence / forensic review.
+    ipAddress: varchar("ip_address", { length: 64 }),
+    userAgent: varchar("user_agent", { length: 256 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

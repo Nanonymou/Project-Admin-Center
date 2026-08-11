@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createInvoice, listInvoices, type InvoiceFilter } from "@/db/repositories/invoice-repository";
 import type { NewInvoice } from "@/db/schema";
-import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
+import {
+  computeInvoice,
+  invoiceCalcColumns,
+  parseInvoiceCalcInput,
+} from "@/lib/server/services/invoice-calculation-service";
+import { recordInvoiceCreated } from "@/lib/server/services/invoice-audit-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -106,15 +111,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
   }
 
-  const projectId = typeof body.projectId === "string" ? body.projectId : "";
   const locationId = typeof body.locationId === "string" ? body.locationId : "";
   const number = typeof body.number === "string" ? body.number : "";
-  const subtotal = Number(body.subtotal);
-  if (!projectId || !locationId || !number || !Number.isFinite(subtotal)) {
-    return NextResponse.json(
-      { error: "projectId, locationId, number, dan subtotal wajib diisi." },
-      { status: 400 },
-    );
+
+  // Validate & resolve the financial inputs (subtotal/deduction/bbm + optional
+  // invoice type) through the shared server calculation validator; the invoice
+  // type profile supplies deduction/BBM defaults, mirroring /api/invoices/calculate.
+  const parsed = parseInvoiceCalcInput(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const { projectCode: projectId, subtotal, deduction, bbm } = parsed.value;
+
+  if (!locationId || !number) {
+    return NextResponse.json({ error: "locationId dan number wajib diisi." }, { status: 400 });
   }
 
   const authz = authorizeDashboard(persona, { projectId, locationId, scope: "tenant" });
@@ -125,11 +133,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
 
-  const deduction = Number.isFinite(Number(body.deduction)) ? Number(body.deduction) : 0;
-  const bbm = Number.isFinite(Number(body.bbm)) ? Number(body.bbm) : 0;
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const issuedDate = typeof body.issuedDate === "string" ? body.issuedDate : undefined;
   const pic = typeof body.pic === "string" ? body.pic : undefined;
+  // Overdue days is derived from the due date at save time (not the raw input).
   const overdueDays = overdueDaysOf(dueDate);
   const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, bbm, overdueDays });
 
@@ -152,10 +159,7 @@ export async function POST(req: NextRequest) {
     projectId,
     locationId,
     number,
-    subtotal: calc.subtotal.toFixed(2),
-    deduction: calc.deduction.toFixed(2),
-    tax: (calc.taxAmount + calc.penaltyAmount).toFixed(2),
-    amount: calc.total.toFixed(2),
+    ...invoiceCalcColumns(calc, overdueDays),
     status,
     stage,
     agingBucket: agingBucketOf(overdueDays),
@@ -167,6 +171,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const invoice = await createInvoice(values);
+    // Best-effort audit trail — never fail the create because logging failed.
+    try {
+      await recordInvoiceCreated(
+        { ...invoice, number: invoice.number },
+        persona.name,
+        persona.role,
+      );
+    } catch {
+      /* audit logging is best-effort */
+    }
     revalidateKpi();
     return NextResponse.json({ source: "db", invoice, calc }, { status: 201 });
   } catch (err) {

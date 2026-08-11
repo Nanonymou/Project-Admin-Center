@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/app/sidebar";
 import { Topbar } from "@/components/app/topbar";
+import { RouteGuard } from "@/components/app/route-guard";
 import { PersonaProvider } from "@/components/providers/persona-provider";
 import { GlobalFilterProvider } from "@/components/providers/global-filter-provider";
 import { ActiveSiteProvider } from "@/components/providers/active-site-provider";
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Sidebar />
               <div className="flex min-w-0 flex-1 flex-col">
                 <Topbar />
-                <main className="flex-1">{children}</main>
+                <main className="flex-1">
+                  <RouteGuard>{children}</RouteGuard>
+                </main>
               </div>
             </div>
           </GlobalFilterProvider>

@@ -5,11 +5,21 @@ import { allAttachments, type AllAttachmentRow } from "@/db/schema";
 export type AttachmentCenterFilter = {
   projectId?: string;
   locationId?: string;
-  source?: string; // "invoice" | "transaction"
+  source?: string; // "invoice" | "transaction" | "evidence" | "dana_cash"
   category?: string;
   limit?: number;
   scope?: "tenant" | "executive";
 };
+
+/**
+ * Fetch a single attachment (any source) from the unified all_attachments view
+ * by its id. Serves the Pratinjau Lampiran metadata + file endpoints, which key
+ * off the attachment id regardless of which underlying table it came from.
+ */
+export async function getAttachmentFromView(id: string): Promise<AllAttachmentRow | null> {
+  const [row] = await db.select().from(allAttachments).where(eq(allAttachments.id, id)).limit(1);
+  return row ?? null;
+}
 
 /**
  * List attachments from the unified all_attachments view, newest first.

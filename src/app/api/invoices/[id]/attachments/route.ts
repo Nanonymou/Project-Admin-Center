@@ -4,6 +4,7 @@ import { addAttachment, listAttachments } from "@/db/repositories/invoice-attach
 import type { NewInvoiceAttachment } from "@/db/schema";
 import { requirePersona } from "@/lib/server/rbac";
 import { isAllowedUpload } from "@/lib/server/file-types";
+import { recordDocumentUpload } from "@/lib/server/services/invoice-audit-service";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
 /**
  * POST /api/invoices/:id/attachments
- * Body: { fileName, fileType?, sizeBytes?, category?, storageKey? }
+ * Body: { fileName, fileType?, sizeBytes?, category?, stage?, note?, storageKey? }
  * Registers an uploaded attachment's metadata against the invoice. Viewers
  * cannot upload; the persona must have access to the invoice's site.
  */
@@ -84,13 +85,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       projectId: invoice.projectId,
       locationId: invoice.locationId,
       category: typeof body.category === "string" ? body.category : undefined,
+      stage: typeof body.stage === "string" ? body.stage : undefined,
       fileName,
       fileType: typeof body.fileType === "string" ? body.fileType : undefined,
       sizeBytes,
+      note: typeof body.note === "string" ? body.note : undefined,
       storageKey: typeof body.storageKey === "string" ? body.storageKey : undefined,
       uploadedBy: persona.name,
     };
     const attachment = await addAttachment(values);
+    try {
+      await recordDocumentUpload(invoice, persona.name, fileName, persona.role);
+    } catch {
+      /* audit logging is best-effort */
+    }
     return NextResponse.json({ source: "db", attachment }, { status: 201 });
   } catch (err) {
     return NextResponse.json({

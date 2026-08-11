@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_SECTIONS } from "@/lib/mock/nav";
+import { filterNavForRole } from "@/lib/mock/access-config";
+import { usePersona } from "@/components/providers/persona-provider";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { persona } = usePersona();
+  const sections = filterNavForRole(persona.role);
   return (
     <aside className="hidden md:flex md:w-64 md:shrink-0 md:flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <div className="flex items-center gap-2 px-5 h-16 border-b border-sidebar-border">
@@ -20,7 +23,7 @@ export function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.label}>
             <div className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
               {section.label}

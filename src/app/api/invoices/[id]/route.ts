@@ -5,7 +5,11 @@ import {
   updateInvoice,
 } from "@/db/repositories/invoice-repository";
 import type { NewInvoice } from "@/db/schema";
-import { computeInvoice } from "@/lib/server/services/invoice-calculation-service";
+import { computeInvoice, invoiceCalcColumns } from "@/lib/server/services/invoice-calculation-service";
+import {
+  recordInvoiceChanges,
+  recordStageTransition,
+} from "@/lib/server/services/invoice-audit-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation, type Persona } from "@/lib/personas";
@@ -39,7 +43,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (!canAccessLocation(auth.persona, existing.locationId, existing.projectId)) {
       return NextResponse.json({ error: "Tidak ada akses ke invoice ini." }, { status: 403 });
     }
-    return NextResponse.json({ source: "db", invoice: existing });
+    // Recompute the Formula Engine breakdown from the stored inputs so callers
+    // get the full derivation without re-implementing it.
+    const calc = computeInvoice({
+      projectCode: existing.projectId,
+      subtotal: Number(existing.subtotal),
+      deduction: Number(existing.deduction),
+      bbm: Number(existing.bbmAmount),
+      overdueDays: existing.overdueDays ?? 0,
+    });
+    return NextResponse.json({ source: "db", invoice: existing, calc });
   } catch {
     return NextResponse.json({ error: "Database tidak tersedia." }, { status: 503 });
   }
@@ -81,20 +94,46 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (Number.isFinite(subtotal) || Number.isFinite(deduction) || Number.isFinite(bbm)) {
       const base = Number.isFinite(subtotal) ? subtotal : Number(existing.subtotal);
       const ded = Number.isFinite(deduction) ? deduction : Number(existing.deduction);
+      // Preserve the existing BBM amount when the caller doesn't restate it.
+      const bbmAmt = Number.isFinite(bbm) ? bbm : Number(existing.bbmAmount);
+      const overdueDays = existing.overdueDays ?? 0;
       const calc = computeInvoice({
         projectCode: existing.projectId,
         subtotal: base,
         deduction: ded,
-        bbm: Number.isFinite(bbm) ? bbm : 0,
+        bbm: bbmAmt,
+        overdueDays,
       });
-      patch.subtotal = calc.subtotal.toFixed(2);
-      patch.deduction = calc.deduction.toFixed(2);
-      patch.tax = calc.taxAmount.toFixed(2);
-      patch.amount = calc.total.toFixed(2);
+      Object.assign(patch, invoiceCalcColumns(calc, overdueDays));
     }
 
     const updated = await updateInvoice(id, patch);
     if (!updated) return NextResponse.json({ error: "Invoice tidak ditemukan." }, { status: 404 });
+
+    // Record the audit trail automatically — a stage move is a distinct workflow
+    // event; every other audited field change is captured (before → after) by
+    // diffing the snapshots. Best-effort: never fail the update on a log error.
+    try {
+      const stageMoved = Boolean(patch.stage && patch.stage !== existing.stage);
+      if (stageMoved) {
+        await recordStageTransition(
+          updated,
+          persona.name,
+          existing.stage,
+          patch.stage as string,
+          persona.role,
+        );
+      }
+      await recordInvoiceChanges(existing, updated, persona.name, {
+        role: persona.role,
+        exclude: stageMoved ? ["stage"] : [],
+        ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      });
+    } catch {
+      /* audit logging is best-effort */
+    }
+
     revalidateKpi();
     return NextResponse.json({ source: "db", invoice: updated });
   } catch {
