@@ -29,6 +29,7 @@ import {
   LayoutGrid,
   MapPin,
   Contact,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 
@@ -111,6 +112,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Workflow Default Approval", href: "/workflow-default-approval", icon: GitBranch },
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
       { label: "Workflow Timeframe", href: "/master-timeframe", icon: GitBranch },
+      { label: "Master Pricing", href: "/master-pricing", icon: Coins },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
