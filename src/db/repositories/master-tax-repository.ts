@@ -50,3 +50,15 @@ export async function setMasterTaxActive(projectCode: string | null, active: boo
   await db.update(masterTaxes).set({ active, updatedAt: new Date() }).where(eq(masterTaxes.id, existing.id));
   return true;
 }
+
+/**
+ * Permanently delete a tax profile by project (null = global). Returns false when
+ * the profile does not exist. Callers must first confirm the profile is not in
+ * use (see the delete-protection guard in the API); this does no such check.
+ */
+export async function deleteMasterTax(projectCode: string | null): Promise<boolean> {
+  const existing = await getMasterTax(projectCode);
+  if (!existing) return false;
+  await db.delete(masterTaxes).where(eq(masterTaxes.id, existing.id));
+  return true;
+}

@@ -5,7 +5,9 @@ import {
   listMasterTaxes,
   upsertMasterTax,
   setMasterTaxActive,
+  deleteMasterTax,
 } from "@/db/repositories/master-tax-repository";
+import { listInvoices } from "@/db/repositories/invoice-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { assertDomainUnlocked, autoVersionDomain } from "@/lib/server/services/master-lock-guard";
 import { PROJECT_TAX_CONFIG, DEFAULT_TAX } from "@/lib/mock/tax-config";
@@ -163,5 +165,75 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, active });
   } catch {
     return NextResponse.json({ error: "Gagal mengubah status (database tidak tersedia)." }, { status: 503 });
+  }
+}
+
+/**
+ * DELETE /api/master-tax?projectCode= — delete a tax profile WITH in-use
+ * protection. A tax that is referenced by existing invoices (the project's, or
+ * ANY invoice for the global default) may not be hard-deleted, since historical
+ * documents were calculated with it; such a request soft-deactivates the profile
+ * instead and reports it. Only an unused profile is permanently removed. Blocked
+ * while the tax master is locked. Leader/Super Admin, project-scoped.
+ */
+export async function DELETE(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat menghapus pajak." }, { status: 403 });
+  }
+
+  const projectParam = req.nextUrl.searchParams.get("projectCode")?.trim() ?? "";
+  const projectCode = projectParam || null;
+  if (projectCode && !canAccessProject(persona, projectCode)) {
+    return NextResponse.json({ error: `Tidak ada akses ke project ${projectCode}.` }, { status: 403 });
+  }
+
+  const taxLock = await assertDomainUnlocked("tax");
+  if (!taxLock.ok) return NextResponse.json({ error: taxLock.message }, { status: taxLock.status });
+
+  try {
+    // In-use check: a project profile is used by that project's invoices; the
+    // global default is considered used if any invoice exists at all.
+    const invoices = await listInvoices(
+      projectCode ? { projectId: projectCode, scope: "tenant" } : { scope: "executive" },
+    );
+    if (invoices.length > 0) {
+      const ok = await setMasterTaxActive(projectCode, false);
+      if (!ok) return NextResponse.json({ error: "Profil pajak tidak ditemukan." }, { status: 404 });
+      await writeAuditLog({
+        projectId: projectCode ?? undefined,
+        category: "master",
+        action: "tax.soft_delete",
+        actor: persona.name,
+        entityType: "master_tax",
+        entityId: projectCode ?? "global",
+        detail: `Pajak terpakai oleh ${invoices.length} invoice → dinonaktifkan (hapus permanen dilarang).`,
+      });
+      await autoVersionDomain("tax", `Nonaktifkan pajak terpakai ${projectCode ?? "global"}`, persona.name);
+      return NextResponse.json({
+        ok: true,
+        softDeleted: true,
+        usedByInvoices: invoices.length,
+        message: "Pajak sedang terpakai — dinonaktifkan, bukan dihapus permanen.",
+      });
+    }
+
+    const deleted = await deleteMasterTax(projectCode);
+    if (!deleted) return NextResponse.json({ error: "Profil pajak tidak ditemukan." }, { status: 404 });
+    await writeAuditLog({
+      projectId: projectCode ?? undefined,
+      category: "master",
+      action: "tax.delete",
+      actor: persona.name,
+      entityType: "master_tax",
+      entityId: projectCode ?? "global",
+      detail: "Hapus profil pajak (tidak terpakai).",
+    });
+    await autoVersionDomain("tax", `Hapus pajak ${projectCode ?? "global"}`, persona.name);
+    return NextResponse.json({ ok: true, deleted: true });
+  } catch {
+    return NextResponse.json({ error: "Gagal memproses (database tidak tersedia)." }, { status: 503 });
   }
 }
