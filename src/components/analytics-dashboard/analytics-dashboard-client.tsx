@@ -7,10 +7,12 @@ import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/common/kpi-card";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
+import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildMarginBySite } from "@/lib/mock/margin-data";
+import type { SiteDaily } from "@/lib/mock/site-detail";
 
 /**
  * Analytics Dashboard — the main analytics landing: portfolio KPI summary across
@@ -39,6 +41,31 @@ export function AnalyticsDashboardClient() {
 
   const marginBySite = useMemo(() => buildMarginBySite(scopedSites), [scopedSites]);
 
+  // Aggregate the 7-day sales/cost trend across every scoped site into the daily
+  // series the shared SalesCostChart consumes.
+  const salesTrend = useMemo<SiteDaily[]>(() => {
+    const byDay = new Map<string, { sales: number; cost: number }>();
+    const order: string[] = [];
+    for (const site of scopedSites) {
+      for (const p of site.trend7d) {
+        if (!byDay.has(p.day)) {
+          byDay.set(p.day, { sales: 0, cost: 0 });
+          order.push(p.day);
+        }
+        const acc = byDay.get(p.day)!;
+        acc.sales += p.sales;
+        acc.cost += p.cost;
+      }
+    }
+    const today = new Date();
+    return order.map((day, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (order.length - 1 - i));
+      const agg = byDay.get(day)!;
+      return { date: day, iso: d.toISOString().slice(0, 10), sales: agg.sales, cost: agg.cost };
+    });
+  }, [scopedSites]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -54,6 +81,23 @@ export function AnalyticsDashboardClient() {
         <KpiCard label="Margin %" value={totals.marginPct} format="percent" icon={Percent} tone="success" />
         <KpiCard label="Rata-rata SLA" value={totals.slaPct} format="percent" icon={ShieldCheck} tone="info" />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Sales Trend (7 hari)
+          </CardTitle>
+          <CardDescription>Agregat penjualan & biaya harian lintas site dalam cakupan Anda.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {salesTrend.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada data tren pada cakupan Anda.</p>
+          ) : (
+            <SalesCostChart data={salesTrend} />
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
