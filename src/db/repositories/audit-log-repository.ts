@@ -40,3 +40,9 @@ export async function listAuditLogs(filter: AuditLogFilter): Promise<AuditLog[]>
 export async function writeAuditLog(entry: NewAuditLog): Promise<void> {
   await db.insert(auditLogs).values(entry);
 }
+
+/** Fetch a single audit log entry by id, or undefined. */
+export async function getAuditLogById(id: string): Promise<AuditLog | undefined> {
+  const [row] = await db.select().from(auditLogs).where(eq(auditLogs.id, id)).limit(1);
+  return row;
+}
