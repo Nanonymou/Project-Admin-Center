@@ -27,18 +27,35 @@ export function AuditLogClient() {
 
   const entries = useMemo(() => buildSystemAuditLog(), []);
   const [categoryFilter, setCategoryFilter] = useState<"all" | AuditCategory>("all");
+  const [actorFilter, setActorFilter] = useState<"all" | string>("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "24h" | "7d" | "30d">("all");
   const [query, setQuery] = useState("");
 
   const categories = useMemo(() => Array.from(new Set(entries.map((e) => e.category))), [entries]);
+  const actors = useMemo(() => Array.from(new Set(entries.map((e) => e.actor))), [entries]);
+
+  const hasFilters =
+    categoryFilter !== "all" || actorFilter !== "all" || timeFilter !== "all" || query.trim() !== "";
+  const resetFilters = () => {
+    setCategoryFilter("all");
+    setActorFilter("all");
+    setTimeFilter("all");
+    setQuery("");
+  };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const now = Date.now();
+    const windowMs =
+      timeFilter === "24h" ? 864e5 : timeFilter === "7d" ? 7 * 864e5 : timeFilter === "30d" ? 30 * 864e5 : Infinity;
     return entries.filter((e) => {
       if (categoryFilter !== "all" && e.category !== categoryFilter) return false;
+      if (actorFilter !== "all" && e.actor !== actorFilter) return false;
+      if (windowMs !== Infinity && now - new Date(e.at).getTime() > windowMs) return false;
       if (q && !`${e.actor} ${e.target} ${e.detail} ${e.action}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [entries, categoryFilter, query]);
+  }, [entries, categoryFilter, actorFilter, timeFilter, query]);
 
   if (!canView) {
     return (
@@ -99,13 +116,34 @@ export function AuditLogClient() {
                   ))}
                 </select>
               </div>
-              {(categoryFilter !== "all" || query.trim()) && (
+              <select
+                value={actorFilter}
+                onChange={(e) => setActorFilter(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                aria-label="Filter pengguna"
+              >
+                <option value="all">Semua pengguna</option>
+                {actors.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value as "all" | "24h" | "7d" | "30d")}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                aria-label="Filter waktu"
+              >
+                <option value="all">Semua waktu</option>
+                <option value="24h">24 jam terakhir</option>
+                <option value="7d">7 hari terakhir</option>
+                <option value="30d">30 hari terakhir</option>
+              </select>
+              {hasFilters && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setCategoryFilter("all");
-                    setQuery("");
-                  }}
+                  onClick={resetFilters}
                   className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm text-muted-foreground hover:bg-accent"
                 >
                   <X className="h-4 w-4" /> Reset
