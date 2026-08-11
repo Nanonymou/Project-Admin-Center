@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck, Send } from "lucide-react";
+import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck, Send, Upload } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar, isInvoiceDeadline } from "@/components/calendar/deadline-calendar";
@@ -86,6 +86,16 @@ export function DashboardCalendarClient() {
     [allDeadlines],
   );
 
+  // Invoice upload reminders — invoice-submit deadlines whose supporting-document
+  // upload is not yet complete, most urgent (soonest, least ready) first.
+  const uploadReminders = useMemo(
+    () =>
+      allDeadlines
+        .filter((d) => d.kind === "invoice_submit" && d.status !== "settled" && d.progressPct < 100)
+        .sort((a, b) => a.daysRelative - b.daysRelative || a.progressPct - b.progressPct),
+    [allDeadlines],
+  );
+
   // Invoice deadlines falling within the next 7 days, with an estimated total.
   const invoiceThisWeek = useMemo(() => {
     const items = allDeadlines
@@ -118,6 +128,45 @@ export function DashboardCalendarClient() {
         <SummaryTile icon={CalendarClock} label="≤ 3 hari" value={summary.dueSoon} tone="warning" />
         <SummaryTile icon={CheckCircle2} label="Selesai" value={summary.settled} tone="success" />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-violet-600" />
+            Reminder Upload Invoice
+          </CardTitle>
+          <CardDescription>Invoice yang dokumen pendukungnya belum lengkap diunggah, diurut paling mendesak.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {uploadReminders.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Semua dokumen invoice sudah terunggah. 🎉</p>
+          ) : (
+            <ul className="space-y-2">
+              {uploadReminders.map((d) => (
+                <li key={d.id} className="rounded-md border border-violet-200 bg-violet-50 p-2.5 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Upload className="h-4 w-4 shrink-0 text-violet-600" />
+                    <span className="font-medium">{d.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {d.locationName} · {d.projectCode}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{d.dueLabel}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-violet-100">
+                      <div
+                        className="h-full rounded-full bg-violet-500"
+                        style={{ width: `${Math.max(0, Math.min(100, d.progressPct))}%` }}
+                      />
+                    </div>
+                    <span className="w-10 shrink-0 text-right text-xs font-medium text-violet-700">{d.progressPct}%</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
