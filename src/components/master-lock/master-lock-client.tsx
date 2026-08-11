@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
 import { formatDate } from "@/lib/utils";
-import { listMasterEntities, LOCK_CATEGORIES } from "@/lib/mock/master-lock";
+import { listMasterEntities, LOCK_CATEGORIES, type MasterEntity } from "@/lib/mock/master-lock";
 
 /**
  * Master Lock & Version Management — the central registry of lockable master-data
@@ -20,6 +21,16 @@ import { listMasterEntities, LOCK_CATEGORIES } from "@/lib/mock/master-lock";
  */
 export function MasterLockClient() {
   const { persona } = usePersona();
+  // Only Leader/Super Admin may lock or unlock master data.
+  const canManage = persona.role === "super_admin" || persona.role === "leader_admin";
+
+  // Session-local lock-state overrides keyed by entity key.
+  const [lockOverrides, setLockOverrides] = useState<Record<string, boolean>>({});
+  const isLocked = (e: MasterEntity) => lockOverrides[e.key] ?? e.locked;
+  function toggleLock(e: MasterEntity) {
+    setLockOverrides((prev) => ({ ...prev, [e.key]: !isLocked(e) }));
+  }
+
   const entities = listMasterEntities();
 
   const byCategory = useMemo(
@@ -31,7 +42,7 @@ export function MasterLockClient() {
     [entities],
   );
 
-  const lockedCount = entities.filter((e) => e.locked).length;
+  const lockedCount = entities.filter((e) => isLocked(e)).length;
 
   return (
     <div>
@@ -74,6 +85,7 @@ export function MasterLockClient() {
                       <th className="px-3 py-2 font-medium">Status</th>
                       <th className="px-3 py-2 font-medium">Versi</th>
                       <th className="px-3 py-2 font-medium">Diubah</th>
+                      {canManage && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -94,7 +106,7 @@ export function MasterLockClient() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          {e.locked ? (
+                          {isLocked(e) ? (
                             <Badge variant="danger" className="gap-1">
                               <Lock className="h-3 w-3" />
                               Terkunci
@@ -114,6 +126,28 @@ export function MasterLockClient() {
                         <td className="px-3 py-2 text-xs text-muted-foreground">
                           {e.lastModifiedBy} · {formatDate(e.lastModifiedAt)}
                         </td>
+                        {canManage && (
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleLock(e)}
+                              className={`h-7 gap-1 px-2 ${isLocked(e) ? "text-emerald-600" : "text-rose-600"}`}
+                            >
+                              {isLocked(e) ? (
+                                <>
+                                  <LockOpen className="h-3.5 w-3.5" />
+                                  Buka Kunci
+                                </>
+                              ) : (
+                                <>
+                                  <Lock className="h-3.5 w-3.5" />
+                                  Kunci
+                                </>
+                              )}
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
