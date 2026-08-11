@@ -1,6 +1,7 @@
 import { PERSONAS, canAccessLocation, type Persona } from "@/lib/personas";
 import { SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
 import { buildDeadlines } from "@/lib/mock/deadlines";
+import { planCutOffReminders } from "@/lib/server/services/reminder-scheduler-service";
 import { insertNotifications } from "@/db/repositories/notification-repository";
 import type { NewNotificationRow } from "@/db/schema";
 
@@ -93,6 +94,25 @@ function approvalNotifications(persona: Persona, sites: SiteKpi[]): NewNotificat
     });
 }
 
+/**
+ * Incomplete-data-input notifications for one recipient's sites — reuses the
+ * cut-off scheduler's data-completeness logic: a site whose period data is not
+ * yet complete inside the cut-off window becomes a notification to finish entry
+ * before lock, escalating with proximity.
+ */
+function incompleteDataNotifications(persona: Persona, sites: SiteKpi[]): NewNotificationRow[] {
+  return planCutOffReminders(sites).map((r) => ({
+    recipient: persona.id,
+    source: "reminder",
+    level: r.level === "critical" ? "danger" : r.level,
+    title: `Data belum lengkap — ${r.locationName}`,
+    detail: `${r.title}. Lengkapi entri sebelum penguncian cut-off.`,
+    href: `/site/${r.locationId}`,
+    projectCode: r.projectCode,
+    locationId: r.locationId,
+  }));
+}
+
 export type GeneratorResult = { recipients: number; generated: number; persisted: number };
 
 /**
@@ -113,6 +133,7 @@ export async function runNotificationGenerator(): Promise<GeneratorResult> {
       ...overdueInvoiceNotifications(persona, sites),
       ...paidInvoiceNotifications(persona, sites),
       ...approvalNotifications(persona, sites),
+      ...incompleteDataNotifications(persona, sites),
     ];
     if (personaRows.length > 0) recipients += 1;
     rows.push(...personaRows);
