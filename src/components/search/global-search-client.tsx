@@ -16,12 +16,23 @@ import { listCustomerVendors } from "@/lib/mock/customer-vendor";
 
 type ResultKind = "page" | "site" | "user" | "party";
 
+type InfoChip = { label: string; tone?: "success" | "warning" | "danger" | "muted" };
+
 type SearchResult = {
   id: string;
   kind: ResultKind;
   title: string;
   subtitle: string;
   href: string;
+  /** Concise per-type info shown as small chips on the result. */
+  info: InfoChip[];
+};
+
+const CHIP_TONE: Record<NonNullable<InfoChip["tone"]>, string> = {
+  success: "bg-emerald-100 text-emerald-800",
+  warning: "bg-amber-100 text-amber-800",
+  danger: "bg-rose-100 text-rose-800",
+  muted: "bg-muted text-muted-foreground",
 };
 
 const KIND_META: Record<ResultKind, { label: string; icon: typeof Search; variant: "info" | "success" | "warning" | "muted" }> = {
@@ -52,6 +63,7 @@ export function GlobalSearchClient() {
           title: item.label,
           subtitle: `${section.label} · ${item.href}`,
           href: item.href,
+          info: [{ label: section.label, tone: "muted" }],
         });
       }
     }
@@ -63,6 +75,11 @@ export function GlobalSearchClient() {
         title: `${s.locationName}`,
         subtitle: `${s.projectName} · ${s.projectCode}`,
         href: `/site/${s.locationId}`,
+        info: [
+          { label: `Margin ${s.marginPct.toFixed(0)}%`, tone: s.marginPct >= 50 ? "success" : "warning" },
+          { label: `SLA ${s.slaPct.toFixed(0)}%`, tone: s.slaPct >= 90 ? "success" : "warning" },
+          ...(s.overdueInvoices > 0 ? [{ label: `${s.overdueInvoices} overdue`, tone: "danger" as const }] : []),
+        ],
       });
     }
 
@@ -74,6 +91,10 @@ export function GlobalSearchClient() {
           title: u.name,
           subtitle: `${u.email} · ${u.role}`,
           href: "/hak-akses",
+          info: [
+            { label: u.role, tone: "muted" },
+            { label: u.status, tone: u.status === "active" ? "success" : u.status === "invited" ? "warning" : "danger" },
+          ],
         });
       }
     }
@@ -85,6 +106,11 @@ export function GlobalSearchClient() {
         title: p.name,
         subtitle: `${p.code} · ${p.category}`,
         href: "/master-customer-vendor",
+        info: [
+          { label: p.type === "customer" ? "Customer" : "Vendor", tone: "muted" },
+          { label: p.status === "active" ? "Aktif" : "Nonaktif", tone: p.status === "active" ? "success" : "danger" },
+          { label: p.city, tone: "muted" },
+        ],
       });
     }
 
@@ -159,6 +185,18 @@ export function GlobalSearchClient() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{r.title}</p>
                           <p className="truncate text-xs text-muted-foreground">{r.subtitle}</p>
+                          {r.info.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {r.info.map((chip, i) => (
+                                <span
+                                  key={i}
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${CHIP_TONE[chip.tone ?? "muted"]}`}
+                                >
+                                  {chip.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                       </Link>
