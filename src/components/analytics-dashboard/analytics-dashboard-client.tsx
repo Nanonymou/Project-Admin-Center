@@ -10,6 +10,8 @@ import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-chart";
 import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
+import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
+import { FileText } from "lucide-react";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -83,6 +85,8 @@ export function AnalyticsDashboardClient() {
     [salesTrend],
   );
 
+  const invoiceTrend = useMemo(() => buildInvoiceTrend(totals.sales), [totals.sales]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -143,6 +147,19 @@ export function AnalyticsDashboardClient() {
         </CardHeader>
         <CardContent>
           <CostTrendChart data={salesTrend} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Invoice Trend (6 bulan)
+          </CardTitle>
+          <CardDescription>Nilai invoice diterbitkan vs dibayar per bulan.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <InvoiceTrendChart data={invoiceTrend} />
         </CardContent>
       </Card>
 
