@@ -115,6 +115,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Workflow Timeframe", href: "/master-timeframe", icon: GitBranch },
       { label: "Master Pricing", href: "/master-pricing", icon: Coins },
       { label: "Formula Engine", href: "/formula-engine", icon: FunctionSquare },
+      { label: "Master Lock & Versi", href: "/master-lock", icon: ShieldCheck },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
