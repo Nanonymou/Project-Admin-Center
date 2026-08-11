@@ -4,8 +4,10 @@ import { canAccessLocation } from "@/lib/personas";
 import {
   saveWorkflow,
   listWorkflowsForSite,
+  setWorkflowActive,
   type WorkflowActivityInput,
 } from "@/db/repositories/workflow-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { buildWorkflowsForSite, workflowTotalSla } from "@/lib/mock/workflow-config";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 
@@ -140,5 +142,60 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id, savedActivities: activities.length }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan workflow." }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/master-timeframe
+ * Body: { projectCode, locationId, subjectType, active }
+ *
+ * Toggles a workflow's active flag for a site + subject. An inactive workflow is
+ * retained (not deleted) so historical references stay intact, but is skipped by
+ * SLA monitoring. Leader/Super Admin or the site's own admin only.
+ */
+export async function PATCH(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+  }
+
+  const projectCode = typeof body.projectCode === "string" ? body.projectCode : "";
+  const locationId = typeof body.locationId === "string" ? body.locationId : "";
+  const subjectType = typeof body.subjectType === "string" ? body.subjectType : "";
+  const active = Boolean(body.active);
+
+  if (!projectCode || !locationId || !subjectType) {
+    return NextResponse.json(
+      { error: "projectCode, locationId, dan subjectType wajib diisi." },
+      { status: 400 },
+    );
+  }
+  if (persona.role === "viewer") {
+    return NextResponse.json({ error: "Viewer tidak dapat mengubah status." }, { status: 403 });
+  }
+  if (!canAccessLocation(persona, locationId, projectCode)) {
+    return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+
+  try {
+    await setWorkflowActive(locationId, subjectType, active);
+    await writeAuditLog({
+      locationId,
+      category: "master",
+      action: active ? "workflow.activate" : "workflow.deactivate",
+      actor: persona.name,
+      entityType: "master_workflow",
+      entityId: `${locationId}:${subjectType}`,
+      detail: active ? "Aktifkan workflow timeframe." : "Nonaktifkan workflow timeframe.",
+    });
+    return NextResponse.json({ ok: true, active });
+  } catch {
+    return NextResponse.json({ error: "Gagal mengubah status (database tidak tersedia)." }, { status: 503 });
   }
 }
