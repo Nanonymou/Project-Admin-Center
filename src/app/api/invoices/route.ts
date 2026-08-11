@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/services/invoice-calculation-service";
 import { recordInvoiceCreated } from "@/lib/server/services/invoice-audit-service";
 import { resolveFormulaOverrides } from "@/lib/server/services/formula-parameter-resolver";
+import { generateNextNumber } from "@/lib/server/services/number-generator-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -113,7 +114,9 @@ export async function POST(req: NextRequest) {
   }
 
   const locationId = typeof body.locationId === "string" ? body.locationId : "";
-  const number = typeof body.number === "string" ? body.number : "";
+  // Number is optional: when omitted, it is auto-generated below via the
+  // Automatic Number Generator (invoice format) after the access checks pass.
+  let number = typeof body.number === "string" ? body.number.trim() : "";
 
   // Validate & resolve the financial inputs (subtotal/deduction/bbm + optional
   // invoice type) through the shared server calculation validator; the invoice
@@ -122,8 +125,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   const { projectCode: projectId, subtotal, deduction, bbm } = parsed.value;
 
-  if (!locationId || !number) {
-    return NextResponse.json({ error: "locationId dan number wajib diisi." }, { status: 400 });
+  if (!locationId) {
+    return NextResponse.json({ error: "locationId wajib diisi." }, { status: 400 });
   }
 
   const authz = authorizeDashboard(persona, { projectId, locationId, scope: "tenant" });
@@ -132,6 +135,19 @@ export async function POST(req: NextRequest) {
   }
   if (!canAccessLocation(persona, locationId, projectId)) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+
+  // Auto-generate the invoice number when the client did not supply one, claiming
+  // the next value from the Automatic Number Generator's `invoice` format.
+  if (!number) {
+    const generated = await generateNextNumber("invoice");
+    if (!generated) {
+      return NextResponse.json(
+        { error: "number wajib diisi (format nomor invoice tidak tersedia)." },
+        { status: 400 },
+      );
+    }
+    number = generated.number;
   }
 
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
