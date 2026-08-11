@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Contact, Building2, Truck, Mail, Phone, MapPin, Search, Plus, Pencil } from "lucide-react";
+import { Contact, Building2, Truck, Mail, Phone, MapPin, Search, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,23 @@ export function CustomerVendorClient() {
 
   // Detail modal.
   const [detailParty, setDetailParty] = useState<CustomerVendor | null>(null);
+
+  // Deactivate confirmation (activation is immediate).
+  const [confirmParty, setConfirmParty] = useState<CustomerVendor | null>(null);
+
+  function setStatus(id: string, status: PartyStatus) {
+    setOverrides((prev) => ({ ...prev, [id]: { ...prev[id], status } }));
+  }
+
+  function requestToggle(p: CustomerVendor) {
+    if (p.status === "active") setConfirmParty(p);
+    else setStatus(p.id, "active");
+  }
+
+  function confirmDeactivate() {
+    if (confirmParty) setStatus(confirmParty.id, "inactive");
+    setConfirmParty(null);
+  }
 
   // Add/edit form state.
   const [formOpen, setFormOpen] = useState(false);
@@ -292,15 +309,35 @@ export function CustomerVendorClient() {
                         </td>
                         {editable && (
                           <td className="px-3 py-2 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEdit(p)}
-                              className="h-7 gap-1 px-2"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Ubah
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEdit(p)}
+                                className="h-7 gap-1 px-2"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Ubah
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => requestToggle(p)}
+                                className={`h-7 gap-1 px-2 ${p.status === "active" ? "text-rose-600" : "text-emerald-600"}`}
+                              >
+                                {p.status === "active" ? (
+                                  <>
+                                    <Ban className="h-3.5 w-3.5" />
+                                    Nonaktifkan
+                                  </>
+                                ) : (
+                                  <>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Aktifkan
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -419,6 +456,32 @@ export function CustomerVendorClient() {
             </dl>
           </div>
         )}
+      </Dialog>
+
+      <Dialog
+        open={confirmParty !== null}
+        onClose={() => setConfirmParty(null)}
+        title="Nonaktifkan Data?"
+        description={
+          confirmParty
+            ? `"${confirmParty.name}" tidak akan tersedia untuk dipilih pada transaksi baru sampai diaktifkan kembali.`
+            : undefined
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmParty(null)}>
+              Batal
+            </Button>
+            <Button variant="destructive" size="sm" onClick={confirmDeactivate}>
+              Nonaktifkan
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Data historis yang sudah memakai mitra ini tidak berubah. Anda dapat mengaktifkannya lagi kapan
+          saja.
+        </p>
       </Dialog>
     </div>
   );
