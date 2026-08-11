@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck, Send, Upload } from "lucide-react";
+import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck, Send, Upload, Handshake } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar, isInvoiceDeadline } from "@/components/calendar/deadline-calendar";
@@ -86,6 +86,17 @@ export function DashboardCalendarClient() {
     [allDeadlines],
   );
 
+  // Client approval reminders — payment-confirmation deadlines that await the
+  // client's sign-off/payment, most urgent first. These sit outside the internal
+  // approval flow (the counterparty acts), so they get their own reminder list.
+  const clientApprovals = useMemo(
+    () =>
+      allDeadlines
+        .filter((d) => d.kind === "payment" && d.status !== "settled")
+        .sort((a, b) => a.daysRelative - b.daysRelative),
+    [allDeadlines],
+  );
+
   // Invoice upload reminders — invoice-submit deadlines whose supporting-document
   // upload is not yet complete, most urgent (soonest, least ready) first.
   const uploadReminders = useMemo(
@@ -128,6 +139,41 @@ export function DashboardCalendarClient() {
         <SummaryTile icon={CalendarClock} label="≤ 3 hari" value={summary.dueSoon} tone="warning" />
         <SummaryTile icon={CheckCircle2} label="Selesai" value={summary.settled} tone="success" />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Handshake className="h-5 w-5 text-teal-600" />
+            Reminder Approval Client
+          </CardTitle>
+          <CardDescription>Menunggu konfirmasi/persetujuan pembayaran dari client, diurut paling mendesak.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {clientApprovals.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Tidak ada approval client tertunda.</p>
+          ) : (
+            <ul className="space-y-2">
+              {clientApprovals.map((d) => {
+                const meta = STATUS_META[d.status];
+                return (
+                  <li
+                    key={d.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-teal-200 bg-teal-50 p-2.5 text-sm"
+                  >
+                    <Handshake className="h-4 w-4 shrink-0 text-teal-600" />
+                    <span className="font-medium">{d.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {d.locationName} · {d.projectCode} · PIC {d.owner}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{d.dueLabel}</span>
+                    <Badge variant={meta.variant}>{meta.label}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
