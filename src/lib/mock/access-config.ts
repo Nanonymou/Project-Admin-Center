@@ -81,6 +81,16 @@ export function canViewAuditLog(role: PersonaRole): boolean {
   return role === "leader_admin" || role === "super_admin";
 }
 
+/**
+ * Whether a role may view the cross-site Project & Location Comparison. Comparing
+ * across projects/locations is a portfolio (leadership) view, so a single-site
+ * Site Admin and a Viewer are excluded. Single source of truth for the guard,
+ * mirrored by the nav deny-list.
+ */
+export function canViewComparison(role: PersonaRole): boolean {
+  return role === "leader_admin" || role === "super_admin";
+}
+
 /** The default landing route for a role — where a denied navigation redirects. */
 export function landingForRole(role: PersonaRole): string {
   switch (role) {
