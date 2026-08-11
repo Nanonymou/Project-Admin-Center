@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
+import { canAccessLocation } from "@/lib/personas";
 import { listNotifications } from "@/db/repositories/notification-repository";
 import { buildNotificationInbox } from "@/lib/server/services/notification-inbox-service";
 
@@ -19,7 +20,9 @@ export async function GET(req: NextRequest) {
   try {
     // A successful query (even zero unread) is authoritative; only a DB error
     // falls through to the config-derived count.
-    const unread = await listNotifications({ recipient: persona.id, unreadOnly: true });
+    const unread = (await listNotifications({ recipient: persona.id, unreadOnly: true })).filter(
+      (r) => !r.projectCode || canAccessLocation(persona, r.locationId ?? "", r.projectCode),
+    );
     return NextResponse.json({ source: "db", unread: unread.length });
   } catch {
     const count = buildNotificationInbox(persona).filter((n) => n.level !== "info").length;

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
+import { canAccessLocation } from "@/lib/personas";
 import { getNotificationById, setNotificationRead } from "@/db/repositories/notification-repository";
 import { buildNotificationInbox } from "@/lib/server/services/notification-inbox-service";
 
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (!row) throw new Error("not-found");
     if (row.recipient !== persona.id) {
       return NextResponse.json({ error: "Tidak ada akses ke notifikasi ini." }, { status: 403 });
+    }
+    // Per-site access: a site-scoped notification requires access to that site.
+    if (row.projectCode && !canAccessLocation(persona, row.locationId ?? "", row.projectCode)) {
+      return NextResponse.json({ error: "Tidak ada akses ke lokasi notifikasi ini." }, { status: 403 });
     }
     return NextResponse.json({
       source: "db",

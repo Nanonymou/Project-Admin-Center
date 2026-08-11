@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
+import { canAccessLocation } from "@/lib/personas";
 import { listNotifications } from "@/db/repositories/notification-repository";
 import { buildNotificationInbox } from "@/lib/server/services/notification-inbox-service";
 
@@ -23,7 +24,12 @@ export async function GET(req: NextRequest) {
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
 
   try {
-    const rows = await listNotifications({ recipient: persona.id, unreadOnly, limit });
+    // Per-site access filter: drop notifications tied to a site the persona can
+    // no longer access (a site-scoped row with no access is hidden; org-wide
+    // rows without a project/location stay visible).
+    const rows = (await listNotifications({ recipient: persona.id, unreadOnly, limit })).filter(
+      (r) => !r.projectCode || canAccessLocation(persona, r.locationId ?? "", r.projectCode),
+    );
     if (rows.length === 0) throw new Error("empty");
     return NextResponse.json({
       source: "db",
