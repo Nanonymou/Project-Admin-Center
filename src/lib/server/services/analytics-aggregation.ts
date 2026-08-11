@@ -127,3 +127,22 @@ export function buildRevenueGrowth(baseMonthly: number): RevenueGrowthPoint[] {
     growthPct: i === 0 ? 0 : revenues[i - 1] > 0 ? ((revenues[i] - revenues[i - 1]) / revenues[i - 1]) * 100 : 0,
   }));
 }
+
+export type OutstandingPoint = { month: string; outstanding: number };
+
+/**
+ * Deterministic 6-month outstanding-receivables trend from a base current
+ * balance. Mirrors the frontend chart's relative factors, last month = current.
+ */
+export function buildOutstandingTrend(baseOutstanding: number): OutstandingPoint[] {
+  const factors = [1.18, 1.1, 1.22, 1.05, 1.12, 1];
+  return MONTHS_6.map((month, i) => ({
+    month,
+    outstanding: Math.round((baseOutstanding * factors[i]) / 1000) * 1000,
+  }));
+}
+
+/** Total outstanding (aging) balance across a set of sites. */
+export function totalOutstandingOf(sites: SiteKpi[]): number {
+  return sites.reduce((s, x) => s + x.agingBuckets.reduce((a, b) => a + b.amount, 0), 0);
+}
