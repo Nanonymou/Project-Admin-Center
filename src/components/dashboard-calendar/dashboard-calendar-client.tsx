@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt } from "lucide-react";
+import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar, isInvoiceDeadline } from "@/components/calendar/deadline-calendar";
@@ -59,6 +59,13 @@ export function DashboardCalendarClient() {
     [scopedSites],
   );
 
+  // Approvals falling due today — surfaced prominently so a Leader doesn't miss
+  // them. Uses the approval-kind deadlines with a due-today status.
+  const approvalsDueToday = useMemo(
+    () => allDeadlines.filter((d) => d.kind === "approval" && d.status === "due_today"),
+    [allDeadlines],
+  );
+
   const [selectedDate, setSelectedDate] = useState<string>("");
   const dateDetail = useMemo(() => {
     if (!selectedDate) return null;
@@ -82,6 +89,44 @@ export function DashboardCalendarClient() {
         <SummaryTile icon={CalendarClock} label="≤ 3 hari" value={summary.dueSoon} tone="warning" />
         <SummaryTile icon={CheckCircle2} label="Selesai" value={summary.settled} tone="success" />
       </div>
+
+      <Card className={approvalsDueToday.length > 0 ? "border-amber-300" : undefined}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BadgeCheck className="h-5 w-5 text-amber-600" />
+            Approval Jatuh Tempo Hari Ini
+            {approvalsDueToday.length > 0 && (
+              <Badge variant="warning" className="ml-1">
+                {approvalsDueToday.length}
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>Persetujuan yang harus diselesaikan hari ini pada cakupan Anda.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {approvalsDueToday.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              Tidak ada approval yang jatuh tempo hari ini. 🎉
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {approvalsDueToday.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-sm"
+                >
+                  <BadgeCheck className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span className="font-medium">{d.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {d.locationName} · {d.projectCode} · PIC {d.owner}
+                  </span>
+                  <span className="ml-auto text-xs font-medium text-amber-700">{d.dueLabel}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
