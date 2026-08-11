@@ -3,6 +3,18 @@ import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { daysUntilCutOff } from "@/lib/mock/cutoff-config";
 import { insertReminderLogs } from "@/db/repositories/reminder-log-repository";
 import type { NewReminderLogRow } from "@/db/schema";
+import { PERSONAS, canAccessLocation } from "@/lib/personas";
+
+/**
+ * Recipients for a data-completeness cut-off reminder are the Site Admins
+ * responsible for entering that site's data — never Leaders/Finance/Viewers.
+ * Resolves the site_admin personas whose scope covers the location.
+ */
+function siteAdminRecipients(locationId: string, projectCode: string): string[] {
+  return PERSONAS.filter(
+    (p) => p.role === "site_admin" && canAccessLocation(p, locationId, projectCode),
+  ).map((p) => p.name);
+}
 
 /**
  * Cut-off reminder scheduler (Reminder Cut-Off Otomatis), driven by data
@@ -24,7 +36,10 @@ export type PlannedReminder = {
   level: "info" | "warning" | "critical";
   trigger: "h_minus_7" | "h_minus_3" | "h_minus_1" | "overdue" | "closing";
   title: string;
-  audience: "Leader" | "Site" | "Finance";
+  /** Data-completeness reminders always target the Site Admin audience. */
+  audience: "Site";
+  /** Resolved Site Admin recipient names for this site. */
+  recipients: string[];
   completenessPct: number;
   daysToCutOff: number;
 };
@@ -68,7 +83,9 @@ export function planCutOffReminders(sites: SiteKpi[] = SITE_KPI): PlannedReminde
     const level: PlannedReminder["level"] =
       days <= 0 ? "critical" : days <= 3 && completeness < 70 ? "warning" : days <= 3 ? "warning" : "info";
 
-    const audience: PlannedReminder["audience"] = days <= 1 ? "Leader" : "Site";
+    // Recipients are limited to the site's Site Admins; skip if none is assigned.
+    const recipients = siteAdminRecipients(site.locationId, site.projectCode);
+    if (recipients.length === 0) continue;
 
     out.push({
       locationId: site.locationId,
@@ -82,7 +99,8 @@ export function planCutOffReminders(sites: SiteKpi[] = SITE_KPI): PlannedReminde
           : days === 0
             ? `Cut-off hari ini — data ${completeness}% lengkap`
             : `Cut-off H-${days} — data ${completeness}% lengkap`,
-      audience,
+      audience: "Site",
+      recipients,
       completenessPct: completeness,
       daysToCutOff: days,
     });
