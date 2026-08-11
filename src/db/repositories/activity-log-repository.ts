@@ -11,6 +11,12 @@ export async function insertActivityLog(entry: NewActivityLogRow): Promise<void>
   await db.insert(activityLogs).values(entry);
 }
 
+/** Fetch a single activity log entry by id, or undefined. */
+export async function getActivityLogById(id: string): Promise<ActivityLogRow | undefined> {
+  const [row] = await db.select().from(activityLogs).where(eq(activityLogs.id, id)).limit(1);
+  return row;
+}
+
 export type ActivityLogFilter = {
   projectCode?: string;
   locationId?: string;
