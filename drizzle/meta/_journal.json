@@ -414,6 +414,13 @@
       "when": 1786435076249,
       "tag": "0058_master_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1786435588760,
+      "tag": "0059_meal_prices",
+      "breakpoints": true
     }
   ]
 }
