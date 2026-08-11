@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrencyCompact } from "@/lib/utils";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ShieldAlert } from "lucide-react";
+import { canViewComparison } from "@/lib/mock/access-config";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 
 type CompareMode = "project" | "location";
@@ -97,6 +98,8 @@ export function ComparisonClient() {
     }
   }
 
+  const canView = canViewComparison(persona.role);
+
   const scopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
@@ -165,6 +168,21 @@ export function ComparisonClient() {
     [rows, chartMetric],
   );
   const fmtMetric = (v: number) => (isPercentMetric ? `${v.toFixed(1)}%` : formatCurrencyCompact(v));
+
+  if (!canView) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Perbandingan Project & Lokasi" description="Perbandingan kinerja lintas site." />
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+            <ShieldAlert className="h-8 w-8 text-amber-500" />
+            <p className="text-sm font-medium">Perbandingan lintas site hanya untuk Leader / Super Admin.</p>
+            <p className="text-xs text-muted-foreground">Peran Anda dibatasi pada satu site.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   const maxValue = useMemo(
     () => Math.max(1, ...rows.flatMap((r) => [r.sales, r.cost])),
     [rows],
