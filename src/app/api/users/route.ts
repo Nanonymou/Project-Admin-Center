@@ -4,6 +4,7 @@ import { requirePersona } from "@/lib/server/rbac";
 import { PERSONAS } from "@/lib/personas";
 import { buildUsers } from "@/lib/mock/user-monitoring";
 import { validateRoleAssignable } from "@/lib/server/services/role-assignment-validation-service";
+import { enforceActiveRole } from "@/lib/server/services/effective-access-service";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +105,9 @@ export async function POST(req: NextRequest) {
   if (!persona.capabilities.canConfigure) {
     return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat menambah user." }, { status: 403 });
   }
+  // A caller whose own role was deactivated loses the right to add users.
+  const active = await enforceActiveRole(persona);
+  if (!active.ok) return NextResponse.json({ error: active.message }, { status: active.status });
 
   let body: Record<string, unknown>;
   try {

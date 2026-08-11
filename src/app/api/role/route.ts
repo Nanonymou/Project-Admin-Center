@@ -8,6 +8,7 @@ import {
   deleteCustomRole,
 } from "@/db/repositories/role-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { enforceActiveRole } from "@/lib/server/services/effective-access-service";
 import {
   listRoles as listConfigRoles,
   rbacModules,
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
   if (!persona.capabilities.canConfigure) {
     return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat mengubah role." }, { status: 403 });
   }
+  const activePost = await enforceActiveRole(persona);
+  if (!activePost.ok) return NextResponse.json({ error: activePost.message }, { status: activePost.status });
 
   let body: Record<string, unknown>;
   try {
@@ -123,6 +126,8 @@ export async function PATCH(req: NextRequest) {
   if (!persona.capabilities.canConfigure) {
     return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat mengubah status." }, { status: 403 });
   }
+  const activePatch = await enforceActiveRole(persona);
+  if (!activePatch.ok) return NextResponse.json({ error: activePatch.message }, { status: activePatch.status });
 
   let body: Record<string, unknown>;
   try {
@@ -162,6 +167,8 @@ export async function DELETE(req: NextRequest) {
   if (!persona.capabilities.canConfigure) {
     return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat menghapus role." }, { status: 403 });
   }
+  const activeDel = await enforceActiveRole(persona);
+  if (!activeDel.ok) return NextResponse.json({ error: activeDel.message }, { status: activeDel.status });
 
   const role = req.nextUrl.searchParams.get("role")?.trim() ?? "";
   if (!role) return NextResponse.json({ error: "role wajib diisi." }, { status: 400 });
