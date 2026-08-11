@@ -45,6 +45,26 @@ function overdueInvoiceNotifications(persona: Persona, sites: SiteKpi[]): NewNot
     }));
 }
 
+/**
+ * Invoice-paid notifications for one recipient's sites — a settled payment
+ * deadline means an invoice was paid, which is worth an informational notice
+ * (positive signal, not an alert).
+ */
+function paidInvoiceNotifications(persona: Persona, sites: SiteKpi[]): NewNotificationRow[] {
+  return buildDeadlines(sites)
+    .filter((d) => d.kind === "payment" && d.status === "settled")
+    .map((d) => ({
+      recipient: persona.id,
+      source: "system",
+      level: "info",
+      title: `Invoice dibayar — ${d.locationName}`,
+      detail: `Pembayaran invoice dikonfirmasi (${d.projectCode}).`,
+      href: "/invoices",
+      projectCode: d.projectCode,
+      locationId: d.locationId,
+    }));
+}
+
 export type GeneratorResult = { recipients: number; generated: number; persisted: number };
 
 /**
@@ -60,7 +80,11 @@ export async function runNotificationGenerator(): Promise<GeneratorResult> {
   for (const persona of PERSONAS) {
     const sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
     if (sites.length === 0) continue;
-    const personaRows = [...deadlineNotifications(persona, sites), ...overdueInvoiceNotifications(persona, sites)];
+    const personaRows = [
+      ...deadlineNotifications(persona, sites),
+      ...overdueInvoiceNotifications(persona, sites),
+      ...paidInvoiceNotifications(persona, sites),
+    ];
     if (personaRows.length > 0) recipients += 1;
     rows.push(...personaRows);
   }
