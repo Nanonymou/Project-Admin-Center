@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FunctionSquare, Building2, Percent, Clock, Fuel, Receipt } from "lucide-react";
+import { FunctionSquare, Building2, Receipt, Clock, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessProject } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -13,18 +16,50 @@ import { getTaxConfig } from "@/lib/mock/tax-config";
 import { getPenaltyConfig } from "@/lib/mock/penalty-config";
 import { getBbmConfig } from "@/lib/mock/bbm-config";
 
+/** A calculation parameter feeding the formula engine. */
+type ParamType = "percent" | "days" | "flag" | "flat";
+type CalcParam = {
+  key: string;
+  label: string;
+  group: string;
+  type: ParamType;
+  value: number; // flags stored as 0/1
+  builtin: boolean;
+};
+
+const TYPE_LABEL: Record<ParamType, string> = {
+  percent: "Persen",
+  days: "Hari",
+  flag: "Ya/Tidak",
+  flat: "Nominal",
+};
+
 const pct = (f: number) => `${(f * 100).toFixed((f * 100) % 1 === 0 ? 0 : 1)}%`;
 
+function formatValue(p: CalcParam): string {
+  switch (p.type) {
+    case "percent":
+      return pct(p.value);
+    case "days":
+      return `${p.value} hari`;
+    case "flag":
+      return p.value ? "Ya" : "Tidak";
+    default:
+      return new Intl.NumberFormat("id-ID").format(p.value);
+  }
+}
+
 /**
- * Formula Engine — the config-driven overview of the financial formula
- * parameters per project (PRD §Formula Builder / Tax Engine): tax (PPN/PB1),
- * late-payment penalty, and the BBM fuel surcharge. Each project composes its
- * Net Invoice / Penalty formulas from these data-driven components — no
- * hardcoded `if (project === …)`. Read-only overview; parameter editing is a
- * later task. Persona-scoped by project access.
+ * Formula Engine — the config-driven registry of financial calculation
+ * parameters per project (PRD §Formula Builder / Tax Engine). Built-in
+ * parameters are seeded from the tax / penalty / BBM config; leaders/super
+ * admins can add custom parameters, edit values, and deactivate them
+ * (session-local). The Net Invoice / Penalty formulas are composed from the
+ * active parameter values — no hardcoded per-project branches. Persona-scoped.
  */
 export function FormulaEngineClient() {
   const { persona } = usePersona();
+  const editable = persona.capabilities.canConfigure;
 
   const projects = useMemo(() => {
     const map = new Map<string, string>();
@@ -36,6 +71,106 @@ export function FormulaEngineClient() {
 
   const [projIndex, setProjIndex] = useState(0);
   const project = projects[projIndex] ?? projects[0];
+  const projectCode = project?.projectCode ?? "";
+
+  // Session-local: custom params, value overrides, and deactivated keys per project.
+  const [customParams, setCustomParams] = useState<Record<string, CalcParam[]>>({});
+  const [valueOverrides, setValueOverrides] = useState<Record<string, Record<string, number>>>({});
+  const [inactive, setInactive] = useState<Record<string, string[]>>({});
+
+  const baseParams: CalcParam[] = useMemo(() => {
+    if (!project) return [];
+    const tax = getTaxConfig(project.projectCode);
+    const penalty = getPenaltyConfig(project.projectCode);
+    const bbm = getBbmConfig(project.projectCode);
+    return [
+      { key: "tax_rate", label: `${tax.code} — Tarif Pajak`, group: "Pajak", type: "percent", value: tax.rate, builtin: true },
+      { key: "penalty_rate", label: "Penalty per Bulan", group: "Penalty", type: "percent", value: penalty.monthlyRate, builtin: true },
+      { key: "penalty_grace", label: "Grace Period", group: "Penalty", type: "days", value: penalty.graceDays, builtin: true },
+      { key: "bbm_applies", label: "BBM Berlaku", group: "BBM", type: "flag", value: bbm.applies ? 1 : 0, builtin: true },
+      { key: "bbm_taxable", label: "BBM Kena Pajak", group: "BBM", type: "flag", value: bbm.taxable ? 1 : 0, builtin: true },
+    ];
+  }, [project]);
+
+  const projOverrides = valueOverrides[projectCode] ?? {};
+  const projInactive = inactive[projectCode] ?? [];
+  const isInactive = (key: string) => projInactive.includes(key);
+  const isEdited = (key: string) => key in projOverrides;
+
+  const params: CalcParam[] = useMemo(() => {
+    const merged = [...baseParams, ...(customParams[projectCode] ?? [])];
+    return merged.map((p) => (p.key in projOverrides ? { ...p, value: projOverrides[p.key] } : p));
+  }, [baseParams, customParams, projectCode, projOverrides]);
+
+  const valueOf = (key: string) => params.find((p) => p.key === key)?.value ?? 0;
+  const activeValue = (key: string) => (isInactive(key) ? 0 : valueOf(key));
+
+  // Form state.
+  const [formOpen, setFormOpen] = useState(false);
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editType, setEditType] = useState<ParamType>("percent");
+  const [formLabel, setFormLabel] = useState("");
+  const [formGroup, setFormGroup] = useState("");
+  const [formType, setFormType] = useState<ParamType>("percent");
+  const [formValue, setFormValue] = useState("");
+
+  function openAdd() {
+    setEditKey(null);
+    setFormLabel("");
+    setFormGroup("");
+    setFormType("percent");
+    setFormValue("");
+    setFormOpen(true);
+  }
+
+  function openEdit(p: CalcParam) {
+    setEditKey(p.key);
+    setEditType(p.type);
+    setFormLabel(p.label);
+    setFormGroup(p.group);
+    setFormType(p.type);
+    // percent shown as whole number for editing convenience
+    setFormValue(p.type === "percent" ? String(Math.round(p.value * 1000) / 10) : String(p.value));
+  }
+
+  /** Convert the raw form input into the stored numeric value for a type. */
+  function toStored(type: ParamType, raw: string): number {
+    const n = Number(raw) || 0;
+    if (type === "percent") return Math.max(0, n / 100);
+    if (type === "flag") return n ? 1 : 0;
+    return Math.max(0, n);
+  }
+
+  function saveForm() {
+    const label = formLabel.trim();
+    if (!editKey && !label) return;
+    if (editKey) {
+      setValueOverrides((prev) => ({
+        ...prev,
+        [projectCode]: { ...(prev[projectCode] ?? {}), [editKey]: toStored(editType, formValue) },
+      }));
+    } else {
+      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+      const param: CalcParam = {
+        key,
+        label,
+        group: formGroup.trim() || "Lainnya",
+        type: formType,
+        value: toStored(formType, formValue),
+        builtin: false,
+      };
+      setCustomParams((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), param] }));
+    }
+    setFormOpen(false);
+  }
+
+  function toggleActive(key: string) {
+    setInactive((prev) => {
+      const cur = prev[projectCode] ?? [];
+      const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+      return { ...prev, [projectCode]: next };
+    });
+  }
 
   if (!project) {
     return (
@@ -46,18 +181,16 @@ export function FormulaEngineClient() {
     );
   }
 
-  const tax = getTaxConfig(project.projectCode);
-  const penalty = getPenaltyConfig(project.projectCode);
-  const bbm = getBbmConfig(project.projectCode);
-
-  const netFormula = `Net Invoice = (Gross − Backcharge${bbm.applies ? " + BBM" : ""}) × (1 + ${tax.code} ${pct(tax.rate)})`;
-  const penaltyFormula = `Penalty = ceil(hari overdue − ${penalty.graceDays} / 30) × ${pct(penalty.monthlyRate)} × Net`;
+  const taxCode = getTaxConfig(project.projectCode).code;
+  const bbmOn = activeValue("bbm_applies") === 1;
+  const netFormula = `Net Invoice = (Gross − Backcharge${bbmOn ? " + BBM" : ""}) × (1 + ${taxCode} ${pct(activeValue("tax_rate"))})`;
+  const penaltyFormula = `Penalty = ceil((hari overdue − ${activeValue("penalty_grace")}) / 30) × ${pct(activeValue("penalty_rate"))} × Net`;
 
   return (
     <div>
       <PageHeader
         title="Formula Engine"
-        description="Konfigurasi rumus finansial per proyek (config-driven)."
+        description="Registry parameter perhitungan finansial per proyek (config-driven)."
         breadcrumbs={[{ label: "Master Data" }, { label: "Formula Engine" }]}
       />
 
@@ -78,69 +211,100 @@ export function FormulaEngineClient() {
               </option>
             ))}
           </select>
+          {editable && (
+            <Button size="sm" onClick={openAdd} className="ml-auto gap-1.5">
+              <Plus className="h-4 w-4" />
+              Tambah Parameter
+            </Button>
+          )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Percent className="h-4 w-4 text-sky-500" />
-                Pajak
-              </CardTitle>
-              <CardDescription>Master Tax Engine</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <Row label="Jenis" value={<Badge variant="info">{tax.code}</Badge>} />
-              <Row label="Label" value={tax.label} />
-              <Row label="Tarif" value={<span className="font-semibold tabular-nums">{pct(tax.rate)}</span>} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-amber-500" />
-                Penalty Keterlambatan
-              </CardTitle>
-              <CardDescription>Per bulan overdue</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <Row
-                label="Tarif / bulan"
-                value={<span className="font-semibold tabular-nums">{pct(penalty.monthlyRate)}</span>}
-              />
-              <Row label="Grace period" value={`${penalty.graceDays} hari`} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Fuel className="h-4 w-4 text-emerald-500" />
-                Surcharge BBM
-              </CardTitle>
-              <CardDescription>Bahan bakar</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <Row
-                label="Berlaku"
-                value={<Badge variant={bbm.applies ? "success" : "muted"}>{bbm.applies ? "Ya" : "Tidak"}</Badge>}
-              />
-              <Row
-                label="Kena pajak"
-                value={<Badge variant={bbm.taxable ? "info" : "muted"}>{bbm.taxable ? "Ya" : "Tidak"}</Badge>}
-              />
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FunctionSquare className="h-4 w-4 text-primary" />
+              Parameter Perhitungan — {project.projectName}
+            </CardTitle>
+            <CardDescription>Nilai parameter yang menyusun rumus finansial proyek ini.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Parameter</th>
+                    <th className="px-3 py-2 font-medium">Grup</th>
+                    <th className="px-3 py-2 font-medium">Tipe</th>
+                    <th className="px-3 py-2 text-right font-medium">Nilai</th>
+                    {editable && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {params.map((p) => {
+                    const off = isInactive(p.key);
+                    return (
+                      <tr key={p.key} className={`border-b last:border-b-0 ${off ? "opacity-50" : ""}`}>
+                        <td className="px-3 py-2 font-medium">
+                          <span className={off ? "line-through" : ""}>{p.label}</span>
+                          {!p.builtin && <Badge variant="success" className="ml-2">Kustom</Badge>}
+                          {isEdited(p.key) && <Badge variant="warning" className="ml-2">Diubah</Badge>}
+                          {off && <Badge variant="danger" className="ml-2">Nonaktif</Badge>}
+                        </td>
+                        <td className="px-3 py-2 text-xs">{p.group}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant="muted">{TYPE_LABEL[p.type]}</Badge>
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatValue(p)}</td>
+                        {editable && (
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEdit(p)}
+                                disabled={off}
+                                className="h-7 gap-1 px-2"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Ubah
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleActive(p.key)}
+                                className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
+                              >
+                                {off ? (
+                                  <>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Aktifkan
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="h-3.5 w-3.5" />
+                                    Nonaktifkan
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FunctionSquare className="h-4 w-4 text-primary" />
-              Rumus Efektif — {project.projectName}
+              Rumus Efektif
             </CardTitle>
-            <CardDescription>Rumus tersusun otomatis dari parameter di atas (config-driven).</CardDescription>
+            <CardDescription>Tersusun otomatis dari parameter aktif di atas.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <FormulaRow icon={Receipt} label="Net Invoice" formula={netFormula} />
@@ -148,15 +312,71 @@ export function FormulaEngineClient() {
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
-}
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-sm">{value}</span>
+      <Dialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editKey ? "Ubah Parameter" : "Tambah Parameter"}
+        description={`Parameter perhitungan untuk proyek ${project.projectName}.`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveForm} disabled={!editKey && !formLabel.trim()}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          {!editKey && (
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Nama Parameter</label>
+                <Input value={formLabel} onChange={(e) => setFormLabel(e.target.value)} placeholder="mis. Management Fee" className="h-9" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Grup</label>
+                  <Input value={formGroup} onChange={(e) => setFormGroup(e.target.value)} placeholder="mis. Fee" className="h-9" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Tipe</label>
+                  <select
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value as ParamType)}
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="percent">Persen</option>
+                    <option value="flat">Nominal</option>
+                    <option value="days">Hari</option>
+                    <option value="flag">Ya/Tidak</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Nilai{" "}
+              {(editKey ? editType : formType) === "percent"
+                ? "(%)"
+                : (editKey ? editType : formType) === "flag"
+                  ? "(1 = Ya, 0 = Tidak)"
+                  : ""}
+            </label>
+            <Input
+              type="number"
+              min={0}
+              value={formValue}
+              onChange={(e) => setFormValue(e.target.value)}
+              placeholder="0"
+              className="h-9 tabular-nums"
+            />
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
