@@ -12,7 +12,7 @@ import {
   upsertSystemParameter,
   recordSystemParameterChange,
 } from "@/db/repositories/system-parameter-repository";
-import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { recordDataChange } from "@/lib/server/services/change-audit-service";
 
 export const dynamic = "force-dynamic";
 
@@ -122,13 +122,15 @@ export async function PATCH(req: NextRequest) {
     const beforeValue = existing?.value ?? serialize(param.value);
     await upsertSystemParameter(key, serialized, persona.name);
     await recordSystemParameterChange({ key, beforeValue, afterValue: serialized, changedBy: persona.name });
-    await writeAuditLog({
+    // Central change audit with before/after for the Audit Log comparison view.
+    await recordDataChange(persona, {
       category: "system",
       action: "parameter.update",
-      actor: persona.name,
       entityType: "system_parameter",
       entityId: key,
-      detail: `Ubah "${param.label}" → ${serialized}`,
+      detail: `Ubah "${param.label}"`,
+      before: beforeValue,
+      after: serialized,
     });
     return NextResponse.json({ ok: true, key, value: coerceValue(param, serialized) });
   } catch {

@@ -120,6 +120,7 @@ export const config = {
     "/api/cutoff-policy/:path*",
     "/api/attachments/:path*",
     "/api/project-performance/:path*",
+    "/api/comparison/:path*",
     "/api/recycle-bin/:path*",
     "/api/users/:path*",
     "/api/storage/:path*",

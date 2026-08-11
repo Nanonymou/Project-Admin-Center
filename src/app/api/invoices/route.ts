@@ -9,6 +9,7 @@ import {
 import { recordInvoiceCreated } from "@/lib/server/services/invoice-audit-service";
 import { resolveFormulaOverrides } from "@/lib/server/services/formula-parameter-resolver";
 import { generateNextNumber } from "@/lib/server/services/number-generator-service";
+import { recordActivity } from "@/lib/server/services/activity-recorder-service";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -201,6 +202,14 @@ export async function POST(req: NextRequest) {
     } catch {
       /* audit logging is best-effort */
     }
+    // Operational activity feed (Activity Log) — best-effort.
+    await recordActivity(persona, {
+      action: "create",
+      target: `Invoice ${invoice.number}`,
+      projectCode: projectId,
+      locationId,
+      detail: `Invoice ${invoice.number} dibuat (total ${calc.total}).`,
+    });
     revalidateKpi();
     return NextResponse.json({ source: "db", invoice, calc }, { status: 201 });
   } catch (err) {

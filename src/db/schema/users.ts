@@ -26,6 +26,8 @@ export const users = pgTable(
   (t) => ({
     emailIdx: uniqueIndex("users_email_idx").on(t.email),
     roleIdx: index("users_role_idx").on(t.role),
+    // Search index on the user's name (global search matches by name).
+    nameIdx: index("users_name_idx").on(t.name),
   }),
 );
 

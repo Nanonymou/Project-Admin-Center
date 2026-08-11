@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { NAV_SECTIONS } from "@/lib/mock/nav";
+import { isPathAllowedForRole } from "@/lib/mock/access-config";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { listManagedUsers } from "@/lib/mock/rbac";
 import { listCustomerVendors } from "@/lib/mock/customer-vendor";
@@ -61,6 +62,7 @@ export function GlobalSearchClient() {
 
     for (const section of NAV_SECTIONS) {
       for (const item of section.items) {
+        if (!isPathAllowedForRole(persona.role, item.href)) continue;
         out.push({
           id: `page-${item.href}`,
           kind: "page",

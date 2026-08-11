@@ -498,6 +498,41 @@
       "when": 1786460571893,
       "tag": "0070_master_taxes",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786477491238,
+      "tag": "0071_activity_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786477558621,
+      "tag": "0072_reminder_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786478390067,
+      "tag": "0073_audit_logs_before_after",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786481393773,
+      "tag": "0074_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786482956980,
+      "tag": "0075_search_name_indexes",
+      "breakpoints": true
     }
   ]
 }
