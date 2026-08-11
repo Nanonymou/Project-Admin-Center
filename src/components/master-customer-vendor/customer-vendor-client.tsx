@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { CustomerVendorSelect } from "@/components/master-customer-vendor/customer-vendor-select";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   listCustomerVendors,
@@ -71,6 +72,10 @@ export function CustomerVendorClient() {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<PartyType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<PartyStatus | "all">("all");
+
+  // Reusable-picker preview.
+  const [previewId, setPreviewId] = useState("");
+  const previewParty = all.find((p) => p.id === previewId);
 
   // Detail modal.
   const [detailParty, setDetailParty] = useState<CustomerVendor | null>(null);
@@ -346,6 +351,40 @@ export function CustomerVendorClient() {
                 </tbody>
               </table>
             </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Pratinjau Pemilih (Reusable)</CardTitle>
+            <CardDescription>
+              Komponen pemilih ini hanya menampilkan data aktif — dipakai ulang di form invoice/pembelian.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid max-w-md gap-3">
+              <CustomerVendorSelect
+                label="Pilih Customer"
+                type="customer"
+                value={previewId}
+                onChange={setPreviewId}
+              />
+              <CustomerVendorSelect
+                label="Pilih Vendor"
+                type="vendor"
+                value={previewId}
+                onChange={setPreviewId}
+              />
+            </div>
+            {previewParty && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant={PARTY_TYPE_META[previewParty.type].variant}>
+                  {PARTY_TYPE_META[previewParty.type].label}
+                </Badge>
+                <span className="font-medium">{previewParty.name}</span>
+                <span className="text-muted-foreground">· {previewParty.city}</span>
+              </div>
             )}
           </CardContent>
         </Card>
