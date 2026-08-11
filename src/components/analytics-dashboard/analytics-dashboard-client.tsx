@@ -12,6 +12,7 @@ import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-char
 import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
 import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
 import { ApprovalTrendChart, buildApprovalTrend } from "@/components/analytics-dashboard/approval-trend-chart";
+import { RevenueGrowthChart, buildRevenueGrowth } from "@/components/analytics-dashboard/revenue-growth-chart";
 import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown, LayoutGrid } from "lucide-react";
 import { formatCurrencyCompact } from "@/lib/utils";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -103,6 +104,7 @@ export function AnalyticsDashboardClient() {
   );
 
   const invoiceTrend = useMemo(() => buildInvoiceTrend(totals.sales), [totals.sales]);
+  const revenueGrowth = useMemo(() => buildRevenueGrowth(totals.sales), [totals.sales]);
 
   const pendingTotal = useMemo(
     () => scopedSites.reduce((s, x) => s + x.pendingApprovals, 0),
@@ -159,6 +161,19 @@ export function AnalyticsDashboardClient() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Revenue Growth (6 bulan)
+          </CardTitle>
+          <CardDescription>Pendapatan bulanan dan pertumbuhan month-over-month.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RevenueGrowthChart data={revenueGrowth} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
