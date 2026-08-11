@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck } from "lucide-react";
+import { CalendarDays, AlarmClock, CalendarClock, AlertTriangle, CheckCircle2, Receipt, BadgeCheck, Send } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { DeadlineCalendar, isInvoiceDeadline } from "@/components/calendar/deadline-calendar";
@@ -75,6 +75,17 @@ export function DashboardCalendarClient() {
     [allDeadlines],
   );
 
+  // Document-delivery reminders — deadlines that require sending documents to a
+  // counterparty (invoice submission to client, audit support docs), upcoming
+  // first. Distinct from internal approvals.
+  const documentDeliveries = useMemo(
+    () =>
+      allDeadlines
+        .filter((d) => (d.kind === "invoice_submit" || d.kind === "audit") && d.status !== "settled")
+        .sort((a, b) => a.daysRelative - b.daysRelative),
+    [allDeadlines],
+  );
+
   // Invoice deadlines falling within the next 7 days, with an estimated total.
   const invoiceThisWeek = useMemo(() => {
     const items = allDeadlines
@@ -107,6 +118,41 @@ export function DashboardCalendarClient() {
         <SummaryTile icon={CalendarClock} label="≤ 3 hari" value={summary.dueSoon} tone="warning" />
         <SummaryTile icon={CheckCircle2} label="Selesai" value={summary.settled} tone="success" />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Send className="h-5 w-5 text-indigo-600" />
+            Reminder Pengiriman Dokumen
+          </CardTitle>
+          <CardDescription>Tenggat pengiriman dokumen ke pihak eksternal (invoice ke client, dukungan audit).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {documentDeliveries.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Tidak ada pengiriman dokumen terjadwal.</p>
+          ) : (
+            <ul className="space-y-2">
+              {documentDeliveries.map((d) => {
+                const meta = STATUS_META[d.status];
+                return (
+                  <li
+                    key={d.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 p-2.5 text-sm"
+                  >
+                    <Send className="h-4 w-4 shrink-0 text-indigo-600" />
+                    <span className="font-medium">{d.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {d.locationName} · {d.projectCode} · PIC {d.owner}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{d.dueLabel}</span>
+                    <Badge variant={meta.variant}>{meta.label}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
