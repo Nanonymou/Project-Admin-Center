@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bell, BellOff, Check, Filter, MapPin } from "lucide-react";
+import { Bell, BellOff, Check, Filter, MapPin, History, Mail, MessageSquare, Smartphone } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,14 @@ import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
-import { buildReminders, reminderTriggerLabel, type ReminderLevel, type ReminderItem } from "@/lib/mock/reminders";
+import {
+  buildReminders,
+  buildReminderHistory,
+  reminderTriggerLabel,
+  type ReminderLevel,
+  type ReminderItem,
+  type ReminderHistoryEntry,
+} from "@/lib/mock/reminders";
 
 const LEVEL_META: Record<ReminderLevel, { label: string; variant: "info" | "warning" | "danger" }> = {
   info: { label: "Info", variant: "info" },
@@ -37,6 +44,12 @@ export function NotificationCenterClient() {
     [accessibleSites],
   );
 
+  const history = useMemo(
+    () => accessibleSites.flatMap((s) => buildReminderHistory(s)).sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
+    [accessibleSites],
+  );
+
+  const [tab, setTab] = useState<"active" | "history">("active");
   const [levelFilter, setLevelFilter] = useState<"all" | ReminderLevel>("all");
   const [acked, setAcked] = useState<Record<string, boolean>>({});
 
@@ -57,6 +70,32 @@ export function NotificationCenterClient() {
       />
       <PersonaBanner persona={persona} scopeSummary={`${accessibleSites.length} site accessible`} />
 
+      <div className="inline-flex rounded-lg border p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setTab("active")}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-3 py-1",
+            tab === "active" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
+          )}
+        >
+          <Bell className="h-4 w-4" /> Aktif
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("history")}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-3 py-1",
+            tab === "history" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
+          )}
+        >
+          <History className="h-4 w-4" /> Riwayat
+        </button>
+      </div>
+
+      {tab === "history" ? (
+        <ReminderHistoryCard history={history} siteCount={accessibleSites.length} />
+      ) : (
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -107,7 +146,82 @@ export function NotificationCenterClient() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
+  );
+}
+
+const HISTORY_STATUS_META: Record<
+  ReminderHistoryEntry["status"],
+  { label: string; variant: "info" | "success" | "warning" }
+> = {
+  sent: { label: "Terkirim", variant: "info" },
+  acknowledged: { label: "Dibaca", variant: "success" },
+  escalated: { label: "Eskalasi", variant: "warning" },
+};
+
+const CHANNEL_ICON = {
+  email: Mail,
+  "in-app": MessageSquare,
+  whatsapp: Smartphone,
+} as const;
+
+function ReminderHistoryCard({
+  history,
+  siteCount,
+}: {
+  history: ReminderHistoryEntry[];
+  siteCount: number;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          Riwayat Reminder
+        </CardTitle>
+        <CardDescription>
+          {history.length} reminder terkirim · {siteCount} site
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {history.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Belum ada riwayat reminder.</p>
+        ) : (
+          <ol className="space-y-3">
+            {history.map((h) => {
+              const status = HISTORY_STATUS_META[h.status];
+              const ChannelIcon = CHANNEL_ICON[h.channel];
+              return (
+                <li key={h.id} className="flex items-start gap-3 rounded-lg border p-3">
+                  <Badge variant={status.variant} className="mt-0.5 shrink-0">
+                    {status.label}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-medium">{h.title}</span>
+                      <span className="text-xs text-muted-foreground">· {reminderTriggerLabel(h.trigger)}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{h.sentRelative}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <ChannelIcon className="h-3 w-3" />
+                        {h.channel}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {h.locationName} · {h.projectCode}
+                      </span>
+                      <span>Untuk: {h.audience}</span>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
