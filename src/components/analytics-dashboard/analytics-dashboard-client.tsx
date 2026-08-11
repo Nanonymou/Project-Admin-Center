@@ -9,6 +9,7 @@ import { KpiCard } from "@/components/common/kpi-card";
 import { ProfitBySiteChart } from "@/components/margin/profit-by-site-chart";
 import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-chart";
+import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -67,6 +68,21 @@ export function AnalyticsDashboardClient() {
     });
   }, [scopedSites]);
 
+  const profitTrend = useMemo<ProfitTrendPoint[]>(
+    () =>
+      salesTrend.map((d) => {
+        const profit = d.sales - d.cost;
+        return {
+          month: d.date,
+          sales: d.sales,
+          cost: d.cost,
+          profit,
+          marginPct: d.sales > 0 ? (profit / d.sales) * 100 : 0,
+        };
+      }),
+    [salesTrend],
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -96,6 +112,23 @@ export function AnalyticsDashboardClient() {
             <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada data tren pada cakupan Anda.</p>
           ) : (
             <SalesCostChart data={salesTrend} />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Profit Trend (7 hari)
+          </CardTitle>
+          <CardDescription>Profit harian agregat dengan margin % lintas site.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {profitTrend.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada data tren pada cakupan Anda.</p>
+          ) : (
+            <ProfitTrendChart data={profitTrend} />
           )}
         </CardContent>
       </Card>
