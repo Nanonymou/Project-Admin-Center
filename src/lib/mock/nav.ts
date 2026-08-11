@@ -118,6 +118,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Master Pricing", href: "/master-pricing", icon: Coins },
       { label: "Formula Engine", href: "/formula-engine", icon: FunctionSquare },
       { label: "Master Tax", href: "/master-tax", icon: Landmark },
+      { label: "Pajak per Project", href: "/master-tax-project", icon: Landmark },
       { label: "Master Lock & Versi", href: "/master-lock", icon: ShieldCheck },
       { label: "Penomoran Dokumen", href: "/number-generator", icon: Hash },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
