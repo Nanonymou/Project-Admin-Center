@@ -11,7 +11,8 @@ import { SalesCostChart } from "@/components/site/sales-cost-chart";
 import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-chart";
 import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
 import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
-import { FileText } from "lucide-react";
+import { ApprovalTrendChart, buildApprovalTrend } from "@/components/analytics-dashboard/approval-trend-chart";
+import { FileText, BadgeCheck } from "lucide-react";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -87,6 +88,12 @@ export function AnalyticsDashboardClient() {
 
   const invoiceTrend = useMemo(() => buildInvoiceTrend(totals.sales), [totals.sales]);
 
+  const pendingTotal = useMemo(
+    () => scopedSites.reduce((s, x) => s + x.pendingApprovals, 0),
+    [scopedSites],
+  );
+  const approvalTrend = useMemo(() => buildApprovalTrend(pendingTotal + scopedSites.length * 4), [pendingTotal, scopedSites.length]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -147,6 +154,19 @@ export function AnalyticsDashboardClient() {
         </CardHeader>
         <CardContent>
           <CostTrendChart data={salesTrend} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BadgeCheck className="h-5 w-5" />
+            Approval Trend (6 minggu)
+          </CardTitle>
+          <CardDescription>Jumlah approval disetujui vs pending per minggu.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ApprovalTrendChart data={approvalTrend} />
         </CardContent>
       </Card>
 
