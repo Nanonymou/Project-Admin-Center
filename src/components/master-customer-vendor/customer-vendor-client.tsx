@@ -72,6 +72,9 @@ export function CustomerVendorClient() {
   const [typeFilter, setTypeFilter] = useState<PartyType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<PartyStatus | "all">("all");
 
+  // Detail modal.
+  const [detailParty, setDetailParty] = useState<CustomerVendor | null>(null);
+
   // Add/edit form state.
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -251,7 +254,13 @@ export function CustomerVendorClient() {
                       <tr key={p.id} className="border-b last:border-b-0 align-top">
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{p.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setDetailParty(p)}
+                              className="text-left font-medium text-primary hover:underline"
+                            >
+                              {p.name}
+                            </button>
                             {p.id.startsWith("party-custom-") && <Badge variant="success">Kustom</Badge>}
                             {isEdited(p.id) && <Badge variant="warning">Diubah</Badge>}
                           </div>
@@ -374,6 +383,63 @@ export function CustomerVendorClient() {
           </div>
         </div>
       </Dialog>
+
+      <Dialog
+        open={detailParty !== null}
+        onClose={() => setDetailParty(null)}
+        title={detailParty?.name}
+        description={
+          detailParty
+            ? `${PARTY_TYPE_META[detailParty.type].label} · ${detailParty.code}`
+            : undefined
+        }
+        className="max-w-lg"
+      >
+        {detailParty && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={PARTY_TYPE_META[detailParty.type].variant}>
+                {PARTY_TYPE_META[detailParty.type].label}
+              </Badge>
+              <Badge variant={PARTY_STATUS_META[detailParty.status].variant}>
+                {PARTY_STATUS_META[detailParty.status].label}
+              </Badge>
+              <Badge variant="muted">{detailParty.category}</Badge>
+            </div>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+              <DetailRow icon={Contact} label="Kontak (PIC)" value={detailParty.contactPerson} />
+              <DetailRow icon={Phone} label="Telepon" value={detailParty.phone} />
+              <DetailRow icon={Mail} label="Email" value={detailParty.email} />
+              <DetailRow icon={MapPin} label="Kota" value={detailParty.city} />
+              <DetailRow label="NPWP" value={detailParty.npwp} />
+              <DetailRow label="Terdaftar" value={detailParty.createdAt} />
+              <div className="sm:col-span-2">
+                <DetailRow icon={MapPin} label="Alamat" value={detailParty.address} />
+              </div>
+            </dl>
+          </div>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon?: typeof Contact;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <dt className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+        {Icon && <Icon className="h-3 w-3" />}
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-sm">{value || "—"}</dd>
     </div>
   );
 }
