@@ -48,3 +48,4 @@ export * from "./meal-prices";
 export * from "./meal-price-history";
 export * from "./invoice-types";
 export * from "./system-parameters";
+export * from "./roles";
