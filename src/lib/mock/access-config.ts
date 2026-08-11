@@ -70,6 +70,16 @@ export function isPathAllowedForRole(role: PersonaRole, pathname: string): boole
   return true;
 }
 
+/**
+ * Whether a role may view the Audit Log (system/security trail). Restricted to
+ * Leader Admin / Super Admin — a Site Admin or Viewer must never see privileged
+ * configuration/security events. Single source of truth for the Audit Log guard,
+ * consumed by the page and mirrored by the nav deny-list.
+ */
+export function canViewAuditLog(role: PersonaRole): boolean {
+  return role === "leader_admin" || role === "super_admin";
+}
+
 /** The default landing route for a role — where a denied navigation redirects. */
 export function landingForRole(role: PersonaRole): string {
   switch (role) {

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { cn } from "@/lib/utils";
+import { canViewAuditLog } from "@/lib/mock/access-config";
 import {
   buildSystemAuditLog,
   AUDIT_CATEGORY_META,
@@ -24,7 +25,7 @@ import {
  */
 export function AuditLogClient() {
   const { persona } = usePersona();
-  const canView = persona.role === "leader_admin" || persona.role === "super_admin";
+  const canView = canViewAuditLog(persona.role);
 
   const entries = useMemo(() => buildSystemAuditLog(), []);
   const [categoryFilter, setCategoryFilter] = useState<"all" | AuditCategory>("all");
