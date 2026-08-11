@@ -44,3 +44,22 @@ export async function upsertMasterCategory(values: NewMasterCategory): Promise<v
       },
     });
 }
+
+/** Activate/deactivate a master category by (projectCode, kind, categoryKey). */
+export async function setMasterCategoryActive(
+  projectCode: string,
+  kind: "sales" | "cost",
+  categoryKey: string,
+  active: boolean,
+): Promise<void> {
+  await db
+    .update(masterCategories)
+    .set({ active, updatedAt: new Date() })
+    .where(
+      and(
+        eq(masterCategories.projectCode, projectCode),
+        eq(masterCategories.kind, kind),
+        eq(masterCategories.categoryKey, categoryKey),
+      ),
+    );
+}
