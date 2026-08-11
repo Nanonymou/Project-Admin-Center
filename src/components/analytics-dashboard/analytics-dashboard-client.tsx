@@ -13,6 +13,8 @@ import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/pro
 import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
 import { ApprovalTrendChart, buildApprovalTrend } from "@/components/analytics-dashboard/approval-trend-chart";
 import { RevenueGrowthChart, buildRevenueGrowth } from "@/components/analytics-dashboard/revenue-growth-chart";
+import { OutstandingTrendChart, buildOutstandingTrend } from "@/components/analytics-dashboard/outstanding-trend-chart";
+import { CircleDollarSign } from "lucide-react";
 import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown, LayoutGrid } from "lucide-react";
 import { formatCurrencyCompact } from "@/lib/utils";
 import { usePersona } from "@/components/providers/persona-provider";
@@ -105,6 +107,12 @@ export function AnalyticsDashboardClient() {
 
   const invoiceTrend = useMemo(() => buildInvoiceTrend(totals.sales), [totals.sales]);
   const revenueGrowth = useMemo(() => buildRevenueGrowth(totals.sales), [totals.sales]);
+
+  const totalOutstanding = useMemo(
+    () => scopedSites.reduce((s, x) => s + x.agingBuckets.reduce((a, b) => a + b.amount, 0), 0),
+    [scopedSites],
+  );
+  const outstandingTrend = useMemo(() => buildOutstandingTrend(totalOutstanding), [totalOutstanding]);
 
   const pendingTotal = useMemo(
     () => scopedSites.reduce((s, x) => s + x.pendingApprovals, 0),
@@ -232,6 +240,19 @@ export function AnalyticsDashboardClient() {
         </CardHeader>
         <CardContent>
           <ApprovalTrendChart data={approvalTrend} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CircleDollarSign className="h-5 w-5" />
+            Outstanding Trend (6 bulan)
+          </CardTitle>
+          <CardDescription>Saldo piutang belum tertagih dari waktu ke waktu.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OutstandingTrendChart data={outstandingTrend} />
         </CardContent>
       </Card>
 
