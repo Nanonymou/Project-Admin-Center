@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Coins, Layers, Building2, Tag, Minus, Plus, Pencil } from "lucide-react";
+import { Coins, Layers, Building2, Tag, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,8 +52,19 @@ export function MasterPricingClient() {
   // Session-local custom categories + per-project base-price overrides.
   const [customCats, setCustomCats] = useState<Record<string, PriceCategory[]>>({});
   const [priceOverrides, setPriceOverrides] = useState<Record<string, Record<string, number>>>({});
+  const [inactive, setInactive] = useState<Record<string, string[]>>({});
   const projectCode = project?.projectCode ?? "";
   const projOverrides = priceOverrides[projectCode] ?? {};
+  const projInactive = inactive[projectCode] ?? [];
+  const isInactive = (key: string) => projInactive.includes(key);
+
+  function toggleActive(key: string) {
+    setInactive((prev) => {
+      const cur = prev[projectCode] ?? [];
+      const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+      return { ...prev, [projectCode]: next };
+    });
+  }
 
   /** Effective price of a category at a location, honoring project overrides. */
   function effectivePrice(c: PriceCategory, locationId: string): number {
@@ -159,7 +170,7 @@ export function MasterPricingClient() {
           </select>
           <Badge variant="default" className="ml-auto gap-1">
             <Layers className="h-3 w-3" />
-            {categories.length} kategori
+            {categories.length - projInactive.length} aktif / {categories.length} kategori
           </Badge>
           <Badge variant="info" className="gap-1">
             <Building2 className="h-3 w-3" />
@@ -200,12 +211,15 @@ export function MasterPricingClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {categories.map((c) => (
-                    <tr key={c.key} className="border-b last:border-b-0">
+                  {categories.map((c) => {
+                    const off = isInactive(c.key);
+                    return (
+                    <tr key={c.key} className={`border-b last:border-b-0 ${off ? "opacity-50" : ""}`}>
                       <td className="px-3 py-2 font-medium">
-                        {c.label}
+                        <span className={off ? "line-through" : ""}>{c.label}</span>
                         {c.custom && <Badge variant="success" className="ml-2">Kustom</Badge>}
                         {c.key in projOverrides && <Badge variant="warning" className="ml-2">Diubah</Badge>}
+                        {off && <Badge variant="danger" className="ml-2">Nonaktif</Badge>}
                         {c.deduction && (
                           <Badge variant="danger" className="ml-2 gap-1">
                             <Minus className="h-3 w-3" />
@@ -229,19 +243,41 @@ export function MasterPricingClient() {
                       ))}
                       {editable && (
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEdit(c)}
-                            className="h-7 gap-1 px-2"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Ubah
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(c)}
+                              disabled={off}
+                              className="h-7 gap-1 px-2"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Ubah
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleActive(c.key)}
+                              className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
+                            >
+                              {off ? (
+                                <>
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Aktifkan
+                                </>
+                              ) : (
+                                <>
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Nonaktifkan
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
