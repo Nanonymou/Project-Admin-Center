@@ -105,3 +105,25 @@ export function buildApprovalTrend(baseWeekly: number): ApprovalTrendPoint[] {
     return { week, approved: total - pending, pending, avgDurationDays };
   });
 }
+
+export type RevenueGrowthPoint = { month: string; revenue: number; growthPct: number };
+
+/**
+ * Deterministic 6-month revenue series with month-over-month growth % from a base
+ * current monthly revenue. Mirrors the frontend chart: walks backwards from the
+ * base applying fixed monthly deltas so the last month equals the base.
+ */
+export function buildRevenueGrowth(baseMonthly: number): RevenueGrowthPoint[] {
+  const deltas = [0.06, -0.03, 0.09, 0.04, 0.07, 0];
+  const revenues: number[] = [];
+  let value = baseMonthly;
+  for (let i = MONTHS_6.length - 1; i >= 0; i--) {
+    revenues[i] = Math.round(value / 1000) * 1000;
+    value = value / (1 + deltas[i]);
+  }
+  return MONTHS_6.map((month, i) => ({
+    month,
+    revenue: revenues[i],
+    growthPct: i === 0 ? 0 : revenues[i - 1] > 0 ? ((revenues[i] - revenues[i - 1]) / revenues[i - 1]) * 100 : 0,
+  }));
+}
