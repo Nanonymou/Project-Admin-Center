@@ -1,19 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Coins, Layers, Building2, Tag, Minus } from "lucide-react";
+import { Coins, Layers, Building2, Tag, Minus, Plus } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessProject } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES, type Workspace } from "@/lib/mock/workspaces";
-import { getServiceCategories } from "@/lib/mock/service-config";
+import { getServiceCategories, type ServiceCategory } from "@/lib/mock/service-config";
 import { getPriceFor } from "@/lib/mock/pricing-config";
 
 type ProjectOption = { projectCode: string; projectName: string; locations: Workspace[] };
+type PriceCategory = ServiceCategory & { custom?: boolean };
 
 /**
  * Master Pricing Engine — the central, config-driven price master per project
@@ -43,11 +47,47 @@ export function MasterPricingClient() {
 
   const [projIndex, setProjIndex] = useState(0);
   const project = projects[projIndex] ?? projects[0];
+  const editable = persona.capabilities.canConfigure;
 
-  const categories = useMemo(
-    () => (project ? getServiceCategories(project.projectCode) : []),
-    [project],
+  // Session-local custom categories per project.
+  const [customCats, setCustomCats] = useState<Record<string, PriceCategory[]>>({});
+  const projectCode = project?.projectCode ?? "";
+
+  const categories: PriceCategory[] = useMemo(
+    () => (project ? [...getServiceCategories(project.projectCode), ...(customCats[projectCode] ?? [])] : []),
+    [project, customCats, projectCode],
   );
+
+  // Add-category form.
+  const [formOpen, setFormOpen] = useState(false);
+  const [formLabel, setFormLabel] = useState("");
+  const [formUnit, setFormUnit] = useState("");
+  const [formPrice, setFormPrice] = useState("");
+  const [formDeduction, setFormDeduction] = useState(false);
+
+  function openAdd() {
+    setFormLabel("");
+    setFormUnit("");
+    setFormPrice("");
+    setFormDeduction(false);
+    setFormOpen(true);
+  }
+
+  function saveForm() {
+    const label = formLabel.trim();
+    if (!label) return;
+    const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+    const cat: PriceCategory = {
+      key,
+      label,
+      unit: formUnit.trim() || "unit",
+      defaultPrice: Math.max(0, Math.round(Number(formPrice) || 0)),
+      deduction: formDeduction,
+      custom: true,
+    };
+    setCustomCats((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), cat] }));
+    setFormOpen(false);
+  }
 
   if (!project) {
     return (
@@ -91,6 +131,12 @@ export function MasterPricingClient() {
             <Building2 className="h-3 w-3" />
             {project.locations.length} site
           </Badge>
+          {editable && (
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Tambah Kategori
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -123,6 +169,7 @@ export function MasterPricingClient() {
                     <tr key={c.key} className="border-b last:border-b-0">
                       <td className="px-3 py-2 font-medium">
                         {c.label}
+                        {c.custom && <Badge variant="success" className="ml-2">Kustom</Badge>}
                         {c.deduction && (
                           <Badge variant="danger" className="ml-2 gap-1">
                             <Minus className="h-3 w-3" />
@@ -141,7 +188,11 @@ export function MasterPricingClient() {
                       </td>
                       {project.locations.map((loc) => (
                         <td key={loc.locationId} className="px-3 py-2 text-right font-semibold tabular-nums">
-                          {formatCurrency(getPriceFor(project.projectCode, loc.locationId, c.key))}
+                          {formatCurrency(
+                            c.custom
+                              ? c.defaultPrice
+                              : getPriceFor(project.projectCode, loc.locationId, c.key),
+                          )}
                         </td>
                       ))}
                     </tr>
@@ -152,6 +203,62 @@ export function MasterPricingClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Tambah Kategori Harga"
+        description={`Kategori baru untuk proyek ${project.projectName}.`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveForm} disabled={!formLabel.trim()}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Nama Kategori</label>
+            <Input value={formLabel} onChange={(e) => setFormLabel(e.target.value)} placeholder="mis. Coffee Break" className="h-9" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Satuan</label>
+              <Input value={formUnit} onChange={(e) => setFormUnit(e.target.value)} placeholder="mis. porsi" className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Harga Dasar (Rp)</label>
+              <Input
+                type="number"
+                min={0}
+                value={formPrice}
+                onChange={(e) => setFormPrice(e.target.value)}
+                placeholder="0"
+                className="h-9 tabular-nums"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 pt-1 text-xs font-medium text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={formDeduction}
+              onChange={(e) => setFormDeduction(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Kategori potongan (mengurangi total)
+          </label>
+          {Number(formPrice) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {formDeduction ? "−" : ""}
+              {formatCurrency(Number(formPrice))}
+            </div>
+          )}
+        </div>
+      </Dialog>
     </div>
   );
 }
