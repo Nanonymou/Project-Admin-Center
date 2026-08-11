@@ -1,9 +1,68 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
-import { saveWorkflow, type WorkflowActivityInput } from "@/db/repositories/workflow-repository";
+import {
+  saveWorkflow,
+  listWorkflowsForSite,
+  type WorkflowActivityInput,
+} from "@/db/repositories/workflow-repository";
+import { buildWorkflowsForSite, workflowTotalSla } from "@/lib/mock/workflow-config";
+import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/master-timeframe?locationId=
+ *
+ * Lists the workflows (with activities) configured for a site. Falls back to the
+ * config-derived default workflows when the database has no rows, so it always
+ * responds. Requires access to the location.
+ */
+export async function GET(req: NextRequest) {
+  const locationId = req.nextUrl.searchParams.get("locationId") ?? "";
+  const ws = MOCK_WORKSPACES.find((w) => w.locationId === locationId);
+
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+
+  if (!locationId || !ws) {
+    return NextResponse.json({ error: "locationId valid wajib diisi." }, { status: 400 });
+  }
+  if (!canAccessLocation(persona, locationId, ws.projectCode)) {
+    return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+
+  try {
+    const rows = await listWorkflowsForSite(locationId);
+    if (rows.length === 0) throw new Error("empty");
+    return NextResponse.json({
+      source: "db",
+      locationId,
+      count: rows.length,
+      workflows: rows.map((wf) => ({
+        id: wf.id,
+        code: wf.code,
+        name: wf.name,
+        subject: wf.subjectType,
+        active: wf.active,
+        totalSla: wf.activities.reduce((s, a) => s + a.slaDays, 0),
+        activities: wf.activities,
+      })),
+    });
+  } catch {
+    const workflows = buildWorkflowsForSite(locationId).map((wf) => ({
+      id: wf.id,
+      code: wf.code,
+      name: wf.name,
+      subject: wf.subject,
+      active: wf.active,
+      totalSla: workflowTotalSla(wf),
+      activities: wf.activities,
+    }));
+    return NextResponse.json({ source: "config", locationId, count: workflows.length, workflows });
+  }
+}
 
 /**
  * POST /api/master-timeframe
