@@ -135,6 +135,10 @@ export function ComparisonClient() {
   }, [scopedSites, mode, sortKey, sortDir]);
 
   const maxSales = useMemo(() => Math.max(1, ...rows.map((r) => r.sales)), [rows]);
+  const maxValue = useMemo(
+    () => Math.max(1, ...rows.flatMap((r) => [r.sales, r.cost])),
+    [rows],
+  );
 
   return (
     <div className="space-y-6">
@@ -166,6 +170,58 @@ export function ComparisonClient() {
           <MapPin className="h-4 w-4" /> Per Lokasi
         </button>
       </div>
+
+      {mode === "project" && rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Sales vs Cost Antar Project
+            </CardTitle>
+            <CardDescription>Perbandingan penjualan dan biaya per project.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 pb-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Sales
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-sm bg-amber-400" /> Cost
+              </span>
+            </div>
+            <div className="space-y-3">
+              {rows.map((r) => (
+                <div key={r.key}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="font-medium">{r.label}</span>
+                    <span className="text-muted-foreground">
+                      Margin {r.marginPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
+                        <div className="h-full rounded bg-sky-500" style={{ width: `${(r.sales / maxValue) * 100}%` }} />
+                      </div>
+                      <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                        {formatCurrencyCompact(r.sales)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
+                        <div className="h-full rounded bg-amber-400" style={{ width: `${(r.cost / maxValue) * 100}%` }} />
+                      </div>
+                      <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                        {formatCurrencyCompact(r.cost)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
