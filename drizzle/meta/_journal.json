@@ -435,6 +435,69 @@
       "when": 1786437397084,
       "tag": "0061_invoice_types",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1786438612589,
+      "tag": "0062_system_parameters",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1786438988825,
+      "tag": "0063_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1786439905925,
+      "tag": "0064_users_and_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786457545847,
+      "tag": "0065_customer_vendors",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1786458035689,
+      "tag": "0066_master_price_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786458695562,
+      "tag": "0067_formula_parameters",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786459287617,
+      "tag": "0068_master_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786460027318,
+      "tag": "0069_number_formats",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1786460571893,
+      "tag": "0070_master_taxes",
+      "breakpoints": true
     }
   ]
 }
