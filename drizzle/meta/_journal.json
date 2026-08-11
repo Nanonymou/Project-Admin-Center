@@ -456,6 +456,13 @@
       "when": 1786439905925,
       "tag": "0064_users_and_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1786457545847,
+      "tag": "0065_customer_vendors",
+      "breakpoints": true
     }
   ]
 }
