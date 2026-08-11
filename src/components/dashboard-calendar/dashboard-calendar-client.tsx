@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
+import { cn, formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildDeadlines, STATUS_META } from "@/lib/mock/deadlines";
 
@@ -50,6 +51,22 @@ export function DashboardCalendarClient() {
         .slice(0, 8),
     [deadlines],
   );
+
+  // Estimated invoice value per site (monthly sales), used to total invoice
+  // deadlines falling on a picked date.
+  const salesByLocation = useMemo(
+    () => new Map(scopedSites.map((s) => [s.locationId, s.sales])),
+    [scopedSites],
+  );
+
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const dateDetail = useMemo(() => {
+    if (!selectedDate) return null;
+    const onDate = allDeadlines.filter((d) => d.dueDate.slice(0, 10) === selectedDate);
+    const invoiceItems = onDate.filter((d) => isInvoiceDeadline(d.kind));
+    const invoiceTotal = invoiceItems.reduce((sum, d) => sum + (salesByLocation.get(d.locationId) ?? 0), 0);
+    return { onDate, invoiceItems, invoiceTotal };
+  }, [selectedDate, allDeadlines, salesByLocation]);
 
   return (
     <div className="space-y-6">
@@ -129,6 +146,73 @@ export function DashboardCalendarClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-5 w-5" />
+                Detail Tanggal & Total Invoice
+              </CardTitle>
+              <CardDescription>Pilih tanggal untuk melihat tenggat dan estimasi nilai invoice.</CardDescription>
+            </div>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="rounded-md border bg-background px-2 py-1 text-sm"
+              aria-label="Pilih tanggal"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!dateDetail ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Pilih tanggal terlebih dahulu.</p>
+          ) : dateDetail.onDate.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Tidak ada tenggat pada tanggal ini.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/40 p-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Total estimasi invoice</p>
+                  <p className="text-xl font-semibold">{formatCurrency(dateDetail.invoiceTotal)}</p>
+                </div>
+                <div className="ml-auto text-right text-xs text-muted-foreground">
+                  <p>{dateDetail.invoiceItems.length} tenggat invoice</p>
+                  <p>{dateDetail.onDate.length} total tenggat</p>
+                </div>
+              </div>
+              <ol className="space-y-2">
+                {dateDetail.onDate.map((d) => {
+                  const meta = STATUS_META[d.status];
+                  const invoice = isInvoiceDeadline(d.kind);
+                  return (
+                    <li
+                      key={d.id}
+                      className={cn("flex items-center gap-2 rounded-md border p-2 text-sm", invoice && "border-sky-200 bg-sky-50")}
+                    >
+                      {invoice && <Receipt className="h-4 w-4 shrink-0 text-sky-600" />}
+                      <span className="font-medium">{d.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {d.locationName} · {d.projectCode}
+                      </span>
+                      {invoice && (
+                        <span className="text-xs text-muted-foreground">
+                          · {formatCurrency(salesByLocation.get(d.locationId) ?? 0)}
+                        </span>
+                      )}
+                      <Badge variant={meta.variant} className="ml-auto">
+                        {meta.label}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
