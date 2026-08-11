@@ -75,6 +75,15 @@ export function DashboardCalendarClient() {
     [allDeadlines],
   );
 
+  // Invoice deadlines falling within the next 7 days, with an estimated total.
+  const invoiceThisWeek = useMemo(() => {
+    const items = allDeadlines
+      .filter((d) => isInvoiceDeadline(d.kind) && d.daysRelative >= 0 && d.daysRelative <= 7)
+      .sort((a, b) => a.daysRelative - b.daysRelative);
+    const total = items.reduce((sum, d) => sum + (salesByLocation.get(d.locationId) ?? 0), 0);
+    return { items, total };
+  }, [allDeadlines, salesByLocation]);
+
   const [selectedDate, setSelectedDate] = useState<string>("");
   const dateDetail = useMemo(() => {
     if (!selectedDate) return null;
@@ -98,6 +107,48 @@ export function DashboardCalendarClient() {
         <SummaryTile icon={CalendarClock} label="≤ 3 hari" value={summary.dueSoon} tone="warning" />
         <SummaryTile icon={CheckCircle2} label="Selesai" value={summary.settled} tone="success" />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-sky-600" />
+            Invoice Jatuh Tempo Minggu Ini
+          </CardTitle>
+          <CardDescription>Tenggat invoice dalam 7 hari ke depan pada cakupan Anda.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg border bg-muted/40 p-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Estimasi nilai invoice</p>
+              <p className="text-xl font-semibold">{formatCurrency(invoiceThisWeek.total)}</p>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-2xl font-semibold">{invoiceThisWeek.items.length}</p>
+              <p className="text-xs text-muted-foreground">tenggat invoice</p>
+            </div>
+          </div>
+          {invoiceThisWeek.items.length === 0 ? (
+            <p className="py-2 text-center text-sm text-muted-foreground">Tidak ada invoice jatuh tempo minggu ini.</p>
+          ) : (
+            <ul className="space-y-2">
+              {invoiceThisWeek.items.map((d) => {
+                const meta = STATUS_META[d.status];
+                return (
+                  <li key={d.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2.5 text-sm">
+                    <Receipt className="h-4 w-4 shrink-0 text-sky-600" />
+                    <span className="font-medium">{d.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {d.locationName} · {d.projectCode} · {formatCurrency(salesByLocation.get(d.locationId) ?? 0)}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{d.dueLabel}</span>
+                    <Badge variant={meta.variant}>{meta.label}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className={approvalsDueToday.length > 0 ? "border-amber-300" : undefined}>
         <CardHeader>
