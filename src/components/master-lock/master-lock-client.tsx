@@ -2,15 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink } from "lucide-react";
+import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
-import { formatDate } from "@/lib/utils";
-import { listMasterEntities, LOCK_CATEGORIES, type MasterEntity } from "@/lib/mock/master-lock";
+import { formatDate, formatDateTime } from "@/lib/utils";
+import {
+  listMasterEntities,
+  LOCK_CATEGORIES,
+  buildVersionHistory,
+  type MasterEntity,
+} from "@/lib/mock/master-lock";
 
 /**
  * Master Lock & Version Management — the central registry of lockable master-data
@@ -30,6 +36,13 @@ export function MasterLockClient() {
   function toggleLock(e: MasterEntity) {
     setLockOverrides((prev) => ({ ...prev, [e.key]: !isLocked(e) }));
   }
+
+  // Version-history modal.
+  const [historyEntity, setHistoryEntity] = useState<MasterEntity | null>(null);
+  const versions = useMemo(
+    () => (historyEntity ? buildVersionHistory(historyEntity) : []),
+    [historyEntity],
+  );
 
   const entities = listMasterEntities();
 
@@ -119,9 +132,16 @@ export function MasterLockClient() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <Badge variant="secondary" className="gap-1">
-                            <GitCommitVertical className="h-3 w-3" />v{e.version}
-                          </Badge>
+                          <button
+                            type="button"
+                            onClick={() => setHistoryEntity(e)}
+                            className="inline-flex"
+                            aria-label={`Riwayat versi ${e.label}`}
+                          >
+                            <Badge variant="secondary" className="gap-1 hover:bg-accent">
+                              <GitCommitVertical className="h-3 w-3" />v{e.version}
+                            </Badge>
+                          </button>
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">
                           {e.lastModifiedBy} · {formatDate(e.lastModifiedAt)}
@@ -157,6 +177,33 @@ export function MasterLockClient() {
           </Card>
         ))}
       </div>
+
+      <Dialog
+        open={historyEntity !== null}
+        onClose={() => setHistoryEntity(null)}
+        title={historyEntity ? `Riwayat Versi — ${historyEntity.label}` : "Riwayat Versi"}
+        description="Setiap perubahan disimpan non-destructive (versi lama tidak ditimpa)."
+        className="max-w-lg"
+      >
+        <ol className="space-y-3">
+          {versions.map((v, i) => (
+            <li key={v.version} className="flex items-start gap-3">
+              <Badge variant={i === 0 ? "success" : "muted"} className="mt-0.5 shrink-0 gap-1">
+                <GitCommitVertical className="h-3 w-3" />v{v.version}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{v.summary}</span>
+                  {i === 0 && <Badge variant="info">Terkini</Badge>}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {v.changedBy} · {formatDateTime(v.at)}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Dialog>
     </div>
   );
 }
