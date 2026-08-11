@@ -58,6 +58,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Activity Log", href: "/activity-log", icon: History },
       { label: "Notification Center", href: "/notification-center", icon: Bell },
       { label: "Audit Log", href: "/audit-log", icon: ShieldCheck },
+      { label: "Dashboard Calendar", href: "/dashboard-calendar", icon: CalendarDays },
       { label: "Workspace Site", href: "/site-workspace", icon: MapPin },
       { label: "Ranking Site", href: "/ranking", icon: Trophy },
       { label: "Dashboard Leader", href: "/leader", icon: BadgeCheck },
