@@ -5,7 +5,7 @@ import {
 } from "@/db/repositories/daily-transaction-repository";
 import { listDeletedInvoices, type InvoiceFilter } from "@/db/repositories/invoice-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
-import { canAccessLocation } from "@/lib/personas";
+import { filterByLocationScope } from "@/lib/server/guards/site-scope-filter";
 import { buildDeletedItems } from "@/lib/mock/recycle-bin";
 
 export const dynamic = "force-dynamic";
@@ -43,9 +43,10 @@ export async function GET(req: NextRequest) {
     const items: Array<Record<string, unknown>> = [];
 
     if (!type || type === "daily_sales" || type === "daily_cost") {
-      const trx = (await listDeletedTransactions(dtFilter)).filter((r) =>
-        canAccessLocation(persona, r.locationId, r.projectId),
-      );
+      const trx = filterByLocationScope(persona, await listDeletedTransactions(dtFilter), (r) => ({
+        projectCode: r.projectId,
+        locationId: r.locationId,
+      }));
       for (const t of trx) {
         const itemType = t.kind === "sales" ? "daily_sales" : "daily_cost";
         if (type && type !== itemType) continue;
@@ -63,9 +64,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (!type || type === "invoice") {
-      const inv = (await listDeletedInvoices(invFilter)).filter((r) =>
-        canAccessLocation(persona, r.locationId, r.projectId),
-      );
+      const inv = filterByLocationScope(persona, await listDeletedInvoices(invFilter), (r) => ({
+        projectCode: r.projectId,
+        locationId: r.locationId,
+      }));
       for (const i of inv) {
         items.push({
           id: i.id,
