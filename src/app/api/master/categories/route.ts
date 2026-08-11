@@ -5,6 +5,7 @@ import {
   setMasterCategoryActive,
 } from "@/db/repositories/master-category-repository";
 import { requirePersona } from "@/lib/server/rbac";
+import { validateCategoryInput } from "@/lib/server/services/category-validation-service";
 import { canAccessProject } from "@/lib/personas";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import { getCostCategories } from "@/lib/mock/cost-config";
@@ -121,11 +122,12 @@ export async function POST(req: NextRequest) {
   const defaultPrice = Number(body.defaultPrice ?? 0);
   const isDeduction = Boolean(body.isDeduction);
 
-  if (!projectId || !kind || !categoryKey || !label) {
-    return NextResponse.json({ error: "projectId, kind, categoryKey, dan label wajib diisi." }, { status: 400 });
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId wajib diisi." }, { status: 400 });
   }
-  if (Number.isNaN(defaultPrice) || defaultPrice < 0) {
-    return NextResponse.json({ error: "defaultPrice tidak valid." }, { status: 422 });
+  const errors = validateCategoryInput({ kind, categoryKey, label, defaultPrice });
+  if (errors.length > 0 || !kind) {
+    return NextResponse.json({ error: errors[0]?.message ?? "kind tidak valid.", errors }, { status: 422 });
   }
   if (!canAccessProject(persona, projectId)) {
     return NextResponse.json({ error: `Tidak ada akses ke project ${projectId}.` }, { status: 403 });
