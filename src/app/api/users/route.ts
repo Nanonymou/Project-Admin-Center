@@ -3,6 +3,8 @@ import { latestActivityPerPersona } from "@/db/repositories/monitoring-repositor
 import { requirePersona } from "@/lib/server/rbac";
 import { PERSONAS } from "@/lib/personas";
 import { buildUsers } from "@/lib/mock/user-monitoring";
+import { validateRoleAssignable } from "@/lib/server/services/role-assignment-validation-service";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -84,4 +86,61 @@ export async function GET(req: NextRequest) {
       users,
     });
   }
+}
+
+/**
+ * POST /api/users — assign/create a user with a role.
+ * Body: { name, email, role }.
+ *
+ * Enforces that the assigned role exists and is ACTIVE — a deactivated role can
+ * never be granted to a new user (Role feature guard). Authorization: Leader/
+ * Super Admin. The user directory itself is config-backed for now, so this
+ * validates and records the assignment rather than persisting a users row.
+ */
+export async function POST(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat menambah user." }, { status: 403 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+  }
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const role = typeof body.role === "string" ? body.role.trim() : "";
+
+  if (!name || !email) {
+    return NextResponse.json({ error: "name dan email wajib diisi." }, { status: 400 });
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return NextResponse.json({ error: "Format email tidak valid." }, { status: 422 });
+  }
+
+  // Reject an inactive/unknown role before the user is ever created.
+  const roleCheck = await validateRoleAssignable(role);
+  if (!roleCheck.ok) {
+    return NextResponse.json({ error: roleCheck.message }, { status: roleCheck.status });
+  }
+
+  try {
+    await writeAuditLog({
+      category: "system",
+      action: "user.create",
+      actor: persona.name,
+      entityType: "user",
+      entityId: email,
+      detail: `Tambah user ${name} dengan role ${role}.`,
+    });
+  } catch {
+    // Audit is best-effort when the DB is unavailable; the assignment is still valid.
+  }
+
+  return NextResponse.json({ ok: true, user: { name, email, role, status: "invited" } }, { status: 201 });
 }
