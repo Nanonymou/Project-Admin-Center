@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BarChart3, TrendingUp, Wallet, Percent, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -33,9 +33,36 @@ import type { SiteDaily } from "@/lib/mock/site-detail";
 export function AnalyticsDashboardClient() {
   const { persona } = usePersona();
 
-  const scopedSites = useMemo(
+  // Every persona-accessible site (used to build the filter options); the charts
+  // below all derive from the FILTERED `scopedSites`, so one filter drives them.
+  const allScopedSites = useMemo(
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
+  );
+
+  const [filterProject, setFilterProject] = useState<"all" | string>("all");
+  const [filterLocation, setFilterLocation] = useState<"all" | string>("all");
+
+  const projectOptions = useMemo(
+    () => Array.from(new Set(allScopedSites.map((s) => s.projectCode))),
+    [allScopedSites],
+  );
+  const locationOptions = useMemo(
+    () =>
+      allScopedSites
+        .filter((s) => filterProject === "all" || s.projectCode === filterProject)
+        .map((s) => ({ id: s.locationId, name: s.locationName })),
+    [allScopedSites, filterProject],
+  );
+
+  const scopedSites = useMemo(
+    () =>
+      allScopedSites.filter(
+        (s) =>
+          (filterProject === "all" || s.projectCode === filterProject) &&
+          (filterLocation === "all" || s.locationId === filterLocation),
+      ),
+    [allScopedSites, filterProject, filterLocation],
   );
 
   const totals = useMemo(() => {
@@ -143,7 +170,43 @@ export function AnalyticsDashboardClient() {
         title="Analytics Dashboard"
         description="Ringkasan analitik portofolio — penjualan, biaya, margin, dan kepatuhan SLA lintas site dalam cakupan Anda."
       />
-      <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+      <PersonaBanner persona={persona} scopeSummary={`${allScopedSites.length} site accessible`} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Filter:</span>
+        <select
+          value={filterProject}
+          onChange={(e) => {
+            setFilterProject(e.target.value);
+            setFilterLocation("all");
+          }}
+          className="rounded-md border bg-background px-2 py-1 text-sm"
+          aria-label="Filter project"
+        >
+          <option value="all">Semua project</option>
+          {projectOptions.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        {locationOptions.length > 1 && (
+          <select
+            value={filterLocation}
+            onChange={(e) => setFilterLocation(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+            aria-label="Filter site"
+          >
+            <option value="all">Semua site</option>
+            {locationOptions.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <span className="text-xs text-muted-foreground">{scopedSites.length} site ditampilkan</span>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <KpiCard label="Total Sales" value={totals.sales} format="currency-compact" icon={TrendingUp} tone="info" />
