@@ -57,3 +57,24 @@ export function aggregateSalesCostTrend(sites: SiteKpi[]): DailyPoint[] {
     };
   });
 }
+
+const MONTHS_6 = ["Mar", "Apr", "Mei", "Jun", "Jul", "Agu"];
+
+export type InvoiceTrendPoint = { month: string; count: number; issued: number; paid: number };
+
+/**
+ * Deterministic 6-month invoice trend (count + issued/paid value) from a base
+ * monthly value. Mirrors the frontend chart's seeded curve so client and server
+ * agree; paid trails issued to read like a collection curve.
+ */
+export function buildInvoiceTrend(baseMonthly: number, baseSiteCount: number): InvoiceTrendPoint[] {
+  return MONTHS_6.map((month, i) => {
+    const wave = 0.85 + Math.abs(Math.sin((i + 1) * 1.7)) * 0.3;
+    const issued = Math.round((baseMonthly * wave) / 1000) * 1000;
+    const paidRatio = 0.7 + Math.abs(Math.sin((i + 2) * 2.3)) * 0.28;
+    const paid = Math.round((issued * paidRatio) / 1000) * 1000;
+    // Invoice count scales with the site count and the month's wave.
+    const count = Math.max(1, Math.round(baseSiteCount * (2 + Math.abs(Math.sin((i + 1) * 1.1)) * 3)));
+    return { month, count, issued, paid };
+  });
+}
