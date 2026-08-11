@@ -198,6 +198,10 @@ export function Topbar() {
         <input
           type="search"
           placeholder="Global search: invoice, transaksi, PIC…"
+          onFocus={() => router.push("/search")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") router.push("/search");
+          }}
           className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
