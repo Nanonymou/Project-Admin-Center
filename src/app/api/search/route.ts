@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { NAV_SECTIONS } from "@/lib/mock/nav";
+import { isPathAllowedForRole } from "@/lib/mock/access-config";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { listManagedUsers } from "@/lib/mock/rbac";
 import { listCustomerVendors } from "@/lib/mock/customer-vendor";
@@ -37,6 +38,8 @@ export async function GET(req: NextRequest) {
 
   for (const section of NAV_SECTIONS) {
     for (const item of section.items) {
+      // Only surface pages this role is allowed to open (site-access aware).
+      if (!isPathAllowedForRole(persona.role, item.href)) continue;
       index.push({ id: `page-${item.href}`, kind: "page", title: item.label, subtitle: `${section.label} · ${item.href}`, href: item.href });
     }
   }
