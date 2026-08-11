@@ -12,7 +12,8 @@ import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-char
 import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
 import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
 import { ApprovalTrendChart, buildApprovalTrend } from "@/components/analytics-dashboard/approval-trend-chart";
-import { FileText, BadgeCheck } from "lucide-react";
+import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown } from "lucide-react";
+import { formatCurrencyCompact } from "@/lib/utils";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -94,6 +95,23 @@ export function AnalyticsDashboardClient() {
   );
   const approvalTrend = useMemo(() => buildApprovalTrend(pendingTotal + scopedSites.length * 4), [pendingTotal, scopedSites.length]);
 
+  // Current vs previous period comparison (month-over-month), aggregated from
+  // each site's prevPeriod snapshot.
+  const monthly = useMemo(() => {
+    const withPrev = scopedSites.filter((s) => s.prevPeriod);
+    const curSales = withPrev.reduce((s, x) => s + x.sales, 0);
+    const prevSales = withPrev.reduce((s, x) => s + (x.prevPeriod?.sales ?? 0), 0);
+    const curMargin = withPrev.length ? withPrev.reduce((s, x) => s + x.marginPct, 0) / withPrev.length : 0;
+    const prevMargin = withPrev.length
+      ? withPrev.reduce((s, x) => s + (x.prevPeriod?.marginPct ?? 0), 0) / withPrev.length
+      : 0;
+    const curSla = withPrev.length ? withPrev.reduce((s, x) => s + x.slaPct, 0) / withPrev.length : 0;
+    const prevSla = withPrev.length
+      ? withPrev.reduce((s, x) => s + (x.prevPeriod?.slaPct ?? 0), 0) / withPrev.length
+      : 0;
+    return { curSales, prevSales, curMargin, prevMargin, curSla, prevSla, hasData: withPrev.length > 0 };
+  }, [scopedSites]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -109,6 +127,23 @@ export function AnalyticsDashboardClient() {
         <KpiCard label="Margin %" value={totals.marginPct} format="percent" icon={Percent} tone="success" />
         <KpiCard label="Rata-rata SLA" value={totals.slaPct} format="percent" icon={ShieldCheck} tone="info" />
       </div>
+
+      {monthly.hasData && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarRange className="h-5 w-5" />
+              Perbandingan Bulanan
+            </CardTitle>
+            <CardDescription>Periode berjalan vs periode sebelumnya.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-3">
+            <MonthlyCompareRow label="Sales" current={monthly.curSales} previous={monthly.prevSales} format="currency" />
+            <MonthlyCompareRow label="Margin %" current={monthly.curMargin} previous={monthly.prevMargin} format="pp" />
+            <MonthlyCompareRow label="SLA %" current={monthly.curSla} previous={monthly.prevSla} format="pp" />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -199,6 +234,36 @@ export function AnalyticsDashboardClient() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function MonthlyCompareRow({
+  label,
+  current,
+  previous,
+  format,
+}: {
+  label: string;
+  current: number;
+  previous: number;
+  format: "currency" | "pp";
+}) {
+  const fmt = (v: number) => (format === "currency" ? formatCurrencyCompact(v) : `${v.toFixed(1)}%`);
+  // Delta: percent change for currency, percentage-point change for pp metrics.
+  const delta = format === "currency" ? (previous > 0 ? ((current - previous) / previous) * 100 : 0) : current - previous;
+  const up = delta >= 0;
+  return (
+    <div className="rounded-lg border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{fmt(current)}</p>
+      <div className="mt-1 flex items-center gap-2 text-xs">
+        <span className={up ? "inline-flex items-center gap-0.5 text-emerald-600" : "inline-flex items-center gap-0.5 text-rose-600"}>
+          {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          {format === "currency" ? `${Math.abs(delta).toFixed(1)}%` : `${Math.abs(delta).toFixed(1)} pp`}
+        </span>
+        <span className="text-muted-foreground">dari {fmt(previous)}</span>
+      </div>
     </div>
   );
 }
