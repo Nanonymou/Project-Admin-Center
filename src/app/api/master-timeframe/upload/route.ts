@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
-import { parseWorkflowActivities } from "@/lib/mock/workflow-config";
+import { validateWorkflowUpload } from "@/lib/server/services/workflow-validation-service";
 import { saveWorkflow, type WorkflowActivityInput } from "@/db/repositories/workflow-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 
@@ -53,28 +53,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
 
-  // Parse the Excel-as-CSV with the shared parser, then reject invalid uploads
-  // outright — an all-or-nothing save keeps the persisted workflow consistent.
-  const parsed = parseWorkflowActivities(csv);
-  if (parsed.activities.length === 0) {
-    return NextResponse.json({ error: "CSV kosong atau tanpa baris data." }, { status: 422 });
-  }
-  if (parsed.errorCount > 0) {
-    const firstError = parsed.activities.find((a) => a.error);
+  // Validate the whole file up front, then reject invalid uploads outright — an
+  // all-or-nothing save keeps the persisted workflow consistent. The DB write is
+  // itself transactional, so any late failure rolls back cleanly.
+  const validation = validateWorkflowUpload(csv);
+  if (!validation.ok) {
     return NextResponse.json(
       {
-        error: `Terdapat ${parsed.errorCount} baris tidak valid — perbaiki sebelum menyimpan.`,
-        firstError: firstError
-          ? { row: firstError.order + 1, name: firstError.name, message: firstError.error }
-          : null,
-        invalid: parsed.errorCount,
-        total: parsed.activities.length,
+        error: `Terdapat ${validation.issues.length} masalah — perbaiki sebelum menyimpan.`,
+        issues: validation.issues,
+        total: validation.activities.length,
       },
       { status: 422 },
     );
   }
 
-  const activities: WorkflowActivityInput[] = parsed.activities.map((a) => ({
+  const activities: WorkflowActivityInput[] = validation.activities.map((a) => ({
     orderIndex: a.order,
     name: a.name,
     slaDays: a.slaDays,
