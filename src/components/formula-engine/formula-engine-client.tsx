@@ -1,7 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FunctionSquare, Building2, Receipt, Clock, Plus, Pencil, Ban, RotateCcw, Calculator } from "lucide-react";
+import {
+  FunctionSquare,
+  Building2,
+  Receipt,
+  Clock,
+  Plus,
+  Pencil,
+  Ban,
+  RotateCcw,
+  Calculator,
+  History,
+  ArrowRight,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { canAccessProject } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getTaxConfig } from "@/lib/mock/tax-config";
@@ -36,6 +48,23 @@ const TYPE_LABEL: Record<ParamType, string> = {
 };
 
 const pct = (f: number) => `${(f * 100).toFixed((f * 100) % 1 === 0 ? 0 : 1)}%`;
+
+type AuditAction = "create" | "update" | "activate" | "deactivate";
+type AuditEntry = {
+  id: string;
+  label: string;
+  action: AuditAction;
+  before: string | null;
+  after: string | null;
+  editor: string;
+  at: string;
+};
+const AUDIT_META: Record<AuditAction, { label: string; variant: "success" | "info" | "warning" | "danger" }> = {
+  create: { label: "Dibuat", variant: "success" },
+  update: { label: "Diubah", variant: "info" },
+  activate: { label: "Diaktifkan", variant: "warning" },
+  deactivate: { label: "Dinonaktifkan", variant: "danger" },
+};
 
 function formatValue(p: CalcParam): string {
   switch (p.type) {
@@ -106,6 +135,22 @@ export function FormulaEngineClient() {
   const valueOf = (key: string) => params.find((p) => p.key === key)?.value ?? 0;
   const activeValue = (key: string) => (isInactive(key) ? 0 : valueOf(key));
 
+  // Parameter change audit log per project (this session).
+  const [auditLog, setAuditLog] = useState<Record<string, AuditEntry[]>>({});
+  function recordAudit(label: string, action: AuditAction, before: string | null, after: string | null) {
+    const entry: AuditEntry = {
+      id: `audit-${projectCode}-${label}-${action}-${Date.now()}`,
+      label,
+      action,
+      before,
+      after,
+      editor: persona.name,
+      at: new Date().toISOString(),
+    };
+    setAuditLog((prev) => ({ ...prev, [projectCode]: [entry, ...(prev[projectCode] ?? [])] }));
+  }
+  const audit = auditLog[projectCode] ?? [];
+
   // Form state.
   const [formOpen, setFormOpen] = useState(false);
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -142,35 +187,40 @@ export function FormulaEngineClient() {
     return Math.max(0, n);
   }
 
+  const fmtVal = (type: ParamType, v: number) => formatValue({ type, value: v } as CalcParam);
+
   function saveForm() {
     const label = formLabel.trim();
     if (!editKey && !label) return;
     if (editKey) {
+      const target = params.find((p) => p.key === editKey);
+      const before = target ? fmtVal(target.type, target.value) : null;
+      const newVal = toStored(editType, formValue);
+      const after = fmtVal(editType, newVal);
       setValueOverrides((prev) => ({
         ...prev,
-        [projectCode]: { ...(prev[projectCode] ?? {}), [editKey]: toStored(editType, formValue) },
+        [projectCode]: { ...(prev[projectCode] ?? {}), [editKey]: newVal },
       }));
+      if (before !== after) recordAudit(target?.label ?? editKey, "update", before, after);
     } else {
       const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
-      const param: CalcParam = {
-        key,
-        label,
-        group: formGroup.trim() || "Lainnya",
-        type: formType,
-        value: toStored(formType, formValue),
-        builtin: false,
-      };
+      const value = toStored(formType, formValue);
+      const param: CalcParam = { key, label, group: formGroup.trim() || "Lainnya", type: formType, value, builtin: false };
       setCustomParams((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), param] }));
+      recordAudit(label, "create", null, fmtVal(formType, value));
     }
     setFormOpen(false);
   }
 
   function toggleActive(key: string) {
+    const willDeactivate = !isInactive(key);
+    const label = params.find((p) => p.key === key)?.label ?? key;
     setInactive((prev) => {
       const cur = prev[projectCode] ?? [];
       const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
       return { ...prev, [projectCode]: next };
     });
+    recordAudit(label, willDeactivate ? "deactivate" : "activate", null, null);
   }
 
   // Live calculation simulation inputs.
@@ -371,6 +421,51 @@ export function FormulaEngineClient() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Audit Parameter
+            </CardTitle>
+            <CardDescription>Jejak perubahan parameter perhitungan pada sesi ini.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {audit.length === 0 ? (
+              <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+                Belum ada perubahan parameter.
+              </div>
+            ) : (
+              <ol className="space-y-3">
+                {audit.map((e) => (
+                  <li key={e.id} className="flex items-start gap-3">
+                    <Badge variant={AUDIT_META[e.action].variant} className="mt-0.5 shrink-0">
+                      {AUDIT_META[e.action].label}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium">{e.label}</span>
+                        {e.action === "update" && (
+                          <span className="flex items-center gap-1.5 text-xs tabular-nums">
+                            <span className="text-muted-foreground line-through">{e.before ?? "—"}</span>
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-medium">{e.after ?? "—"}</span>
+                          </span>
+                        )}
+                        {e.action === "create" && e.after && (
+                          <span className="text-xs font-medium tabular-nums">{e.after}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {e.editor} · {formatDateTime(e.at)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
       </div>
