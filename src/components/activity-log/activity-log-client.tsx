@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MapPin, ArrowDownWideNarrow, Filter, Search, X } from "lucide-react";
+import { MapPin, ArrowDownWideNarrow, Filter, Search, X, Clock, User, Target } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ export function ActivityLogClient() {
   const [roleFilter, setRoleFilter] = useState<"all" | string>("all");
   const [query, setQuery] = useState("");
   const [newestFirst, setNewestFirst] = useState(true);
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
 
   const actions = useMemo(() => Array.from(new Set(entries.map((e) => e.action))), [entries]);
   const roles = useMemo(() => Array.from(new Set(entries.map((e) => e.role))), [entries]);
@@ -169,20 +171,81 @@ export function ActivityLogClient() {
           ) : (
             <ol className="space-y-3">
               {visible.map((entry) => (
-                <ActivityRow key={entry.id} entry={entry} />
+                <ActivityRow key={entry.id} entry={entry} onSelect={() => setSelected(entry)} />
               ))}
             </ol>
           )}
         </CardContent>
       </Card>
+
+      <ActivityDetailDialog entry={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
 
-function ActivityRow({ entry }: { entry: AuditEntry }) {
+function ActivityDetailDialog({ entry, onClose }: { entry: AuditEntry | null; onClose: () => void }) {
+  const meta = entry ? AUDIT_ACTION_META[entry.action] : null;
+  return (
+    <Dialog
+      open={Boolean(entry)}
+      onClose={onClose}
+      title="Detail Aktivitas"
+      description={entry ? entry.detail : undefined}
+    >
+      {entry && meta && (
+        <dl className="space-y-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Badge variant={meta.variant}>{meta.label}</Badge>
+            <span className="text-xs text-muted-foreground">{entry.timeLabel}</span>
+          </div>
+          <DetailRow icon={User} label="Aktor">
+            {entry.actor} · {entry.role}
+          </DetailRow>
+          <DetailRow icon={Target} label="Target">
+            {entry.target}
+          </DetailRow>
+          <DetailRow icon={MapPin} label="Lokasi">
+            {entry.locationName} · {entry.projectCode}
+          </DetailRow>
+          <DetailRow icon={Clock} label="Waktu">
+            {entry.timeLabel} ({entry.offsetMinutes} menit lalu)
+          </DetailRow>
+          <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">ID:</span> {entry.id}
+          </div>
+        </dl>
+      )}
+    </Dialog>
+  );
+}
+
+function DetailRow({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof MapPin;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div>
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className="text-sm">{children}</dd>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ entry, onSelect }: { entry: AuditEntry; onSelect: () => void }) {
   const meta = AUDIT_ACTION_META[entry.action];
   return (
-    <li className="flex items-start gap-3 rounded-lg border p-3">
+    <li
+      onClick={onSelect}
+      className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
+    >
       <Badge variant={meta.variant} className="mt-0.5 shrink-0">
         {meta.label}
       </Badge>
