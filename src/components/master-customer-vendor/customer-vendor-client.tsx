@@ -1,20 +1,51 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Contact, Building2, Truck, Mail, Phone, MapPin, Search } from "lucide-react";
+import { Contact, Building2, Truck, Mail, Phone, MapPin, Search, Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import {
   listCustomerVendors,
   PARTY_TYPE_META,
   PARTY_STATUS_META,
+  type CustomerVendor,
   type PartyStatus,
   type PartyType,
 } from "@/lib/mock/customer-vendor";
+
+type PartyForm = {
+  name: string;
+  code: string;
+  type: PartyType;
+  category: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  city: string;
+  npwp: string;
+  address: string;
+  status: PartyStatus;
+};
+
+const EMPTY_FORM: PartyForm = {
+  name: "",
+  code: "",
+  type: "customer",
+  category: "",
+  contactPerson: "",
+  phone: "",
+  email: "",
+  city: "",
+  npwp: "",
+  address: "",
+  status: "active",
+};
 
 /**
  * Master Customer & Vendor — the org-level directory of clients (customers) and
@@ -23,11 +54,73 @@ import {
  */
 export function CustomerVendorClient() {
   const { persona } = usePersona();
-  const all = listCustomerVendors();
+  const editable = persona.capabilities.canConfigure;
+
+  // Session-local new parties + field overrides on existing ones.
+  const [customParties, setCustomParties] = useState<CustomerVendor[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, Partial<CustomerVendor>>>({});
+  const all = useMemo(
+    () =>
+      [...customParties, ...listCustomerVendors()].map((p) =>
+        overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
+      ),
+    [customParties, overrides],
+  );
+  const isEdited = (id: string) => id in overrides;
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<PartyType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<PartyStatus | "all">("all");
+
+  // Add/edit form state.
+  const [formOpen, setFormOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<PartyForm>(EMPTY_FORM);
+  const setField = <K extends keyof PartyForm>(k: K, v: PartyForm[K]) =>
+    setForm((prev) => ({ ...prev, [k]: v }));
+
+  function openAdd() {
+    setEditId(null);
+    setForm(EMPTY_FORM);
+    setFormOpen(true);
+  }
+
+  function openEdit(p: CustomerVendor) {
+    setEditId(p.id);
+    setForm({
+      name: p.name,
+      code: p.code,
+      type: p.type,
+      category: p.category,
+      contactPerson: p.contactPerson,
+      phone: p.phone,
+      email: p.email,
+      city: p.city,
+      npwp: p.npwp,
+      address: p.address,
+      status: p.status,
+    });
+    setFormOpen(true);
+  }
+
+  const formValid = form.name.trim().length > 0 && form.code.trim().length > 0;
+
+  function saveForm() {
+    if (!formValid) return;
+    if (editId) {
+      setOverrides((prev) => ({ ...prev, [editId]: { ...form } }));
+    } else {
+      const party: CustomerVendor = {
+        ...form,
+        name: form.name.trim(),
+        code: form.code.trim(),
+        id: `party-custom-${Date.now()}`,
+        createdAt: new Date().toISOString().slice(0, 10),
+      };
+      setCustomParties((prev) => [party, ...prev]);
+    }
+    setFormOpen(false);
+  }
 
   const stats = useMemo(() => {
     const customers = all.filter((p) => p.type === "customer").length;
@@ -115,6 +208,12 @@ export function CustomerVendorClient() {
           <Badge variant="default" className="ml-auto">
             {parties.length} hasil
           </Badge>
+          {editable && (
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Tambah
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -141,6 +240,7 @@ export function CustomerVendorClient() {
                     <th className="px-3 py-2 font-medium">Kontak</th>
                     <th className="px-3 py-2 font-medium">Kota</th>
                     <th className="px-3 py-2 font-medium">Status</th>
+                    {editable && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -150,7 +250,11 @@ export function CustomerVendorClient() {
                     return (
                       <tr key={p.id} className="border-b last:border-b-0 align-top">
                         <td className="px-3 py-2">
-                          <div className="font-medium">{p.name}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{p.name}</span>
+                            {p.id.startsWith("party-custom-") && <Badge variant="success">Kustom</Badge>}
+                            {isEdited(p.id) && <Badge variant="warning">Diubah</Badge>}
+                          </div>
                           <div className="font-mono text-[11px] text-muted-foreground">{p.code}</div>
                         </td>
                         <td className="px-3 py-2">
@@ -177,6 +281,19 @@ export function CustomerVendorClient() {
                         <td className="px-3 py-2">
                           <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
                         </td>
+                        {editable && (
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(p)}
+                              className="h-7 gap-1 px-2"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Ubah
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -187,6 +304,85 @@ export function CustomerVendorClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editId ? "Ubah Customer/Vendor" : "Tambah Customer/Vendor"}
+        description="Lengkapi data mitra bisnis. Nama dan kode wajib diisi."
+        className="max-w-2xl"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveForm} disabled={!formValid}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <Field label="Nama *">
+            <Input value={form.name} onChange={(e) => setField("name", e.target.value)} className="h-9" placeholder="Nama entitas" />
+          </Field>
+          <Field label="Kode *">
+            <Input value={form.code} onChange={(e) => setField("code", e.target.value)} className="h-9" placeholder="mis. CUST-XXX" />
+          </Field>
+          <Field label="Tipe">
+            <select
+              value={form.type}
+              onChange={(e) => setField("type", e.target.value as PartyType)}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="customer">Customer</option>
+              <option value="vendor">Vendor</option>
+            </select>
+          </Field>
+          <Field label="Status">
+            <select
+              value={form.status}
+              onChange={(e) => setField("status", e.target.value as PartyStatus)}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="active">Aktif</option>
+              <option value="inactive">Nonaktif</option>
+            </select>
+          </Field>
+          <Field label="Kategori">
+            <Input value={form.category} onChange={(e) => setField("category", e.target.value)} className="h-9" placeholder="mis. Supplier Bahan Pangan" />
+          </Field>
+          <Field label="Kontak (PIC)">
+            <Input value={form.contactPerson} onChange={(e) => setField("contactPerson", e.target.value)} className="h-9" />
+          </Field>
+          <Field label="Telepon">
+            <Input value={form.phone} onChange={(e) => setField("phone", e.target.value)} className="h-9" />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} className="h-9" />
+          </Field>
+          <Field label="Kota">
+            <Input value={form.city} onChange={(e) => setField("city", e.target.value)} className="h-9" />
+          </Field>
+          <Field label="NPWP">
+            <Input value={form.npwp} onChange={(e) => setField("npwp", e.target.value)} className="h-9" />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Alamat">
+              <Input value={form.address} onChange={(e) => setField("address", e.target.value)} className="h-9" />
+            </Field>
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      {children}
     </div>
   );
 }
