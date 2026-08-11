@@ -51,3 +51,4 @@ export * from "./system-parameters";
 export * from "./roles";
 export * from "./users";
 export * from "./customer-vendor";
+export * from "./master-price-history";
