@@ -526,6 +526,13 @@
       "when": 1786481393773,
       "tag": "0074_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786482956980,
+      "tag": "0075_search_name_indexes",
+      "breakpoints": true
     }
   ]
 }

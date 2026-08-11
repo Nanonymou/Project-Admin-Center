@@ -32,6 +32,8 @@ export const customerVendors = pgTable(
   (t) => ({
     codeIdx: uniqueIndex("customer_vendors_code_idx").on(t.code),
     typeIdx: index("customer_vendors_type_idx").on(t.type),
+    // Search index on the party name (global search matches by name).
+    nameIdx: index("customer_vendors_name_idx").on(t.name),
   }),
 );
 
