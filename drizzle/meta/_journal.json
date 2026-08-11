@@ -421,6 +421,13 @@
       "when": 1786435588760,
       "tag": "0059_meal_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1786436498756,
+      "tag": "0060_meal_price_history",
+      "breakpoints": true
     }
   ]
 }

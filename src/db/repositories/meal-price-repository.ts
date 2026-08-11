@@ -1,6 +1,13 @@
-import { and, asc, eq, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { mealPrices, type MealPrice, type NewMealPrice } from "@/db/schema";
+import {
+  mealPrices,
+  mealPriceHistory,
+  type MealPrice,
+  type NewMealPrice,
+  type MealPriceHistory,
+  type NewMealPriceHistory,
+} from "@/db/schema";
 
 export type MealPriceFilter = {
   projectCode: string;
@@ -21,6 +28,26 @@ export async function listMealPrices(filter: MealPriceFilter): Promise<MealPrice
     .from(mealPrices)
     .where(and(...conds))
     .orderBy(asc(mealPrices.categoryKey));
+}
+
+/** Read a single meal price row (for computing a before/after change). */
+export async function getMealPrice(
+  projectCode: string,
+  locationId: string,
+  categoryKey: string,
+): Promise<MealPrice | undefined> {
+  const [row] = await db
+    .select()
+    .from(mealPrices)
+    .where(
+      and(
+        eq(mealPrices.projectCode, projectCode),
+        eq(mealPrices.locationId, locationId),
+        eq(mealPrices.categoryKey, categoryKey),
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 /** Upsert a meal price by (projectCode, locationId, categoryKey). */
@@ -58,4 +85,21 @@ export async function setMealPriceActive(
         eq(mealPrices.categoryKey, categoryKey),
       ),
     );
+}
+
+/** Append a non-destructive change entry to the meal price history. */
+export async function recordMealPriceChange(entry: NewMealPriceHistory): Promise<void> {
+  await db.insert(mealPriceHistory).values(entry);
+}
+
+/** List the meal price change history for a site (newest first). */
+export async function listMealPriceHistory(
+  projectCode: string,
+  locationId: string,
+): Promise<MealPriceHistory[]> {
+  return db
+    .select()
+    .from(mealPriceHistory)
+    .where(and(eq(mealPriceHistory.projectCode, projectCode), eq(mealPriceHistory.locationId, locationId)))
+    .orderBy(desc(mealPriceHistory.createdAt));
 }

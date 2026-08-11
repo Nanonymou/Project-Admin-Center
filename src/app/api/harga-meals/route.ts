@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   listMealPrices,
+  getMealPrice,
   upsertMealPrice,
   setMealPriceActive,
+  recordMealPriceChange,
 } from "@/db/repositories/meal-price-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessProject, canAccessLocation } from "@/lib/personas";
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const existing = await getMealPrice(projectCode, locationId, categoryKey);
     await upsertMealPrice({
       projectCode,
       locationId,
@@ -110,6 +113,20 @@ export async function POST(req: NextRequest) {
       active: true,
       createdBy: persona.name,
     });
+    // Non-destructive history: create when new, update when the price changed.
+    const before = existing ? Number(existing.price) : null;
+    if (!existing || before !== price) {
+      await recordMealPriceChange({
+        projectCode,
+        locationId,
+        categoryKey,
+        categoryLabel: label,
+        action: existing ? "update" : "create",
+        beforePrice: before === null ? null : before.toFixed(2),
+        afterPrice: price.toFixed(2),
+        changedBy: persona.name,
+      });
+    }
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan harga (database tidak tersedia)." }, { status: 503 });
@@ -152,7 +169,18 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
+    const existing = await getMealPrice(projectCode, locationId, categoryKey);
     await setMealPriceActive(projectCode, locationId, categoryKey, active);
+    await recordMealPriceChange({
+      projectCode,
+      locationId,
+      categoryKey,
+      categoryLabel: existing?.label ?? categoryKey,
+      action: active ? "activate" : "deactivate",
+      beforePrice: null,
+      afterPrice: null,
+      changedBy: persona.name,
+    });
     return NextResponse.json({ ok: true, active });
   } catch {
     return NextResponse.json({ error: "Gagal mengubah status (database tidak tersedia)." }, { status: 503 });
