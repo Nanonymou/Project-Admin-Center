@@ -30,6 +30,7 @@ import {
   MapPin,
   Contact,
   Coins,
+  FunctionSquare,
   type LucideIcon,
 } from "lucide-react";
 
@@ -113,6 +114,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Master Timeframe", href: "/upload-timeframe", icon: CalendarClock },
       { label: "Workflow Timeframe", href: "/master-timeframe", icon: GitBranch },
       { label: "Master Pricing", href: "/master-pricing", icon: Coins },
+      { label: "Formula Engine", href: "/formula-engine", icon: FunctionSquare },
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
