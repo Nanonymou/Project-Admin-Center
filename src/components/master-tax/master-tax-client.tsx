@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Percent, GitCommitVertical, Plus, Pencil } from "lucide-react";
+import { Landmark, Percent, GitCommitVertical, Plus, Pencil, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { formatDateTime } from "@/lib/utils";
 import {
   listTaxTypes,
+  buildTaxVersions,
   TAX_CATEGORY_META,
   type TaxType,
   type TaxCategory,
@@ -65,6 +67,10 @@ export function MasterTaxClient() {
     });
     setFormOpen(true);
   }
+
+  // Version-history modal.
+  const [historyTax, setHistoryTax] = useState<TaxType | null>(null);
+  const versions = useMemo(() => (historyTax ? buildTaxVersions(historyTax) : []), [historyTax]);
 
   const formValid = form.label.trim().length > 0 && (editCode !== null || form.code.trim().length > 0);
 
@@ -152,9 +158,11 @@ export function MasterTaxClient() {
                           </Badge>
                         </td>
                         <td className="px-3 py-2">
-                          <Badge variant="secondary" className="gap-1">
-                            <GitCommitVertical className="h-3 w-3" />v{t.version}
-                          </Badge>
+                          <button type="button" onClick={() => setHistoryTax(t)} aria-label={`Riwayat versi ${t.label}`}>
+                            <Badge variant="secondary" className="gap-1 hover:bg-accent">
+                              <GitCommitVertical className="h-3 w-3" />v{t.version}
+                            </Badge>
+                          </button>
                         </td>
                         <td className="px-3 py-2">
                           <Badge variant={t.active ? "success" : "muted"}>{t.active ? "Aktif" : "Nonaktif"}</Badge>
@@ -236,6 +244,44 @@ export function MasterTaxClient() {
             <Input value={form.description} onChange={(e) => setField("description", e.target.value)} className="h-9" />
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={historyTax !== null}
+        onClose={() => setHistoryTax(null)}
+        title={historyTax ? `Riwayat Versi — ${historyTax.label}` : "Riwayat Versi Pajak"}
+        description="Perubahan tarif disimpan non-destructive (versi lama tidak ditimpa)."
+        className="max-w-lg"
+      >
+        <ol className="space-y-3">
+          {versions.map((v, i) => {
+            const prev = versions[i + 1];
+            return (
+              <li key={v.version} className="flex items-start gap-3">
+                <Badge variant={i === 0 ? "success" : "muted"} className="mt-0.5 shrink-0 gap-1">
+                  <GitCommitVertical className="h-3 w-3" />v{v.version}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-medium">{v.summary}</span>
+                    <span className="flex items-center gap-1.5 text-xs tabular-nums">
+                      {prev && (
+                        <>
+                          <span className="text-muted-foreground line-through">{pct(prev.rate)}</span>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        </>
+                      )}
+                      <span className="font-medium">{pct(v.rate)}</span>
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {v.changedBy} · {formatDateTime(v.at)}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       </Dialog>
     </div>
   );
