@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Inbox, Bell, CalendarClock, Filter, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Inbox, Bell, CalendarClock, Filter, MapPin, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +26,17 @@ type NotifEntry = {
   location: string;
   dueLabel: string;
   order: number; // lower = more urgent
+  /** Related page this notification links to. */
+  href: string;
 };
+
+/** Map a deadline kind to the page a user would act on it. */
+function deadlineHref(kind: string, locationId: string): string {
+  if (kind === "invoice_submit" || kind === "payment") return "/invoices";
+  if (kind === "approval") return "/dashboard-calendar";
+  if (kind === "closing") return `/site/${locationId}`;
+  return "/dashboard-calendar";
+}
 
 const LEVEL_META: Record<NotifLevel, { label: string; variant: "info" | "warning" | "danger" }> = {
   info: { label: "Info", variant: "info" },
@@ -61,6 +72,7 @@ export function PusatNotifikasiClient() {
           location: `${site.locationName} · ${site.projectCode}`,
           dueLabel: r.dueLabel,
           order: r.level === "critical" ? 0 : r.level === "warning" ? 1 : 2,
+          href: `/site/${site.locationId}`,
         });
       }
     }
@@ -77,6 +89,7 @@ export function PusatNotifikasiClient() {
         location: `${d.locationName} · ${d.projectCode}`,
         dueLabel: d.dueLabel,
         order: d.daysRelative,
+        href: deadlineHref(d.kind, d.locationId),
       });
     }
 
@@ -164,22 +177,28 @@ export function PusatNotifikasiClient() {
                 const meta = LEVEL_META[e.level];
                 const SourceIcon = e.source === "reminder" ? Bell : CalendarClock;
                 return (
-                  <li key={e.id} className="flex items-start gap-3 rounded-lg border p-3">
-                    <Badge variant={meta.variant} className="mt-0.5 shrink-0">
-                      {meta.label}
-                    </Badge>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <SourceIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="font-medium">{e.title}</span>
-                        <span className="ml-auto text-xs text-muted-foreground">{e.dueLabel}</span>
+                  <li key={e.id}>
+                    <Link
+                      href={e.href}
+                      className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
+                    >
+                      <Badge variant={meta.variant} className="mt-0.5 shrink-0">
+                        {meta.label}
+                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <SourceIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="font-medium">{e.title}</span>
+                          <span className="ml-auto text-xs text-muted-foreground">{e.dueLabel}</span>
+                        </div>
+                        <p className="mt-0.5 text-sm text-foreground">{e.detail}</p>
+                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {e.location}
+                        </div>
                       </div>
-                      <p className="mt-0.5 text-sm text-foreground">{e.detail}</p>
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        {e.location}
-                      </div>
-                    </div>
+                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
                   </li>
                 );
               })}
