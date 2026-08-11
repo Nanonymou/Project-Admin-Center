@@ -20,6 +20,10 @@ export const auditLogs = pgTable(
     entityType: varchar("entity_type", { length: 48 }),
     entityId: varchar("entity_id", { length: 64 }),
     detail: varchar("detail", { length: 1024 }),
+    /** Previous value for a change event (null for create/state-only events). */
+    beforeValue: varchar("before_value", { length: 512 }),
+    /** New value for a change event (null for pure state toggles). */
+    afterValue: varchar("after_value", { length: 512 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
