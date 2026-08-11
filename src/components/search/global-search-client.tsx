@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, MapPin, Users, Building2, LayoutGrid, ChevronRight } from "lucide-react";
+import { Search, MapPin, Users, Building2, LayoutGrid, ChevronRight, SearchX } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -168,8 +168,29 @@ export function GlobalSearchClient() {
         </Card>
       ) : results.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Tidak ada hasil untuk “{query}”.
+          <CardContent className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <SearchX className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Tidak ada hasil untuk “{query}”.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Coba kata kunci lain atau periksa ejaannya.
+              </p>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              <span className="mr-1">Coba:</span>
+              {["invoice", "KM22", "BUMA", "pengguna"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setQuery(s)}
+                  className="mx-0.5 rounded border px-1.5 py-0.5 hover:bg-accent"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : (
