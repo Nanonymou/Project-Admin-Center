@@ -46,3 +46,4 @@ export * from "./all-attachments-view";
 export * from "./master-workflows";
 export * from "./meal-prices";
 export * from "./meal-price-history";
+export * from "./invoice-types";

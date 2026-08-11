@@ -428,6 +428,13 @@
       "when": 1786436498756,
       "tag": "0060_meal_price_history",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1786437397084,
+      "tag": "0061_invoice_types",
+      "breakpoints": true
     }
   ]
 }
