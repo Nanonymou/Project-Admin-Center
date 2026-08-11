@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation, canAccessProject } from "@/lib/personas";
-import { listMasterPrices, upsertMasterPrice } from "@/db/repositories/master-price-repository";
+import {
+  listMasterPrices,
+  upsertMasterPrice,
+  upsertMasterPrices,
+} from "@/db/repositories/master-price-repository";
 import { recordMasterPriceChange } from "@/db/repositories/master-price-history-repository";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import { getPriceFor, getPricedCategories } from "@/lib/mock/pricing-config";
@@ -152,6 +156,102 @@ export async function POST(req: NextRequest) {
       changedBy: persona.name,
     });
     return NextResponse.json({ ok: true, categoryKey, price }, { status: beforePrice === null ? 201 : 200 });
+  } catch {
+    return NextResponse.json({ error: "Gagal menyimpan harga (database tidak tersedia)." }, { status: 503 });
+  }
+}
+
+/**
+ * PUT /api/master-pricing — set multiple category prices with a shared effective
+ * date, in one atomic batch (Master Pricing Engine "Set Harga & Tanggal Efektif").
+ * Body: { projectCode, locationId, effectiveFrom, prices: [{ categoryKey, price }] }
+ *
+ * `effectiveFrom` is a period (YYYY-MM) marking when the new list takes effect;
+ * it is stored on each row so the engine can version prices over time. Each
+ * changed price appends a non-destructive history entry (create|update). All
+ * upserts run in a single transaction so a partial batch never persists.
+ * Leader/Super Admin or the site's own admin.
+ */
+export async function PUT(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+  }
+
+  const projectCode = typeof body.projectCode === "string" ? body.projectCode : "";
+  const locationId = typeof body.locationId === "string" ? body.locationId : "";
+  const effectiveFrom = typeof body.effectiveFrom === "string" ? body.effectiveFrom.trim() : "";
+  const rawPrices = Array.isArray(body.prices) ? body.prices : [];
+
+  if (!projectCode || !locationId) {
+    return NextResponse.json({ error: "projectCode dan locationId wajib diisi." }, { status: 400 });
+  }
+  if (!/^\d{4}-\d{2}$/.test(effectiveFrom)) {
+    return NextResponse.json({ error: "effectiveFrom harus format YYYY-MM." }, { status: 422 });
+  }
+  if (persona.role === "viewer") {
+    return NextResponse.json({ error: "Viewer tidak dapat mengubah harga." }, { status: 403 });
+  }
+  if (!canAccessLocation(persona, locationId, projectCode)) {
+    return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
+  }
+
+  // Normalize + validate the price entries.
+  const entries: { categoryKey: string; price: number }[] = [];
+  for (let i = 0; i < rawPrices.length; i++) {
+    const p = rawPrices[i] as Record<string, unknown>;
+    const categoryKey = typeof p?.categoryKey === "string" ? p.categoryKey : "";
+    const price = Number(p?.price);
+    if (!categoryKey) {
+      return NextResponse.json({ error: `Baris #${i + 1} tidak punya categoryKey.` }, { status: 422 });
+    }
+    if (Number.isNaN(price) || price < 0) {
+      return NextResponse.json({ error: `Harga untuk "${categoryKey}" tidak valid.` }, { status: 422 });
+    }
+    entries.push({ categoryKey, price });
+  }
+  if (entries.length === 0) {
+    return NextResponse.json({ error: "Minimal satu harga wajib diisi." }, { status: 422 });
+  }
+
+  try {
+    // Snapshot current prices so each history entry gets an accurate before-value.
+    const current = await listMasterPrices({ projectCode, locationId });
+    const before = new Map(current.map((r) => [r.categoryKey, Number(r.price)]));
+
+    await upsertMasterPrices(
+      entries.map((e) => ({
+        projectCode,
+        locationId,
+        categoryKey: e.categoryKey,
+        price: e.price.toFixed(2),
+        effectiveFrom,
+        active: true,
+        createdBy: persona.name,
+      })),
+    );
+
+    for (const e of entries) {
+      const beforePrice = before.has(e.categoryKey) ? (before.get(e.categoryKey) as number) : null;
+      await recordMasterPriceChange({
+        projectCode,
+        locationId,
+        categoryKey: e.categoryKey,
+        categoryLabel: labelFor(projectCode, e.categoryKey),
+        action: beforePrice === null ? "create" : "update",
+        beforePrice: beforePrice === null ? null : beforePrice.toFixed(2),
+        afterPrice: e.price.toFixed(2),
+        changedBy: persona.name,
+      });
+    }
+
+    return NextResponse.json({ ok: true, effectiveFrom, saved: entries.length }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan harga (database tidak tersedia)." }, { status: 503 });
   }
