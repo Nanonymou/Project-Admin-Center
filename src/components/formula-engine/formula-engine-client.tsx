@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FunctionSquare, Building2, Receipt, Clock, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
+import { FunctionSquare, Building2, Receipt, Clock, Plus, Pencil, Ban, RotateCcw, Calculator } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { formatCurrency } from "@/lib/utils";
 import { canAccessProject } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getTaxConfig } from "@/lib/mock/tax-config";
@@ -172,6 +173,12 @@ export function FormulaEngineClient() {
     });
   }
 
+  // Live calculation simulation inputs.
+  const [simGross, setSimGross] = useState("100000000");
+  const [simBackcharge, setSimBackcharge] = useState("2000000");
+  const [simBbm, setSimBbm] = useState("5000000");
+  const [simOverdue, setSimOverdue] = useState("45");
+
   if (!project) {
     return (
       <div>
@@ -183,8 +190,26 @@ export function FormulaEngineClient() {
 
   const taxCode = getTaxConfig(project.projectCode).code;
   const bbmOn = activeValue("bbm_applies") === 1;
-  const netFormula = `Net Invoice = (Gross − Backcharge${bbmOn ? " + BBM" : ""}) × (1 + ${taxCode} ${pct(activeValue("tax_rate"))})`;
-  const penaltyFormula = `Penalty = ceil((hari overdue − ${activeValue("penalty_grace")}) / 30) × ${pct(activeValue("penalty_rate"))} × Net`;
+  const bbmTaxable = activeValue("bbm_taxable") === 1;
+  const taxRate = activeValue("tax_rate");
+  const penaltyRate = activeValue("penalty_rate");
+  const graceDays = activeValue("penalty_grace");
+  const netFormula = `Net Invoice = (Gross − Backcharge${bbmOn ? " + BBM" : ""}) × (1 + ${taxCode} ${pct(taxRate)})`;
+  const penaltyFormula = `Penalty = ceil((hari overdue − ${graceDays}) / 30) × ${pct(penaltyRate)} × Net`;
+
+  // Compute the sample calculation from the current active parameter values.
+  const num = (s: string) => Math.max(0, Number(s) || 0);
+  const gross = num(simGross);
+  const backcharge = num(simBackcharge);
+  const bbmAmount = bbmOn ? num(simBbm) : 0;
+  const subtotal = gross - backcharge;
+  const preTax = subtotal + bbmAmount;
+  const taxableBase = subtotal + (bbmTaxable ? bbmAmount : 0);
+  const taxAmount = Math.round(taxableBase * taxRate);
+  const netInvoice = preTax + taxAmount;
+  const overdueMonths = Math.max(0, Math.ceil((num(simOverdue) - graceDays) / 30));
+  const penaltyAmount = Math.round(overdueMonths * penaltyRate * netInvoice);
+  const grandTotal = netInvoice + penaltyAmount;
 
   return (
     <div>
@@ -311,6 +336,43 @@ export function FormulaEngineClient() {
             <FormulaRow icon={Clock} label="Penalty" formula={penaltyFormula} />
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Calculator className="h-4 w-4 text-primary" />
+              Simulasi Perhitungan
+            </CardTitle>
+            <CardDescription>
+              Ubah input untuk melihat hasil memakai parameter aktif proyek ini.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+              <SimInput label="Gross Sales" value={simGross} onChange={setSimGross} />
+              <SimInput label="Backcharge" value={simBackcharge} onChange={setSimBackcharge} />
+              <SimInput label="BBM" value={simBbm} onChange={setSimBbm} disabled={!bbmOn} />
+              <SimInput label="Hari Overdue" value={simOverdue} onChange={setSimOverdue} />
+            </div>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <tbody>
+                  <ResultRow label="Subtotal (Gross − Backcharge)" value={formatCurrency(subtotal)} />
+                  {bbmOn && <ResultRow label="BBM Surcharge" value={formatCurrency(bbmAmount)} />}
+                  <ResultRow label={`Dasar Pajak`} value={formatCurrency(taxableBase)} />
+                  <ResultRow label={`Pajak (${taxCode} ${pct(taxRate)})`} value={formatCurrency(taxAmount)} />
+                  <ResultRow label="Net Invoice" value={formatCurrency(netInvoice)} strong />
+                  <ResultRow
+                    label={`Penalty (${overdueMonths} bln × ${pct(penaltyRate)})`}
+                    value={penaltyAmount > 0 ? `+ ${formatCurrency(penaltyAmount)}` : formatCurrency(0)}
+                    tone={penaltyAmount > 0 ? "text-rose-600" : undefined}
+                  />
+                  <ResultRow label="Total Tagihan" value={formatCurrency(grandTotal)} strong />
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Dialog
@@ -398,5 +460,52 @@ function FormulaRow({
       </div>
       <code className="block whitespace-pre-wrap break-words font-mono text-xs">{formula}</code>
     </div>
+  );
+}
+
+function SimInput({
+  label,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <Input
+        type="number"
+        min={0}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 tabular-nums"
+      />
+    </div>
+  );
+}
+
+function ResultRow({
+  label,
+  value,
+  strong = false,
+  tone,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  tone?: string;
+}) {
+  return (
+    <tr className="border-b last:border-0">
+      <td className={`px-3 py-2 ${strong ? "font-semibold" : "text-muted-foreground"}`}>{label}</td>
+      <td className={`px-3 py-2 text-right tabular-nums ${strong ? "font-semibold" : ""} ${tone ?? ""}`}>
+        {value}
+      </td>
+    </tr>
   );
 }
