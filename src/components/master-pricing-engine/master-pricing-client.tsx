@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { LockBanner } from "@/components/master-lock/lock-banner";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useMasterEditable } from "@/lib/hooks/use-master-editable";
 import { canAccessProject } from "@/lib/personas";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { MOCK_WORKSPACES, type Workspace } from "@/lib/mock/workspaces";
@@ -55,7 +57,8 @@ export function MasterPricingClient() {
 
   const [projIndex, setProjIndex] = useState(0);
   const project = projects[projIndex] ?? projects[0];
-  const editable = persona.capabilities.canConfigure;
+  const lock = useMasterEditable("pricing");
+  const editable = lock.editable;
 
   // Session-local custom categories + per-project base-price overrides.
   const [customCats, setCustomCats] = useState<Record<string, PriceCategory[]>>({});
@@ -202,6 +205,7 @@ export function MasterPricingClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${projects.length} proyek`} />
+        <LockBanner reason={lock.reason} />
 
         <div className="flex flex-wrap items-center gap-3">
           <Building2 className="h-4 w-4 text-muted-foreground" />

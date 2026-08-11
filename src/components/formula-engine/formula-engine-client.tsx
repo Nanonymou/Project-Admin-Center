@@ -21,7 +21,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { LockBanner } from "@/components/master-lock/lock-banner";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useMasterEditable } from "@/lib/hooks/use-master-editable";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { canAccessProject } from "@/lib/personas";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -89,7 +91,8 @@ function formatValue(p: CalcParam): string {
  */
 export function FormulaEngineClient() {
   const { persona } = usePersona();
-  const editable = persona.capabilities.canConfigure;
+  const lock = useMasterEditable("formula");
+  const editable = lock.editable;
 
   const projects = useMemo(() => {
     const map = new Map<string, string>();
@@ -271,6 +274,7 @@ export function FormulaEngineClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${projects.length} proyek`} />
+        <LockBanner reason={lock.reason} />
 
         <div className="flex flex-wrap items-center gap-3">
           <Building2 className="h-4 w-4 text-muted-foreground" />
