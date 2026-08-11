@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Coins, Layers, Building2, Tag, Minus, Plus } from "lucide-react";
+import { Coins, Layers, Building2, Tag, Minus, Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,9 +49,18 @@ export function MasterPricingClient() {
   const project = projects[projIndex] ?? projects[0];
   const editable = persona.capabilities.canConfigure;
 
-  // Session-local custom categories per project.
+  // Session-local custom categories + per-project base-price overrides.
   const [customCats, setCustomCats] = useState<Record<string, PriceCategory[]>>({});
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, Record<string, number>>>({});
   const projectCode = project?.projectCode ?? "";
+  const projOverrides = priceOverrides[projectCode] ?? {};
+
+  /** Effective price of a category at a location, honoring project overrides. */
+  function effectivePrice(c: PriceCategory, locationId: string): number {
+    if (c.key in projOverrides) return projOverrides[c.key];
+    if (c.custom) return c.defaultPrice;
+    return getPriceFor(projectCode, locationId, c.key);
+  }
 
   const categories: PriceCategory[] = useMemo(
     () => (project ? [...getServiceCategories(project.projectCode), ...(customCats[projectCode] ?? [])] : []),
@@ -87,6 +96,31 @@ export function MasterPricingClient() {
     };
     setCustomCats((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), cat] }));
     setFormOpen(false);
+  }
+
+  // Edit-price-per-project modal.
+  const [editCat, setEditCat] = useState<PriceCategory | null>(null);
+  const [editPrice, setEditPrice] = useState("");
+
+  function openEdit(c: PriceCategory) {
+    setEditCat(c);
+    // Prefill with the current effective base (override, or the project's first-site price).
+    const current = c.key in projOverrides
+      ? projOverrides[c.key]
+      : c.custom
+        ? c.defaultPrice
+        : getPriceFor(projectCode, project?.locations[0]?.locationId ?? "", c.key);
+    setEditPrice(String(current));
+  }
+
+  function saveEdit() {
+    if (!editCat) return;
+    const price = Math.max(0, Math.round(Number(editPrice) || 0));
+    setPriceOverrides((prev) => ({
+      ...prev,
+      [projectCode]: { ...(prev[projectCode] ?? {}), [editCat.key]: price },
+    }));
+    setEditCat(null);
   }
 
   if (!project) {
@@ -162,6 +196,7 @@ export function MasterPricingClient() {
                         {loc.locationName}
                       </th>
                     ))}
+                    {editable && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -170,6 +205,7 @@ export function MasterPricingClient() {
                       <td className="px-3 py-2 font-medium">
                         {c.label}
                         {c.custom && <Badge variant="success" className="ml-2">Kustom</Badge>}
+                        {c.key in projOverrides && <Badge variant="warning" className="ml-2">Diubah</Badge>}
                         {c.deduction && (
                           <Badge variant="danger" className="ml-2 gap-1">
                             <Minus className="h-3 w-3" />
@@ -188,13 +224,22 @@ export function MasterPricingClient() {
                       </td>
                       {project.locations.map((loc) => (
                         <td key={loc.locationId} className="px-3 py-2 text-right font-semibold tabular-nums">
-                          {formatCurrency(
-                            c.custom
-                              ? c.defaultPrice
-                              : getPriceFor(project.projectCode, loc.locationId, c.key),
-                          )}
+                          {formatCurrency(effectivePrice(c, loc.locationId))}
                         </td>
                       ))}
+                      {editable && (
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEdit(c)}
+                            className="h-7 gap-1 px-2"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Ubah
+                          </Button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -255,6 +300,40 @@ export function MasterPricingClient() {
             <div className="text-xs text-muted-foreground">
               {formDeduction ? "−" : ""}
               {formatCurrency(Number(formPrice))}
+            </div>
+          )}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={editCat !== null}
+        onClose={() => setEditCat(null)}
+        title={editCat ? `Ubah Harga — ${editCat.label}` : "Ubah Harga"}
+        description={`Harga berlaku untuk seluruh site proyek ${project.projectName}.`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditCat(null)}>
+              Batal
+            </Button>
+            <Button size="sm" onClick={saveEdit}>
+              Simpan
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-2 text-sm">
+          <label className="text-xs font-medium text-muted-foreground">Harga per Proyek (Rp)</label>
+          <Input
+            type="number"
+            min={0}
+            value={editPrice}
+            onChange={(e) => setEditPrice(e.target.value)}
+            className="h-9 tabular-nums"
+          />
+          {Number(editPrice) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {editCat?.deduction ? "−" : ""}
+              {formatCurrency(Number(editPrice))} · berlaku di {project.locations.length} site
             </div>
           )}
         </div>
