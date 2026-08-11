@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Hash, Repeat, Braces, Plus, Pencil } from "lucide-react";
+import { Hash, Repeat, Braces, Plus, Pencil, Ban, RotateCcw, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,6 +117,21 @@ export function NumberGeneratorClient() {
 
   const previewFormat = formValid ? buildFromForm("preview", true) : null;
 
+  function toggleActive(f: NumberFormat) {
+    setOverrides((prev) => ({ ...prev, [f.key]: { ...prev[f.key], active: !f.active } }));
+  }
+
+  // Usage-history modal: the recently issued numbers before the next sequence.
+  const [historyFormat, setHistoryFormat] = useState<NumberFormat | null>(null);
+  const issued = useMemo(() => {
+    if (!historyFormat) return [];
+    const out: { seq: number; number: string }[] = [];
+    for (let seq = historyFormat.nextSeq - 1; seq >= Math.max(1, historyFormat.nextSeq - 8); seq--) {
+      out.push({ seq, number: generateSample(historyFormat, seq) });
+    }
+    return out;
+  }, [historyFormat]);
+
   return (
     <div>
       <PageHeader
@@ -195,10 +210,45 @@ export function NumberGeneratorClient() {
                       </td>
                       {editable && (
                         <td className="px-3 py-2 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(f)} className="h-7 gap-1 px-2">
-                            <Pencil className="h-3.5 w-3.5" />
-                            Ubah
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHistoryFormat(f)}
+                              className="h-7 gap-1 px-2 text-muted-foreground"
+                            >
+                              <History className="h-3.5 w-3.5" />
+                              Riwayat
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(f)}
+                              disabled={!f.active}
+                              className="h-7 gap-1 px-2"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Ubah
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleActive(f)}
+                              className={`h-7 gap-1 px-2 ${f.active ? "text-rose-600" : "text-emerald-600"}`}
+                            >
+                              {f.active ? (
+                                <>
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Nonaktifkan
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Aktifkan
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -271,6 +321,29 @@ export function NumberGeneratorClient() {
             </code>
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={historyFormat !== null}
+        onClose={() => setHistoryFormat(null)}
+        title={historyFormat ? `Riwayat Nomor — ${historyFormat.label}` : "Riwayat Nomor"}
+        description="Nomor terakhir yang telah diterbitkan (terbaru di atas)."
+        className="max-w-md"
+      >
+        {issued.length === 0 ? (
+          <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+            Belum ada nomor yang diterbitkan.
+          </div>
+        ) : (
+          <ul className="space-y-1.5">
+            {issued.map((it) => (
+              <li key={it.seq} className="flex items-center justify-between rounded-md border px-3 py-2">
+                <code className="font-mono text-sm font-medium">{it.number}</code>
+                <Badge variant="muted">#{it.seq}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </Dialog>
     </div>
   );
