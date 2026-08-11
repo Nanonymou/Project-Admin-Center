@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, MapPin, Users, Building2, LayoutGrid, ChevronRight, SearchX } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -52,7 +52,9 @@ const KIND_META: Record<ResultKind, { label: string; icon: typeof Search; varian
 export function GlobalSearchClient() {
   const { persona } = usePersona();
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  // Seed the query from the header's ?q= param so header search hands off here.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
 
   const index = useMemo<SearchResult[]>(() => {
     const out: SearchResult[] = [];

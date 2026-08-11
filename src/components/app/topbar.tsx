@@ -27,6 +27,7 @@ export function Topbar() {
   const [open, setOpen] = useState(false);
   const [siteOpen, setSiteOpen] = useState(false);
   const [siteQuery, setSiteQuery] = useState("");
+  const [headerQuery, setHeaderQuery] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const siteRef = useRef<HTMLDivElement | null>(null);
   const siteSearchRef = useRef<HTMLInputElement | null>(null);
@@ -193,18 +194,35 @@ export function Topbar() {
         )}
       </div>
 
-      <div className="relative ml-2 hidden max-w-md flex-1 md:block">
+      <form
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = headerQuery.trim();
+          router.push(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
+        }}
+        className="relative ml-2 hidden max-w-md flex-1 md:block"
+      >
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="search"
+          value={headerQuery}
+          onChange={(e) => setHeaderQuery(e.target.value)}
           placeholder="Global search: invoice, transaksi, PIC…"
-          onFocus={() => router.push("/search")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") router.push("/search");
-          }}
+          aria-label="Pencarian global"
           className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
-      </div>
+      </form>
+
+      {/* Mobile: compact search icon that opens the global search page. */}
+      <button
+        type="button"
+        onClick={() => router.push("/search")}
+        aria-label="Pencarian global"
+        className="ml-2 inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent md:hidden"
+      >
+        <Search className="h-4 w-4" />
+      </button>
 
       <TopbarFilter />
 
