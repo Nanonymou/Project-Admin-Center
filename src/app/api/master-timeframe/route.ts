@@ -8,6 +8,7 @@ import {
   type WorkflowActivityInput,
 } from "@/db/repositories/workflow-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { assertDomainUnlocked, autoVersionDomain } from "@/lib/server/services/master-lock-guard";
 import { buildWorkflowsForSite, workflowTotalSla } from "@/lib/mock/workflow-config";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 
@@ -128,6 +129,9 @@ export async function POST(req: NextRequest) {
   if (activities.length === 0) {
     return NextResponse.json({ error: "Workflow harus punya minimal satu aktivitas." }, { status: 422 });
   }
+  // Refuse when the workflow master is locked (Master Lock & Version Management).
+  const wfLock = await assertDomainUnlocked("workflow");
+  if (!wfLock.ok) return NextResponse.json({ error: wfLock.message }, { status: wfLock.status });
 
   try {
     const id = await saveWorkflow({
@@ -139,6 +143,7 @@ export async function POST(req: NextRequest) {
       activities,
       createdBy: persona.name,
     });
+    await autoVersionDomain("workflow", `Simpan workflow "${name}" @ ${locationId}`, persona.name);
     return NextResponse.json({ ok: true, id, savedActivities: activities.length }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan workflow." }, { status: 500 });

@@ -7,6 +7,7 @@ import {
   upsertMasterPrices,
 } from "@/db/repositories/master-price-repository";
 import { recordMasterPriceChange } from "@/db/repositories/master-price-history-repository";
+import { assertDomainUnlocked, autoVersionDomain } from "@/lib/server/services/master-lock-guard";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import { getPriceFor, getPricedCategories } from "@/lib/mock/pricing-config";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -130,6 +131,9 @@ export async function POST(req: NextRequest) {
   if (!canAccessLocation(persona, locationId, projectCode)) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
+  // Refuse when the pricing master is locked (Master Lock & Version Management).
+  const priceLock = await assertDomainUnlocked("pricing");
+  if (!priceLock.ok) return NextResponse.json({ error: priceLock.message }, { status: priceLock.status });
 
   try {
     // Determine before-price for the history entry (null → this is a create).
@@ -155,6 +159,11 @@ export async function POST(req: NextRequest) {
       afterPrice: price.toFixed(2),
       changedBy: persona.name,
     });
+    await autoVersionDomain(
+      "pricing",
+      `${beforePrice === null ? "Tambah" : "Ubah"} harga ${labelFor(projectCode, categoryKey)} @ ${locationId}`,
+      persona.name,
+    );
     return NextResponse.json({ ok: true, categoryKey, price }, { status: beforePrice === null ? 201 : 200 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan harga (database tidak tersedia)." }, { status: 503 });
@@ -201,6 +210,8 @@ export async function PUT(req: NextRequest) {
   if (!canAccessLocation(persona, locationId, projectCode)) {
     return NextResponse.json({ error: `Tidak ada akses ke lokasi ${locationId}.` }, { status: 403 });
   }
+  const batchLock = await assertDomainUnlocked("pricing");
+  if (!batchLock.ok) return NextResponse.json({ error: batchLock.message }, { status: batchLock.status });
 
   // Normalize + validate the price entries.
   const entries: { categoryKey: string; price: number }[] = [];
@@ -251,6 +262,11 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    await autoVersionDomain(
+      "pricing",
+      `Set ${entries.length} harga efektif ${effectiveFrom} @ ${locationId}`,
+      persona.name,
+    );
     return NextResponse.json({ ok: true, effectiveFrom, saved: entries.length }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan harga (database tidak tersedia)." }, { status: 503 });

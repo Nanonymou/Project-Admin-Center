@@ -4,6 +4,7 @@ import { canAccessLocation } from "@/lib/personas";
 import { validateWorkflowUpload } from "@/lib/server/services/workflow-validation-service";
 import { saveWorkflow, type WorkflowActivityInput } from "@/db/repositories/workflow-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { assertDomainUnlocked, autoVersionDomain } from "@/lib/server/services/master-lock-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,10 @@ export async function POST(req: NextRequest) {
     pic: a.pic,
   }));
 
+  // Refuse when the workflow master is locked (Master Lock & Version Management).
+  const wfLock = await assertDomainUnlocked("workflow");
+  if (!wfLock.ok) return NextResponse.json({ error: wfLock.message }, { status: wfLock.status });
+
   try {
     const id = await saveWorkflow({
       projectCode,
@@ -94,6 +99,7 @@ export async function POST(req: NextRequest) {
       entityId: id,
       detail: `Unggah timeframe "${name}" (${activities.length} aktivitas) via Excel.`,
     });
+    await autoVersionDomain("workflow", `Unggah workflow "${name}" @ ${locationId}`, persona.name);
     return NextResponse.json(
       { ok: true, id, savedActivities: activities.length, totalSla: activities.reduce((s, a) => s + a.slaDays, 0) },
       { status: 201 },

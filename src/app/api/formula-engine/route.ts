@@ -10,6 +10,7 @@ import {
 } from "@/db/repositories/formula-parameter-repository";
 import { getBuiltinFormulaParams, getBuiltinFormulaParam } from "@/lib/mock/formula-config";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { assertDomainUnlocked, autoVersionDomain } from "@/lib/server/services/master-lock-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,8 @@ export async function POST(req: NextRequest) {
   if (!canAccessProject(persona, projectCode)) {
     return NextResponse.json({ error: `Tidak ada akses ke project ${projectCode}.` }, { status: 403 });
   }
+  const formulaLock = await assertDomainUnlocked("formula");
+  if (!formulaLock.ok) return NextResponse.json({ error: formulaLock.message }, { status: formulaLock.status });
 
   const isBuiltin = Boolean(getBuiltinFormulaParam(projectCode, key));
 
@@ -142,6 +145,7 @@ export async function POST(req: NextRequest) {
       entityId: `${projectCode}:${key}`,
       detail: `${existing ? "Ubah" : "Buat"} parameter "${label}" → ${value}.`,
     });
+    await autoVersionDomain("formula", `${existing ? "Ubah" : "Buat"} parameter ${label} (${projectCode})`, persona.name);
     return NextResponse.json({ ok: true, key }, { status: existing ? 200 : 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan parameter (database tidak tersedia)." }, { status: 503 });
@@ -177,6 +181,8 @@ export async function PATCH(req: NextRequest) {
   if (!canAccessProject(persona, projectCode)) {
     return NextResponse.json({ error: `Tidak ada akses ke project ${projectCode}.` }, { status: 403 });
   }
+  const patchLock = await assertDomainUnlocked("formula");
+  if (!patchLock.ok) return NextResponse.json({ error: patchLock.message }, { status: patchLock.status });
 
   try {
     const ok = await setFormulaParameterActive(projectCode, key, active);
@@ -199,6 +205,7 @@ export async function PATCH(req: NextRequest) {
       entityId: `${projectCode}:${key}`,
       detail: active ? "Aktifkan parameter perhitungan." : "Nonaktifkan parameter perhitungan.",
     });
+    await autoVersionDomain("formula", `${active ? "Aktifkan" : "Nonaktifkan"} parameter ${key} (${projectCode})`, persona.name);
     return NextResponse.json({ ok: true, active });
   } catch {
     return NextResponse.json({ error: "Gagal mengubah status (database tidak tersedia)." }, { status: 503 });
