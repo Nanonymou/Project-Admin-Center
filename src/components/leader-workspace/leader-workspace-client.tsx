@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { LayoutGrid, MapPin, ArrowRight, CheckCircle2, TrendingUp, ShoppingCart, Wallet } from "lucide-react";
+import { useMemo } from "react";
+import { LayoutGrid, ArrowRight, CheckCircle2, TrendingUp, ShoppingCart, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LeaderWorkspaceSwitcher } from "@/components/leader-workspace/workspace-switcher";
 import { usePersona } from "@/components/providers/persona-provider";
+import { useActiveSite } from "@/components/providers/active-site-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -26,8 +28,8 @@ export function LeaderWorkspaceClient() {
     () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
     [persona],
   );
-  const [activeId, setActiveId] = useState<string>(sites[0]?.locationId ?? "");
-  const active = sites.find((s) => s.locationId === activeId) ?? sites[0];
+  const { activeLocationId, setActiveLocationId } = useActiveSite();
+  const active = sites.find((s) => s.locationId === activeLocationId) ?? sites[0];
 
   if (sites.length === 0) {
     return (
@@ -54,19 +56,7 @@ export function LeaderWorkspaceClient() {
         <PersonaBanner persona={persona} scopeSummary={`${sites.length} site`} />
 
         <div className="flex flex-wrap items-center gap-3">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <label className="text-xs text-muted-foreground">Workspace aktif</label>
-          <select
-            value={activeId}
-            onChange={(e) => setActiveId(e.target.value)}
-            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-          >
-            {sites.map((s) => (
-              <option key={s.locationId} value={s.locationId}>
-                {s.projectName} — {s.locationName} ({s.projectCode})
-              </option>
-            ))}
-          </select>
+          <LeaderWorkspaceSwitcher className="w-72 max-w-full" />
           {active && (
             <Badge variant="success" className="gap-1">
               <CheckCircle2 className="h-3 w-3" />
@@ -118,7 +108,7 @@ export function LeaderWorkspaceClient() {
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {sites.map((s) => {
-                const isActive = s.locationId === activeId;
+                const isActive = s.locationId === activeLocationId;
                 return (
                   <div
                     key={s.locationId}
@@ -150,7 +140,7 @@ export function LeaderWorkspaceClient() {
                     <Button
                       size="sm"
                       variant={isActive ? "outline" : "default"}
-                      onClick={() => setActiveId(s.locationId)}
+                      onClick={() => setActiveLocationId(s.locationId)}
                       className="mt-3 gap-1.5"
                       disabled={isActive}
                     >
