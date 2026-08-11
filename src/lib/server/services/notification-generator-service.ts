@@ -16,7 +16,8 @@ import type { NewNotificationRow } from "@/db/schema";
 /** Deadline notifications (approaching/overdue) for one recipient's sites. */
 function deadlineNotifications(persona: Persona, sites: SiteKpi[]): NewNotificationRow[] {
   return buildDeadlines(sites)
-    .filter((d) => d.status === "overdue" || d.status === "due_today" || d.status === "due_soon")
+    // Approvals are handled by approvalNotifications; avoid double-notifying.
+    .filter((d) => d.kind !== "approval" && (d.status === "overdue" || d.status === "due_today" || d.status === "due_soon"))
     .map((d) => ({
       recipient: persona.id,
       source: "deadline",
@@ -65,6 +66,33 @@ function paidInvoiceNotifications(persona: Persona, sites: SiteKpi[]): NewNotifi
     }));
 }
 
+/**
+ * Approval notifications for one recipient's sites: a late (overdue) approval is
+ * an alert with days-late; a completed (settled) approval is an informational
+ * notice. Covers both the "terlambat" and "selesai" cases.
+ */
+function approvalNotifications(persona: Persona, sites: SiteKpi[]): NewNotificationRow[] {
+  return buildDeadlines(sites)
+    .filter((d) => d.kind === "approval" && (d.status === "overdue" || d.status === "settled"))
+    .map((d) => {
+      const overdue = d.status === "overdue";
+      return {
+        recipient: persona.id,
+        source: overdue ? "deadline" : "system",
+        level: overdue ? "danger" : "info",
+        title: overdue
+          ? `Approval terlambat ${Math.abs(d.daysRelative)} hari — ${d.locationName}`
+          : `Approval selesai — ${d.locationName}`,
+        detail: overdue
+          ? `${d.title} · PIC ${d.owner} belum menyetujui.`
+          : `${d.title} telah disetujui.`,
+        href: "/dashboard-calendar",
+        projectCode: d.projectCode,
+        locationId: d.locationId,
+      } satisfies NewNotificationRow;
+    });
+}
+
 export type GeneratorResult = { recipients: number; generated: number; persisted: number };
 
 /**
@@ -84,6 +112,7 @@ export async function runNotificationGenerator(): Promise<GeneratorResult> {
       ...deadlineNotifications(persona, sites),
       ...overdueInvoiceNotifications(persona, sites),
       ...paidInvoiceNotifications(persona, sites),
+      ...approvalNotifications(persona, sites),
     ];
     if (personaRows.length > 0) recipients += 1;
     rows.push(...personaRows);
