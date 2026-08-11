@@ -9,6 +9,7 @@ import {
   recordFormulaParameterChange,
 } from "@/db/repositories/formula-parameter-repository";
 import { getBuiltinFormulaParams, getBuiltinFormulaParam } from "@/lib/mock/formula-config";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +133,15 @@ export async function POST(req: NextRequest) {
       afterValue: String(value),
       changedBy: persona.name,
     });
+    await writeAuditLog({
+      projectId: projectCode,
+      category: "formula",
+      action: existing ? "formula_parameter.update" : "formula_parameter.create",
+      actor: persona.name,
+      entityType: "formula_parameter",
+      entityId: `${projectCode}:${key}`,
+      detail: `${existing ? "Ubah" : "Buat"} parameter "${label}" → ${value}.`,
+    });
     return NextResponse.json({ ok: true, key }, { status: existing ? 200 : 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan parameter (database tidak tersedia)." }, { status: 503 });
@@ -179,6 +189,15 @@ export async function PATCH(req: NextRequest) {
       beforeValue: null,
       afterValue: null,
       changedBy: persona.name,
+    });
+    await writeAuditLog({
+      projectId: projectCode,
+      category: "formula",
+      action: active ? "formula_parameter.activate" : "formula_parameter.deactivate",
+      actor: persona.name,
+      entityType: "formula_parameter",
+      entityId: `${projectCode}:${key}`,
+      detail: active ? "Aktifkan parameter perhitungan." : "Nonaktifkan parameter perhitungan.",
     });
     return NextResponse.json({ ok: true, active });
   } catch {
