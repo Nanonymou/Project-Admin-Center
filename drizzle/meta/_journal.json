@@ -498,6 +498,13 @@
       "when": 1786460571893,
       "tag": "0070_master_taxes",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786477491238,
+      "tag": "0071_activity_logs",
+      "breakpoints": true
     }
   ]
 }

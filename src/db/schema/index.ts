@@ -56,3 +56,4 @@ export * from "./formula-parameters";
 export * from "./master-locks";
 export * from "./number-formats";
 export * from "./master-taxes";
+export * from "./activity-logs";
