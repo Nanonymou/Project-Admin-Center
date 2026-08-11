@@ -6,16 +6,16 @@ import {
   setCustomerVendorActive,
 } from "@/db/repositories/customer-vendor-repository";
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
+import { validatePartyInput } from "@/lib/server/services/customer-vendor-validation-service";
 import { listCustomerVendors as listConfigParties } from "@/lib/mock/customer-vendor";
 
 export const dynamic = "force-dynamic";
 
-const VALID_TYPES = new Set(["customer", "vendor"]);
-
 /**
- * GET /api/master-customer-vendor?type=customer|vendor&activeOnly=1
- * Org-level customer/vendor master. Falls back to the config catalogue when the
- * DB is unavailable. Any authenticated persona may read.
+ * GET /api/master-customer-vendor?type=customer|vendor&activeOnly=1&q=&category=&city=
+ * Org-level customer/vendor master with query filters: free-text search (`q`
+ * over code/name/contact/email), `category`, and `city`. Falls back to the config
+ * catalogue when the DB is unavailable. Any authenticated persona may read.
  */
 export async function GET(req: NextRequest) {
   const auth = requirePersona(req.headers);
@@ -25,19 +25,58 @@ export async function GET(req: NextRequest) {
   const typeRaw = sp.get("type");
   const type = typeRaw === "customer" || typeRaw === "vendor" ? typeRaw : undefined;
   const activeOnly = sp.get("activeOnly") === "1" || sp.get("activeOnly") === "true";
+  const q = (sp.get("q") ?? "").trim().toLowerCase();
+  const category = (sp.get("category") ?? "").trim().toLowerCase();
+  const city = (sp.get("city") ?? "").trim().toLowerCase();
+
+  type Party = {
+    code: string;
+    name: string;
+    type: string;
+    category: string;
+    contactPerson: string;
+    phone: string;
+    email: string;
+    city: string;
+    npwp: string;
+    address: string;
+    active: boolean;
+  };
+
+  // Apply the free-text / category / city filters uniformly to either source.
+  const applyFilters = (parties: Party[]): Party[] =>
+    parties.filter((p) => {
+      if (category && !p.category.toLowerCase().includes(category)) return false;
+      if (city && !p.city.toLowerCase().includes(city)) return false;
+      if (q && !`${p.code} ${p.name} ${p.contactPerson} ${p.email}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
 
   try {
     const rows = await listCustomerVendors({ type, activeOnly });
     if (rows.length === 0) throw new Error("empty");
-    return NextResponse.json({ source: "db", count: rows.length, parties: rows });
+    const parties = applyFilters(
+      rows.map((r) => ({
+        code: r.code,
+        name: r.name,
+        type: r.type,
+        category: r.category,
+        contactPerson: r.contactPerson,
+        phone: r.phone,
+        email: r.email,
+        city: r.city,
+        npwp: r.npwp,
+        address: r.address,
+        active: r.active,
+      })),
+    );
+    return NextResponse.json({ source: "db", count: parties.length, parties });
   } catch {
-    let parties = listConfigParties();
-    if (type) parties = parties.filter((p) => p.type === type);
-    if (activeOnly) parties = parties.filter((p) => p.status === "active");
-    return NextResponse.json({
-      source: "config",
-      count: parties.length,
-      parties: parties.map((p) => ({
+    let configParties = listConfigParties();
+    if (type) configParties = configParties.filter((p) => p.type === type);
+    if (activeOnly) configParties = configParties.filter((p) => p.status === "active");
+    const parties = applyFilters(
+      configParties.map((p) => ({
         code: p.code,
         name: p.name,
         type: p.type,
@@ -50,7 +89,8 @@ export async function GET(req: NextRequest) {
         address: p.address,
         active: p.status === "active",
       })),
-    });
+    );
+    return NextResponse.json({ source: "config", count: parties.length, parties });
   }
 }
 
@@ -79,15 +119,12 @@ export async function POST(req: NextRequest) {
   const name = str(body.name);
   const type = str(body.type);
   const email = str(body.email);
+  const phone = str(body.phone);
+  const npwp = str(body.npwp);
 
-  if (!code || !name) {
-    return NextResponse.json({ error: "code dan name wajib diisi." }, { status: 400 });
-  }
-  if (!VALID_TYPES.has(type)) {
-    return NextResponse.json({ error: "type harus customer atau vendor." }, { status: 422 });
-  }
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return NextResponse.json({ error: "Format email tidak valid." }, { status: 422 });
+  const errors = validatePartyInput({ code, name, type, email, phone, npwp });
+  if (errors.length > 0) {
+    return NextResponse.json({ error: errors[0].message, errors }, { status: 422 });
   }
 
   try {
@@ -97,10 +134,10 @@ export async function POST(req: NextRequest) {
       type,
       category: str(body.category),
       contactPerson: str(body.contactPerson),
-      phone: str(body.phone),
+      phone,
       email,
       city: str(body.city),
-      npwp: str(body.npwp),
+      npwp,
       address: str(body.address),
       active: true,
       createdBy: persona.name,
