@@ -12,7 +12,7 @@ import { CostTrendChart } from "@/components/analytics-dashboard/cost-trend-char
 import { ProfitTrendChart, type ProfitTrendPoint } from "@/components/margin/profit-trend-chart";
 import { InvoiceTrendChart, buildInvoiceTrend } from "@/components/analytics-dashboard/invoice-trend-chart";
 import { ApprovalTrendChart, buildApprovalTrend } from "@/components/analytics-dashboard/approval-trend-chart";
-import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown } from "lucide-react";
+import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown, LayoutGrid } from "lucide-react";
 import { formatCurrencyCompact } from "@/lib/utils";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
@@ -46,6 +46,21 @@ export function AnalyticsDashboardClient() {
   }, [scopedSites]);
 
   const marginBySite = useMemo(() => buildMarginBySite(scopedSites), [scopedSites]);
+
+  // Per-site SLA & margin comparison, ranked by SLA.
+  const siteComparison = useMemo(
+    () =>
+      scopedSites
+        .map((s) => ({
+          locationId: s.locationId,
+          label: s.locationName,
+          projectCode: s.projectCode,
+          slaPct: s.slaPct,
+          marginPct: s.marginPct,
+        }))
+        .sort((a, b) => b.slaPct - a.slaPct),
+    [scopedSites],
+  );
 
   // Aggregate the 7-day sales/cost trend across every scoped site into the daily
   // series the shared SalesCostChart consumes.
@@ -217,6 +232,53 @@ export function AnalyticsDashboardClient() {
           <InvoiceTrendChart data={invoiceTrend} />
         </CardContent>
       </Card>
+
+      {siteComparison.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LayoutGrid className="h-5 w-5" />
+              Site Comparison (SLA & Margin)
+            </CardTitle>
+            <CardDescription>Perbandingan kepatuhan SLA dan margin antar site, diurut berdasarkan SLA.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> SLA %
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Margin %
+              </span>
+            </div>
+            <div className="space-y-3">
+              {siteComparison.map((s) => (
+                <div key={s.locationId}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="font-medium">
+                      {s.label} <span className="text-muted-foreground">· {s.projectCode}</span>
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
+                        <div className="h-full rounded bg-sky-500" style={{ width: `${Math.min(100, s.slaPct)}%` }} />
+                      </div>
+                      <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{s.slaPct.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 flex-1 overflow-hidden rounded bg-muted">
+                        <div className="h-full rounded bg-emerald-500" style={{ width: `${Math.min(100, s.marginPct)}%` }} />
+                      </div>
+                      <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{s.marginPct.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
