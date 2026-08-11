@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { GitCompareArrows, Building2, MapPin, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrencyCompact } from "@/lib/utils";
+import { ChevronRight } from "lucide-react";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 
 type CompareMode = "project" | "location";
@@ -33,6 +34,15 @@ type CompareRow = {
  */
 type SortKey = "label" | "sales" | "cost" | "netMargin" | "marginPct" | "slaPct";
 type SortDir = "asc" | "desc";
+
+function ExpandStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background p-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium capitalize">{value}</p>
+    </div>
+  );
+}
 
 function SortHeader({
   label,
@@ -74,6 +84,7 @@ export function ComparisonClient() {
   const [mode, setMode] = useState<CompareMode>("project");
   const [sortKey, setSortKey] = useState<SortKey>("netMargin");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
@@ -133,6 +144,11 @@ export function ComparisonClient() {
       return (a[sortKey] - b[sortKey]) * dir;
     });
   }, [scopedSites, mode, sortKey, sortDir]);
+
+  const siteByLocation = useMemo(
+    () => new Map(scopedSites.map((s) => [s.locationId, s])),
+    [scopedSites],
+  );
 
   const maxSales = useMemo(() => Math.max(1, ...rows.map((r) => r.sales)), [rows]);
   const maxValue = useMemo(
@@ -248,26 +264,65 @@ export function ComparisonClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.key} className="border-b last:border-0">
-                      <td className="py-2 pr-3">
-                        <div className="font-medium">{r.label}</div>
-                        <div className="text-xs text-muted-foreground">{r.sub}</div>
-                        <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-sky-500" style={{ width: `${(r.sales / maxSales) * 100}%` }} />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatCurrencyCompact(r.sales)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatCurrencyCompact(r.cost)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrencyCompact(r.netMargin)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Badge variant={r.marginPct >= 50 ? "success" : r.marginPct >= 40 ? "warning" : "danger"}>
-                          {r.marginPct.toFixed(1)}%
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.slaPct.toFixed(1)}%</td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const expandable = mode === "location";
+                    const isExpanded = expandable && expandedKey === r.key;
+                    const site = expandable ? siteByLocation.get(r.key) : undefined;
+                    return (
+                      <Fragment key={r.key}>
+                        <tr
+                          onClick={expandable ? () => setExpandedKey((k) => (k === r.key ? null : r.key)) : undefined}
+                          className={cn("border-b last:border-0", expandable && "cursor-pointer hover:bg-accent")}
+                        >
+                          <td className="py-2 pr-3">
+                            <div className="flex items-center gap-1 font-medium">
+                              {expandable && (
+                                <ChevronRight
+                                  className={cn("h-3.5 w-3.5 shrink-0 transition-transform", isExpanded && "rotate-90")}
+                                />
+                              )}
+                              {r.label}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{r.sub}</div>
+                            <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-muted">
+                              <div className="h-full rounded-full bg-sky-500" style={{ width: `${(r.sales / maxSales) * 100}%` }} />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrencyCompact(r.sales)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatCurrencyCompact(r.cost)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrencyCompact(r.netMargin)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Badge variant={r.marginPct >= 50 ? "success" : r.marginPct >= 40 ? "warning" : "danger"}>
+                              {r.marginPct.toFixed(1)}%
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.slaPct.toFixed(1)}%</td>
+                        </tr>
+                        {isExpanded && site && (
+                          <tr className="border-b bg-muted/30 last:border-0">
+                            <td colSpan={6} className="px-3 py-3">
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <ExpandStat label="Status Closing" value={site.closingStatus} />
+                                <ExpandStat label="Cut-off" value={`${site.cutOffDaysLeft} hari lagi`} />
+                                <ExpandStat label="Approval Pending" value={String(site.pendingApprovals)} />
+                                <ExpandStat label="Invoice Overdue" value={String(site.overdueInvoices)} />
+                              </div>
+                              <div className="mt-3">
+                                <p className="mb-1 text-xs text-muted-foreground">Aging piutang</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {site.agingBuckets.map((b) => (
+                                    <span key={b.bucket} className="rounded-md border px-2 py-1 text-xs">
+                                      {b.bucket}: <b>{formatCurrencyCompact(b.amount)}</b>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
