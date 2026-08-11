@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { seedDatabase } from "@/db/seed";
 import { seedMasterCategories, seedMasterTimeframes } from "@/db/seed-master";
+import { seedRoles } from "@/db/seed-roles";
 import { requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 
@@ -33,9 +34,10 @@ export async function POST(req: NextRequest) {
   try {
     const master = await seedMasterCategories();
     const timeframes = await seedMasterTimeframes();
+    const roleSeed = await seedRoles();
     const result = await seedDatabase({ days, projectCodes: projectCodes.length ? projectCodes : undefined });
     revalidateKpi();
-    return NextResponse.json({ ok: true, master, timeframes, ...result });
+    return NextResponse.json({ ok: true, master, timeframes, roles: roleSeed, ...result });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
