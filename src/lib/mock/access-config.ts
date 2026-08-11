@@ -53,6 +53,35 @@ export function canAccessNavHref(role: PersonaRole, sectionLabel: string, href: 
 }
 
 /**
+ * Whether a role may open a given path. Resolves the path to its nav item
+ * (exact match or nested sub-route) and applies the section/href rules. Paths
+ * not backed by a nav item (e.g. `/login`, the root) are allowed by default so
+ * the guard never traps utility routes.
+ */
+export function isPathAllowedForRole(role: PersonaRole, pathname: string): boolean {
+  for (const section of NAV_SECTIONS) {
+    for (const item of section.items) {
+      if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return canAccessNavHref(role, section.label, item.href);
+      }
+    }
+  }
+  return true;
+}
+
+/** The default landing route for a role — where a denied navigation redirects. */
+export function landingForRole(role: PersonaRole): string {
+  switch (role) {
+    case "site_admin":
+      return "/site-workspace";
+    case "viewer":
+      return "/activity";
+    default:
+      return "/dashboard";
+  }
+}
+
+/**
  * The navigation a role may see — NAV_SECTIONS filtered down to the sections and
  * items the role can access. Empty sections are dropped.
  */
