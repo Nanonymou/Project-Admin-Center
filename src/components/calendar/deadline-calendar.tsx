@@ -2,14 +2,20 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { KIND_META, STATUS_META, type DeadlineItem } from "@/lib/mock/deadlines";
+import { KIND_META, STATUS_META, type DeadlineItem, type DeadlineKind } from "@/lib/mock/deadlines";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+
+/** Invoice-related deadline kinds get a distinct marker on the calendar. */
+const INVOICE_KINDS = new Set<DeadlineKind>(["invoice_submit", "payment"]);
+export function isInvoiceDeadline(kind: DeadlineKind): boolean {
+  return INVOICE_KINDS.has(kind);
+}
 const MONTHS = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
   "Juli", "Agustus", "September", "Oktober", "November", "Desember",
@@ -160,12 +166,15 @@ export function DeadlineCalendar({ items }: { items: DeadlineItem[] }) {
                         <span
                           key={it.id}
                           className={cn(
-                            "truncate rounded border px-1 py-0.5 text-[9px] font-medium leading-tight",
+                            "flex items-center gap-0.5 truncate rounded border px-1 py-0.5 text-[9px] font-medium leading-tight",
                             STATUS_CHIP[it.status],
                           )}
-                          title={`${it.title} · ${it.projectCode} ${it.locationName}`}
+                          title={`${isInvoiceDeadline(it.kind) ? "Deadline invoice — " : ""}${it.title} · ${it.projectCode} ${it.locationName}`}
                         >
-                          {KIND_META[it.kind].label} · {it.projectCode}
+                          {isInvoiceDeadline(it.kind) && <Receipt className="h-2.5 w-2.5 shrink-0" />}
+                          <span className="truncate">
+                            {KIND_META[it.kind].label} · {it.projectCode}
+                          </span>
                         </span>
                       ))}
                       {cell.items.length > 2 && (

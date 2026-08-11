@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MapPin, ArrowDownWideNarrow, Filter } from "lucide-react";
+import { MapPin, ArrowDownWideNarrow, Filter, Search, X, Clock, User, Target } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
@@ -30,20 +31,45 @@ export function ActivityLogClient() {
   const entries = useMemo(() => buildAuditTrail(accessibleSites), [accessibleSites]);
 
   const [actionFilter, setActionFilter] = useState<"all" | AuditAction>("all");
+  const [locationFilter, setLocationFilter] = useState<"all" | string>("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | string>("all");
+  const [query, setQuery] = useState("");
   const [newestFirst, setNewestFirst] = useState(true);
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
 
-  const actions = useMemo(() => {
-    const set = new Set<AuditAction>(entries.map((e) => e.action));
-    return Array.from(set);
-  }, [entries]);
+  const actions = useMemo(() => Array.from(new Set(entries.map((e) => e.action))), [entries]);
+  const roles = useMemo(() => Array.from(new Set(entries.map((e) => e.role))), [entries]);
+  const locations = useMemo(
+    () =>
+      Array.from(new Map(accessibleSites.map((s) => [s.locationId, s.locationName])).entries()).map(
+        ([id, name]) => ({ id, name }),
+      ),
+    [accessibleSites],
+  );
+
+  const hasFilters =
+    actionFilter !== "all" || locationFilter !== "all" || roleFilter !== "all" || query.trim() !== "";
+
+  const resetFilters = () => {
+    setActionFilter("all");
+    setLocationFilter("all");
+    setRoleFilter("all");
+    setQuery("");
+  };
 
   const visible = useMemo(() => {
-    const filtered = actionFilter === "all" ? entries : entries.filter((e) => e.action === actionFilter);
-    const sorted = [...filtered].sort((a, b) =>
+    const q = query.trim().toLowerCase();
+    const filtered = entries.filter((e) => {
+      if (actionFilter !== "all" && e.action !== actionFilter) return false;
+      if (locationFilter !== "all" && e.locationId !== locationFilter) return false;
+      if (roleFilter !== "all" && e.role !== roleFilter) return false;
+      if (q && !`${e.actor} ${e.detail} ${e.target}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    return [...filtered].sort((a, b) =>
       newestFirst ? a.offsetMinutes - b.offsetMinutes : b.offsetMinutes - a.offsetMinutes,
     );
-    return sorted;
-  }, [entries, actionFilter, newestFirst]);
+  }, [entries, actionFilter, locationFilter, roleFilter, query, newestFirst]);
 
   return (
     <div className="space-y-6">
@@ -63,6 +89,17 @@ export function ActivityLogClient() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Cari aktor / detail / target…"
+                  className="w-56 rounded-md border bg-background py-1 pl-8 pr-2 text-sm"
+                  aria-label="Cari aktivitas"
+                />
+              </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Filter className="h-4 w-4" />
                 <select
@@ -79,6 +116,34 @@ export function ActivityLogClient() {
                   ))}
                 </select>
               </div>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                aria-label="Filter peran"
+              >
+                <option value="all">Semua peran</option>
+                {roles.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              {locations.length > 1 && (
+                <select
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  className="rounded-md border bg-background px-2 py-1 text-sm"
+                  aria-label="Filter site"
+                >
+                  <option value="all">Semua site</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 onClick={() => setNewestFirst((v) => !v)}
@@ -87,6 +152,16 @@ export function ActivityLogClient() {
                 <ArrowDownWideNarrow className="h-4 w-4" />
                 {newestFirst ? "Terbaru dulu" : "Terlama dulu"}
               </button>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm text-muted-foreground hover:bg-accent"
+                >
+                  <X className="h-4 w-4" />
+                  Reset
+                </button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -96,20 +171,81 @@ export function ActivityLogClient() {
           ) : (
             <ol className="space-y-3">
               {visible.map((entry) => (
-                <ActivityRow key={entry.id} entry={entry} />
+                <ActivityRow key={entry.id} entry={entry} onSelect={() => setSelected(entry)} />
               ))}
             </ol>
           )}
         </CardContent>
       </Card>
+
+      <ActivityDetailDialog entry={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
 
-function ActivityRow({ entry }: { entry: AuditEntry }) {
+function ActivityDetailDialog({ entry, onClose }: { entry: AuditEntry | null; onClose: () => void }) {
+  const meta = entry ? AUDIT_ACTION_META[entry.action] : null;
+  return (
+    <Dialog
+      open={Boolean(entry)}
+      onClose={onClose}
+      title="Detail Aktivitas"
+      description={entry ? entry.detail : undefined}
+    >
+      {entry && meta && (
+        <dl className="space-y-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Badge variant={meta.variant}>{meta.label}</Badge>
+            <span className="text-xs text-muted-foreground">{entry.timeLabel}</span>
+          </div>
+          <DetailRow icon={User} label="Aktor">
+            {entry.actor} · {entry.role}
+          </DetailRow>
+          <DetailRow icon={Target} label="Target">
+            {entry.target}
+          </DetailRow>
+          <DetailRow icon={MapPin} label="Lokasi">
+            {entry.locationName} · {entry.projectCode}
+          </DetailRow>
+          <DetailRow icon={Clock} label="Waktu">
+            {entry.timeLabel} ({entry.offsetMinutes} menit lalu)
+          </DetailRow>
+          <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">ID:</span> {entry.id}
+          </div>
+        </dl>
+      )}
+    </Dialog>
+  );
+}
+
+function DetailRow({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof MapPin;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div>
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className="text-sm">{children}</dd>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ entry, onSelect }: { entry: AuditEntry; onSelect: () => void }) {
   const meta = AUDIT_ACTION_META[entry.action];
   return (
-    <li className="flex items-start gap-3 rounded-lg border p-3">
+    <li
+      onClick={onSelect}
+      className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
+    >
       <Badge variant={meta.variant} className="mt-0.5 shrink-0">
         {meta.label}
       </Badge>
