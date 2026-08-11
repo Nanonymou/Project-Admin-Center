@@ -3,6 +3,7 @@ import {
   computeInvoice,
   parseInvoiceCalcInput,
 } from "@/lib/server/services/invoice-calculation-service";
+import { resolveFormulaOverrides } from "@/lib/server/services/formula-parameter-resolver";
 import { listInvoiceTypes } from "@/lib/mock/invoice-type-config";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessProject } from "@/lib/personas";
@@ -59,12 +60,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const calc = computeInvoice({ projectCode, subtotal, deduction, bbm, overdueDays });
+  // Apply any Formula Engine overrides configured for this project (falls back
+  // to config defaults when none are set or the DB is unavailable).
+  const overrides = await resolveFormulaOverrides(projectCode);
+  const calc = computeInvoice({ projectCode, subtotal, deduction, bbm, overdueDays }, overrides);
 
   return NextResponse.json({
     projectCode,
     invoiceType,
     input: { subtotal, deduction, bbm, overdueDays, bbmApplies },
+    overridesApplied: Object.keys(overrides).length > 0,
     calc,
   });
 }

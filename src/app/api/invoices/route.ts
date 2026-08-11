@@ -7,6 +7,7 @@ import {
   parseInvoiceCalcInput,
 } from "@/lib/server/services/invoice-calculation-service";
 import { recordInvoiceCreated } from "@/lib/server/services/invoice-audit-service";
+import { resolveFormulaOverrides } from "@/lib/server/services/formula-parameter-resolver";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
 import { canAccessLocation } from "@/lib/personas";
@@ -138,7 +139,10 @@ export async function POST(req: NextRequest) {
   const pic = typeof body.pic === "string" ? body.pic : undefined;
   // Overdue days is derived from the due date at save time (not the raw input).
   const overdueDays = overdueDaysOf(dueDate);
-  const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, bbm, overdueDays });
+  // Apply the project's Formula Engine parameter overrides to this new invoice's
+  // calculation (config defaults when none configured / DB unavailable).
+  const overrides = await resolveFormulaOverrides(projectId);
+  const calc = computeInvoice({ projectCode: projectId, subtotal, deduction, bbm, overdueDays }, overrides);
 
   const STATUSES: NewInvoice["status"][] = ["on_time", "at_risk", "overdue", "settled"];
   const STAGES: NewInvoice["stage"][] = [
