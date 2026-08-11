@@ -4,6 +4,7 @@ import {
   upsertInvoiceType,
   setInvoiceTypeActive,
 } from "@/db/repositories/invoice-type-repository";
+import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { listInvoiceTypes as listConfigInvoiceTypes } from "@/lib/mock/invoice-type-config";
 
@@ -87,6 +88,14 @@ export async function POST(req: NextRequest) {
       active: true,
       createdBy: persona.name,
     });
+    await writeAuditLog({
+      category: "master",
+      action: "invoice_type.upsert",
+      actor: persona.name,
+      entityType: "invoice_type",
+      entityId: code,
+      detail: `Simpan jenis invoice ${label} (potongan ${(deductionRate * 100).toFixed(1)}%)`,
+    });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan (database tidak tersedia)." }, { status: 503 });
@@ -118,8 +127,54 @@ export async function PATCH(req: NextRequest) {
 
   try {
     await setInvoiceTypeActive(code, active);
+    await writeAuditLog({
+      category: "master",
+      action: active ? "invoice_type.activate" : "invoice_type.deactivate",
+      actor: persona.name,
+      entityType: "invoice_type",
+      entityId: code,
+      detail: active ? "Aktifkan jenis invoice" : "Nonaktifkan jenis invoice",
+    });
     return NextResponse.json({ ok: true, active });
   } catch {
     return NextResponse.json({ error: "Gagal mengubah status (database tidak tersedia)." }, { status: 503 });
+  }
+}
+
+/**
+ * DELETE /api/jenis-invoice?code=
+ *
+ * Permanent deletion is NOT allowed — an invoice type may be referenced by
+ * historical invoices (Master Lock & Version Management). Instead this soft-
+ * deactivates the type and records the activity. Authorization: Leader/Super Admin.
+ */
+export async function DELETE(req: NextRequest) {
+  const auth = requirePersona(req.headers);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const persona = auth.persona;
+  if (!persona.capabilities.canConfigure) {
+    return NextResponse.json({ error: "Hanya Leader/Super Admin yang dapat menghapus." }, { status: 403 });
+  }
+
+  const code = req.nextUrl.searchParams.get("code")?.trim() ?? "";
+  if (!code) return NextResponse.json({ error: "code wajib diisi." }, { status: 400 });
+
+  try {
+    await setInvoiceTypeActive(code, false);
+    await writeAuditLog({
+      category: "master",
+      action: "invoice_type.soft_delete",
+      actor: persona.name,
+      entityType: "invoice_type",
+      entityId: code,
+      detail: "Permintaan hapus → dinonaktifkan (hapus permanen dilarang).",
+    });
+    return NextResponse.json({
+      ok: true,
+      softDeleted: true,
+      message: "Hapus permanen tidak diizinkan; jenis invoice dinonaktifkan.",
+    });
+  } catch {
+    return NextResponse.json({ error: "Gagal memproses (database tidak tersedia)." }, { status: 503 });
   }
 }
