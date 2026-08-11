@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   LayoutGrid,
   MapPin,
+  Contact,
   type LucideIcon,
 } from "lucide-react";
 
@@ -113,6 +114,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Harga Meals", href: "/harga-meals", icon: UtensilsCrossed },
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
+      { label: "Customer & Vendor", href: "/master-customer-vendor", icon: Contact },
       { label: "Hak Akses", href: "/hak-akses", icon: ShieldCheck },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
