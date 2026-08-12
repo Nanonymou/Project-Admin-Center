@@ -15,6 +15,8 @@ Aplikasi langsung jalan dengan data tiruan — tanpa perlu database.
 
 ## Deploy ke Vercel
 
+> 📘 **Panduan lengkap langkah demi langkah** (termasuk menyambungkan Neon, migrasi, seed, env, dan troubleshooting): [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md).
+
 Aplikasi ini bisa **langsung di-deploy ke Vercel tanpa perubahan** — akan build dan hidup dengan data tiruan.
 
 1. **Import** repository ini di Vercel dan pilih branch `main`. Framework preset **Next.js** terdeteksi otomatis (build command `next build`, tidak perlu `vercel.json`).
