@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/app/sidebar";
-import { Topbar } from "@/components/app/topbar";
-import { RouteGuard } from "@/components/app/route-guard";
+import { AppShell } from "@/components/app/app-shell";
+import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PersonaProvider } from "@/components/providers/persona-provider";
 import { GlobalFilterProvider } from "@/components/providers/global-filter-provider";
 import { ActiveSiteProvider } from "@/components/providers/active-site-provider";
@@ -16,21 +15,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="id" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <PersonaProvider>
-          <ActiveSiteProvider>
-          <GlobalFilterProvider>
-            <div className="flex min-h-screen">
-              <Sidebar />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <Topbar />
-                <main className="flex-1">
-                  <RouteGuard>{children}</RouteGuard>
-                </main>
-              </div>
-            </div>
-          </GlobalFilterProvider>
-          </ActiveSiteProvider>
-        </PersonaProvider>
+        <AuthSessionProvider>
+          <PersonaProvider>
+            <ActiveSiteProvider>
+              <GlobalFilterProvider>
+                <AppShell>{children}</AppShell>
+              </GlobalFilterProvider>
+            </ActiveSiteProvider>
+          </PersonaProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

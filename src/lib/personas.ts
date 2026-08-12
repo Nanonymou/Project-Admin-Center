@@ -38,12 +38,22 @@ export type PersonaScope = {
 export type Persona = {
   id: string;
   name: string;
+  /** Login email (dummy) — used by the NextAuth credentials provider. */
+  email: string;
   initials: string;
   role: PersonaRole;
   roleLabel: string;
   scope: PersonaScope;
   capabilities: PersonaCapabilities;
 };
+
+/**
+ * Shared demo password for every persona (dummy auth). Real deployments should
+ * replace the credentials provider with per-user hashed passwords; this exists
+ * only so the frontend-first login has something to check. Overridable via the
+ * `DEMO_PASSWORD` env var.
+ */
+export const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "demo123";
 
 /** All distinct project codes known to the app (derived from the workspaces). */
 const ALL_PROJECTS = Array.from(new Set(MOCK_WORKSPACES.map((w) => w.projectCode)));
@@ -76,6 +86,7 @@ const ROLE_DEFAULTS: Record<PersonaRole, { label: string; capabilities: PersonaC
 type PersonaSeed = {
   id: string;
   name: string;
+  email: string;
   role: PersonaRole;
   /** Overrides the role's default label (e.g. to name the specific site). */
   roleLabel?: string;
@@ -90,16 +101,18 @@ type PersonaSeed = {
  * (labels, capabilities, initials) is derived.
  */
 const PERSONA_SEEDS: PersonaSeed[] = [
-  { id: "persona-super", name: "Andi Prasetya", role: "super_admin" },
+  { id: "persona-super", name: "Andi Prasetya", email: "andi@tpb.co.id", role: "super_admin" },
   {
     id: "persona-leader",
     name: "Randi Setiawan",
+    email: "randi@tpb.co.id",
     role: "leader_admin",
     scope: { projects: ALL_PROJECTS },
   },
   {
     id: "persona-site-km22",
     name: "Bagas Wicaksono",
+    email: "bagas@tpb.co.id",
     role: "site_admin",
     roleLabel: "Site Admin — KM22",
     scope: { projects: ["BUMA"], locations: ["loc-km22"] },
@@ -107,6 +120,7 @@ const PERSONA_SEEDS: PersonaSeed[] = [
   {
     id: "persona-site-pomala",
     name: "Ika Rahmawati",
+    email: "ika@tpb.co.id",
     role: "site_admin",
     roleLabel: "Site Admin — Pomala",
     scope: { projects: ["POMALA"], locations: ["loc-pomala"] },
@@ -114,6 +128,7 @@ const PERSONA_SEEDS: PersonaSeed[] = [
   {
     id: "persona-site-muara",
     name: "Fajar Nugraha",
+    email: "fajar@tpb.co.id",
     role: "site_admin",
     roleLabel: "Site Admin — Muara Badak",
     scope: { projects: ["PHSS"], locations: ["loc-muara-badak"] },
@@ -121,6 +136,7 @@ const PERSONA_SEEDS: PersonaSeed[] = [
   {
     id: "persona-viewer",
     name: "Dinda Ayu",
+    email: "dinda@tpb.co.id",
     role: "viewer",
     scope: { projects: ALL_PROJECTS },
   },
@@ -142,6 +158,7 @@ function buildPersona(seed: PersonaSeed): Persona {
   return {
     id: seed.id,
     name: seed.name,
+    email: seed.email,
     initials: initialsOf(seed.name),
     role: seed.role,
     roleLabel: seed.roleLabel ?? defaults.label,
@@ -159,6 +176,12 @@ export const DEFAULT_PERSONA_ID = "persona-leader";
 
 export function getPersonaById(id: string): Persona {
   return PERSONAS.find((p) => p.id === id) ?? PERSONAS[0];
+}
+
+/** Look up a persona by login email (case-insensitive). Used at sign-in. */
+export function getPersonaByEmail(email: string): Persona | undefined {
+  const needle = email.trim().toLowerCase();
+  return PERSONAS.find((p) => p.email.toLowerCase() === needle);
 }
 
 /**

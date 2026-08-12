@@ -11,6 +11,8 @@ npm run dev        # http://localhost:3000
 
 Aplikasi langsung jalan dengan data tiruan — tanpa perlu database.
 
+**Login (demo):** autentikasi memakai NextAuth. Di halaman login pilih salah satu persona (email terisi otomatis) dan gunakan kata sandi `demo123`. Contoh akun: `randi@tpb.co.id` (Leader Admin), `andi@tpb.co.id` (Super Admin), `dinda@tpb.co.id` (Viewer).
+
 ## Deploy ke Vercel
 
 Aplikasi ini bisa **langsung di-deploy ke Vercel tanpa perubahan** — akan build dan hidup dengan data tiruan.
@@ -53,8 +55,9 @@ Ubah nilainya, simpan, dan aplikasi langsung memakai data baru. Saat Neon aktif,
 
 | Hal | Kondisi sekarang | Untuk production |
 |-----|------------------|------------------|
-| **Autentikasi** | Simulasi persona lewat header `x-persona-id` (bukan login sungguhan) | Pasang auth asli (mis. NextAuth) — logika RBAC & scope sudah siap |
+| **Autentikasi** | **NextAuth (Auth.js)** aktif — login nyata via credentials, sesi cookie. Data pengguna masih dummy (roster persona) | Ganti provider credentials dengan user + password ter-hash dari database |
 | **`DATABASE_URL`** | Fallback ke `localhost` bila tak diset (aman saat build karena lazy) | Set connection string DB yang sebenarnya |
+| **`AUTH_SECRET`** | Auto-generate di dev | **Wajib diset** di Vercel (`npx auth secret`) |
 
 ## Skema database
 
