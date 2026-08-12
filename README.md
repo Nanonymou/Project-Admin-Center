@@ -20,15 +20,34 @@ Aplikasi ini bisa **langsung di-deploy ke Vercel tanpa perubahan** — akan buil
 
 DB client bersifat *lazy*, jadi `next build` tidak menyentuh database dan tidak butuh env apa pun saat build.
 
-### Mengaktifkan data asli (opsional)
+### Mengaktifkan Neon (opsional, untuk data asli)
 
-1. Set Environment Variable di Vercel: `DATABASE_URL` = connection string PostgreSQL. [Neon](https://neon.tech) cocok (serverless, sejalan dengan `postgres.js` yang dipakai di sini).
-2. Terapkan migrasi & seed sekali (lokal/CI, dengan `DATABASE_URL` mengarah ke DB tujuan):
+Saat di-deploy ke Vercel, database production memakai **[Neon](https://neon.tech)** (PostgreSQL serverless). Koneksi dikonfigurasi otomatis dari URL — **tidak perlu utak-atik kode**:
+
+- **SSL** dinyalakan otomatis untuk host non-localhost (Neon mewajibkan TLS).
+- **Connection pooled** (host Neon mengandung `-pooler`, di belakang PgBouncer) terdeteksi otomatis dan *prepared statements* dimatikan, agar tidak muncul error `prepared statement ... does not exist`.
+
+Langkah:
+
+1. Buat project di Neon, salin **connection string pooled** dari dashboard (formatnya di `.env.example`).
+2. Set Environment Variable di Vercel: `DATABASE_URL` = connection string pooled tadi (mengandung `-pooler` dan `?sslmode=require`).
+3. Terapkan migrasi & seed sekali (lokal/CI, dengan `DATABASE_URL` mengarah ke Neon):
 
    ```bash
    npx drizzle-kit migrate    # menerapkan drizzle/0001–00xx
    npm run db:seed            # roles, master data, master locks, contoh transaksi
    ```
+
+Selama `DATABASE_URL` belum diset, aplikasi tetap hidup dengan data tiruan (tidak ada error koneksi).
+
+### Mengubah data tiruan
+
+Data tiruan (dummy) bisa langsung diubah tanpa database:
+
+- **Persona / akun demo** → `src/lib/personas.ts` (edit `PERSONA_SEEDS`).
+- **Data master & KPI lainnya** → file-file di `src/lib/mock/` (workspace, site KPI, customer/vendor, dll.).
+
+Ubah nilainya, simpan, dan aplikasi langsung memakai data baru. Saat Neon aktif, data asli dari database menggantikan data tiruan ini.
 
 ## Catatan sebelum production
 
