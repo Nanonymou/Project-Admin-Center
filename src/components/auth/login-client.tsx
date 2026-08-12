@@ -2,20 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Building2, LogIn, Mail, Lock, ShieldCheck, Check } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePersona } from "@/components/providers/persona-provider";
 import { SESSION_KEY } from "@/lib/auth";
-import { PERSONAS, type PersonaRole } from "@/lib/personas";
+import { DEMO_PASSWORD, PERSONAS, type PersonaRole } from "@/lib/personas";
 
 /**
- * Mock login screen (frontend-first). Authentication is simulated: pick the
- * persona to sign in as, then "Masuk" records a session flag in localStorage and
- * routes to the dashboard. There is no real credential check — the backend
- * auth/session API is a later task; this establishes the login/logout UX and the
- * session flag the shell reads.
+ * Login screen backed by NextAuth (Auth.js) credentials. Authentication is real
+ * — `signIn("credentials")` validates the email + password against the persona
+ * roster (see `src/auth.ts`) and issues a session cookie. The user data is still
+ * dummy: any persona's email with the demo password signs in. Picking a persona
+ * pre-fills its email so the demo stays one click away.
  */
 
 /** Small colour accent per role so the persona picker reads at a glance. */
@@ -32,21 +33,40 @@ export function LoginClient() {
 
   const [personaId, setLocalPersonaId] = useState(PERSONAS[0].id);
   const selected = PERSONAS.find((p) => p.id === personaId) ?? PERSONAS[0];
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(PERSONAS[0].email);
+  const [password, setPassword] = useState(DEMO_PASSWORD);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function signIn(e: React.FormEvent) {
+  function pickPersona(id: string) {
+    setLocalPersonaId(id);
+    const p = PERSONAS.find((x) => x.id === id);
+    if (p) setEmail(p.email);
+    setError("");
+  }
+
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError("Email dan kata sandi wajib diisi.");
       return;
     }
+    setLoading(true);
+    setError("");
+    const res = await signIn("credentials", { email, password, redirect: false });
+    setLoading(false);
+    if (!res || res.error) {
+      setError("Email atau kata sandi salah.");
+      return;
+    }
+    // Start the persona simulation on the account just signed in, and clear any
+    // stale override so the provider adopts this identity.
     setPersonaId(personaId);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SESSION_KEY, personaId);
     }
     router.push("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -60,7 +80,7 @@ export function LoginClient() {
           <CardDescription>Masuk untuk mengakses workspace Anda.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={signIn} className="space-y-4">
+          <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Email</label>
               <div className="relative">
@@ -97,7 +117,7 @@ export function LoginClient() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => setLocalPersonaId(p.id)}
+                      onClick={() => pickPersona(p.id)}
                       aria-pressed={active}
                       className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-colors ${
                         active ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-accent"
@@ -125,13 +145,13 @@ export function LoginClient() {
 
             {error && <p className="text-xs text-rose-600">{error}</p>}
 
-            <Button type="submit" className="w-full gap-1.5">
+            <Button type="submit" className="w-full gap-1.5" disabled={loading}>
               <LogIn className="h-4 w-4" />
-              Masuk
+              {loading ? "Memproses…" : "Masuk"}
             </Button>
           </form>
           <p className="mt-4 text-center text-[11px] text-muted-foreground">
-            Login demo — autentikasi backend menyusul. Kredensial tidak divalidasi.
+            Login demo — kata sandi untuk semua akun: <span className="font-mono">{DEMO_PASSWORD}</span>.
           </p>
         </CardContent>
       </Card>

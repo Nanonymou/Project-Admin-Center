@@ -7,6 +7,7 @@ import { Bell, Check, ChevronsUpDown, Search, UserCog, LogOut } from "lucide-rea
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { TopbarFilter } from "@/components/app/topbar-filter";
+import { signOut } from "next-auth/react";
 import { canAccessLocation } from "@/lib/personas";
 import { clearSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,8 @@ export function Topbar() {
   function logout() {
     clearSession();
     setOpen(false);
-    router.push("/login");
+    // End the NextAuth session and return to the login screen.
+    void signOut({ redirectTo: "/login" });
   }
   const [open, setOpen] = useState(false);
   const [siteOpen, setSiteOpen] = useState(false);
