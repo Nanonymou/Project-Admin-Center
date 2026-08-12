@@ -6,6 +6,8 @@ menyambungkannya ke database **[Neon](https://neon.tech)** (PostgreSQL serverles
 > **Ringkas:** Aplikasi bisa langsung deploy dengan data tiruan (tanpa database).
 > Neon hanya diperlukan bila ingin memakai data asli. Ikuti **Bagian A** untuk deploy
 > cepat, lalu **Bagian B** untuk mengaktifkan Neon.
+>
+> 🖼️ **Versi bergambar (screenshot tiap langkah):** [`DEPLOY_VERCEL_SCREENSHOTS.md`](DEPLOY_VERCEL_SCREENSHOTS.md).
 
 ---
 
