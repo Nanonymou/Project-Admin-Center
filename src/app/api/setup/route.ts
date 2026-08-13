@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { db } from "@/db";
+import { resolveDatabaseUrl, databaseishEnvKeys } from "@/db/connection-url";
 import { seedDatabase } from "@/db/seed";
 import { seedMasterCategories, seedMasterTimeframes } from "@/db/seed-master";
 import { seedRoles } from "@/db/seed-roles";
@@ -35,9 +36,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Token setup salah atau tidak ada (?key=...)." }, { status: 401 });
   }
 
-  if (!process.env.DATABASE_URL) {
+  if (!resolveDatabaseUrl()) {
     return NextResponse.json(
-      { ok: false, error: "DATABASE_URL belum diset di Environment Variables Vercel." },
+      {
+        ok: false,
+        error:
+          "Connection string database tidak ditemukan. Pastikan variabel bernama persis DATABASE_URL (huruf besar), aktif untuk Production, lalu Redeploy.",
+        // Names only (no values) to help diagnose a naming/case mismatch.
+        dbEnvVarsPresent: databaseishEnvKeys(),
+      },
       { status: 400 },
     );
   }
