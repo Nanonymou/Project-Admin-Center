@@ -111,3 +111,67 @@ export function buildReminders(site: SiteKpi): ReminderItem[] {
 
   return items;
 }
+
+export type ReminderHistoryStatus = "sent" | "acknowledged" | "escalated";
+
+export type ReminderHistoryEntry = {
+  id: string;
+  level: ReminderLevel;
+  trigger: ReminderTrigger;
+  title: string;
+  channel: "email" | "in-app" | "whatsapp";
+  status: ReminderHistoryStatus;
+  audience: "Leader" | "Site" | "Finance";
+  locationId: string;
+  locationName: string;
+  projectCode: string;
+  sentAt: string; // ISO
+  sentRelative: string;
+};
+
+const CHANNELS: ReminderHistoryEntry["channel"][] = ["email", "in-app", "whatsapp"];
+const HISTORY_STATUSES: ReminderHistoryStatus[] = ["sent", "acknowledged", "escalated"];
+
+function historySeed(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffffff;
+  return Math.abs(h);
+}
+
+/**
+ * Build a seeded history of reminders that have already been dispatched for a
+ * site — the "Riwayat Reminder" view. Deterministic per site so each shows its
+ * own past trail (sent → acknowledged / escalated), newest first. No backend.
+ */
+export function buildReminderHistory(site: SiteKpi): ReminderHistoryEntry[] {
+  const base = buildReminders(site);
+  const seed = historySeed(site.locationId);
+  const out: ReminderHistoryEntry[] = [];
+
+  base.forEach((r, i) => {
+    // Emit one or two past dispatches per current reminder.
+    const dispatches = 1 + ((seed + i) % 2);
+    for (let d = 0; d < dispatches; d++) {
+      const daysAgo = (i + 1) * 3 + d * 2 + (seed % 4);
+      const at = new Date();
+      at.setDate(at.getDate() - daysAgo);
+      at.setHours(8 + ((seed + i + d) % 9), (seed * (i + 1)) % 60, 0, 0);
+      out.push({
+        id: `${r.id}-h${d}`,
+        level: r.level,
+        trigger: r.trigger,
+        title: r.title,
+        channel: CHANNELS[(seed + i + d) % CHANNELS.length],
+        status: HISTORY_STATUSES[(seed + i + d) % HISTORY_STATUSES.length],
+        audience: r.audience,
+        locationId: site.locationId,
+        locationName: site.locationName,
+        projectCode: site.projectCode,
+        sentAt: at.toISOString(),
+        sentRelative: daysAgo === 0 ? "hari ini" : `${daysAgo} hari lalu`,
+      });
+    }
+  });
+
+  return out.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+}

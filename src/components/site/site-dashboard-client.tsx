@@ -18,6 +18,7 @@ import { AreaSalesSummary } from "@/components/site/area-sales-summary";
 import { computeSiteKpi } from "@/lib/mock/site-kpi-calc";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { ReminderWidget } from "@/components/site/reminder-widget";
+import { CutoffReminderBanner } from "@/components/site/cutoff-reminder-banner";
 import { buildReminders } from "@/lib/mock/reminders";
 import { DeadlineList } from "@/components/reminders/deadline-list";
 import { buildDeadlines } from "@/lib/mock/deadlines";
@@ -183,6 +184,11 @@ export function SiteDashboardClient({ locationId }: { locationId: string }) {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${accessibleSites.length} site accessible`} />
+
+        <CutoffReminderBanner
+          projectCode={detail.site.projectCode}
+          locationName={detail.site.locationName}
+        />
 
         <SitePeriodBar
           scopedInfo={`${scopedDaily.length} hari data · ${scaledInvoices.length} invoice`}

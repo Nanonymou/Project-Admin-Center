@@ -1,0 +1,209 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink, History } from "lucide-react";
+import { PageHeader } from "@/components/app/page-header";
+import { PersonaBanner } from "@/components/activity/persona-banner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { usePersona } from "@/components/providers/persona-provider";
+import { formatDate, formatDateTime } from "@/lib/utils";
+import {
+  listMasterEntities,
+  LOCK_CATEGORIES,
+  buildVersionHistory,
+  type MasterEntity,
+} from "@/lib/mock/master-lock";
+
+/**
+ * Master Lock & Version Management — the central registry of lockable master-data
+ * domains (PRD §Master Lock & Version Management). Each domain shows its lock
+ * state and current version; changes are versioned non-destructively. Read-only
+ * overview here; lock/unlock control, version history, and read-only enforcement
+ * are layered on by later tasks. Persona-scoped.
+ */
+export function MasterLockClient() {
+  const { persona } = usePersona();
+  // Only Leader/Super Admin may lock or unlock master data.
+  const canManage = persona.role === "super_admin" || persona.role === "leader_admin";
+
+  // Session-local lock-state overrides keyed by entity key.
+  const [lockOverrides, setLockOverrides] = useState<Record<string, boolean>>({});
+  const isLocked = (e: MasterEntity) => lockOverrides[e.key] ?? e.locked;
+  function toggleLock(e: MasterEntity) {
+    setLockOverrides((prev) => ({ ...prev, [e.key]: !isLocked(e) }));
+  }
+
+  // Version-history modal.
+  const [historyEntity, setHistoryEntity] = useState<MasterEntity | null>(null);
+  const versions = useMemo(
+    () => (historyEntity ? buildVersionHistory(historyEntity) : []),
+    [historyEntity],
+  );
+
+  const entities = listMasterEntities();
+
+  const byCategory = useMemo(
+    () =>
+      LOCK_CATEGORIES.map((category) => ({
+        category,
+        items: entities.filter((e) => e.category === category),
+      })).filter((g) => g.items.length > 0),
+    [entities],
+  );
+
+  const lockedCount = entities.filter((e) => isLocked(e)).length;
+
+  return (
+    <div>
+      <PageHeader
+        title="Master Lock & Versi"
+        description="Kunci integritas Master Data dan telusuri histori versinya."
+        breadcrumbs={[{ label: "Master Data" }, { label: "Master Lock & Versi" }]}
+      />
+
+      <div className="space-y-6 p-4 md:p-6">
+        <PersonaBanner persona={persona} scopeSummary={`${entities.length} master`} />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="default" className="gap-1">
+            <ShieldCheck className="h-3 w-3" />
+            {entities.length} domain master
+          </Badge>
+          <Badge variant="danger" className="gap-1">
+            <Lock className="h-3 w-3" />
+            {lockedCount} terkunci
+          </Badge>
+          <Badge variant="success" className="gap-1">
+            <LockOpen className="h-3 w-3" />
+            {entities.length - lockedCount} terbuka
+          </Badge>
+        </div>
+
+        {byCategory.map(({ category, items }) => (
+          <Card key={category}>
+            <CardHeader>
+              <CardTitle className="text-base">{category}</CardTitle>
+              <CardDescription>{items.length} domain master</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">Master Data</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Versi</th>
+                      <th className="px-3 py-2 font-medium">Diubah</th>
+                      {canManage && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((e) => (
+                      <tr key={e.key} className="border-b last:border-b-0">
+                        <td className="px-3 py-2 font-medium">
+                          <span className="flex items-center gap-2">
+                            {e.label}
+                            {e.href && (
+                              <Link
+                                href={e.href}
+                                className="text-muted-foreground hover:text-primary"
+                                aria-label={`Buka ${e.label}`}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Link>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {isLocked(e) ? (
+                            <Badge variant="danger" className="gap-1">
+                              <Lock className="h-3 w-3" />
+                              Terkunci
+                            </Badge>
+                          ) : (
+                            <Badge variant="success" className="gap-1">
+                              <LockOpen className="h-3 w-3" />
+                              Terbuka
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryEntity(e)}
+                            className="inline-flex"
+                            aria-label={`Riwayat versi ${e.label}`}
+                          >
+                            <Badge variant="secondary" className="gap-1 hover:bg-accent">
+                              <GitCommitVertical className="h-3 w-3" />v{e.version}
+                            </Badge>
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {e.lastModifiedBy} · {formatDate(e.lastModifiedAt)}
+                        </td>
+                        {canManage && (
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleLock(e)}
+                              className={`h-7 gap-1 px-2 ${isLocked(e) ? "text-emerald-600" : "text-rose-600"}`}
+                            >
+                              {isLocked(e) ? (
+                                <>
+                                  <LockOpen className="h-3.5 w-3.5" />
+                                  Buka Kunci
+                                </>
+                              ) : (
+                                <>
+                                  <Lock className="h-3.5 w-3.5" />
+                                  Kunci
+                                </>
+                              )}
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Dialog
+        open={historyEntity !== null}
+        onClose={() => setHistoryEntity(null)}
+        title={historyEntity ? `Riwayat Versi — ${historyEntity.label}` : "Riwayat Versi"}
+        description="Setiap perubahan disimpan non-destructive (versi lama tidak ditimpa)."
+        className="max-w-lg"
+      >
+        <ol className="space-y-3">
+          {versions.map((v, i) => (
+            <li key={v.version} className="flex items-start gap-3">
+              <Badge variant={i === 0 ? "success" : "muted"} className="mt-0.5 shrink-0 gap-1">
+                <GitCommitVertical className="h-3 w-3" />v{v.version}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{v.summary}</span>
+                  {i === 0 && <Badge variant="info">Terkini</Badge>}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {v.changedBy} · {formatDateTime(v.at)}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Dialog>
+    </div>
+  );
+}

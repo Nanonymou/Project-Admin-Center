@@ -1,5 +1,7 @@
 import { seedDatabase } from "@/db/seed";
 import { seedMasterCategories, seedMasterTimeframes } from "@/db/seed-master";
+import { seedRoles } from "@/db/seed-roles";
+import { seedMasterLocks } from "@/db/seed-master-locks";
 
 /**
  * CLI entry for `npm run db:seed`. Usage: `npm run db:seed -- [days]`.
@@ -12,12 +14,14 @@ async function main() {
   const projectCodes = (process.argv[3] ?? "").split(",").map((p) => p.trim()).filter(Boolean);
   const master = await seedMasterCategories();
   const timeframes = await seedMasterTimeframes();
+  const roleSeed = await seedRoles();
+  const lockSeed = await seedMasterLocks();
   const result = await seedDatabase({
     days: Number.isFinite(days) && days > 0 ? days : undefined,
     projectCodes: projectCodes.length ? projectCodes : undefined,
   });
   // eslint-disable-next-line no-console
-  console.log("Seed complete:", { master, timeframes, ...result });
+  console.log("Seed complete:", { master, timeframes, roles: roleSeed, locks: lockSeed, ...result });
   process.exit(0);
 }
 

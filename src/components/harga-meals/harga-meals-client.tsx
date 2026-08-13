@@ -8,32 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { PriceHistoryModal } from "@/components/harga-meals/price-history-modal";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { getPricedCategories, type PricedCategory } from "@/lib/mock/pricing-config";
+import { buildPriceChanges, type PriceChangeEntry } from "@/lib/mock/price-change-log";
 
 type PriceRow = { key: string; label: string; unit: string; price: number; custom?: boolean };
-
-type PriceHistoryEntry = {
-  id: string;
-  at: string;
-  actor: string;
-  category: string;
-  action: "Tambah" | "Ubah" | "Nonaktifkan" | "Aktifkan";
-  detail: string;
-};
-
-function nowLabel(): string {
-  return new Date().toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 /** Site admins/leaders can edit prices; viewers get a read-only list. */
 function canEditPrices(persona: Persona): boolean {
@@ -70,38 +53,41 @@ export function HargaMealsClient() {
   // Deactivated category keys per site — a price kept for reference but marked
   // inactive so it is excluded from active pricing.
   const [inactive, setInactive] = useState<Record<string, string[]>>({});
-  // Session-local change history per site (newest first).
-  const [history, setHistory] = useState<Record<string, PriceHistoryEntry[]>>({});
+  // Session-local change entries (this session's edits) per site — prepended to
+  // the seeded master history so the user sees their own actions reflected.
+  const [sessionLog, setSessionLog] = useState<Record<string, PriceChangeEntry[]>>({});
   const siteOverrides = overrides[siteKey] ?? {};
   const siteCustom = customRows[siteKey] ?? [];
   const siteInactive = inactive[siteKey] ?? [];
-  const siteHistory = history[siteKey] ?? [];
-
-  function logHistory(entry: Omit<PriceHistoryEntry, "id" | "at" | "actor">) {
-    setHistory((prev) => ({
-      ...prev,
-      [siteKey]: [
-        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: nowLabel(), actor: persona.name, ...entry },
-        ...(prev[siteKey] ?? []),
-      ],
-    }));
-  }
 
   function isInactive(key: string): boolean {
     return siteInactive.includes(key);
   }
 
+  /** Append an entry to this site's session-local change log. */
+  function recordChange(entry: Omit<PriceChangeEntry, "id" | "editor" | "at">) {
+    const full: PriceChangeEntry = {
+      ...entry,
+      id: `session-${siteKey}-${entry.categoryKey}-${entry.action}-${Date.now()}`,
+      editor: persona.name,
+      at: new Date().toISOString(),
+    };
+    setSessionLog((prev) => ({ ...prev, [siteKey]: [full, ...(prev[siteKey] ?? [])] }));
+  }
+
   function toggleActive(key: string, label: string) {
-    const willDeactivate = !siteInactive.includes(key);
+    const willDeactivate = !isInactive(key);
     setInactive((prev) => {
       const cur = prev[siteKey] ?? [];
       const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
       return { ...prev, [siteKey]: next };
     });
-    logHistory({
-      category: label,
-      action: willDeactivate ? "Nonaktifkan" : "Aktifkan",
-      detail: willDeactivate ? "Harga dinonaktifkan." : "Harga diaktifkan kembali.",
+    recordChange({
+      categoryKey: key,
+      categoryLabel: label,
+      action: willDeactivate ? "deactivate" : "activate",
+      before: null,
+      after: null,
     });
   }
 
@@ -113,6 +99,11 @@ export function HargaMealsClient() {
   const [formLabel, setFormLabel] = useState("");
   const [formUnit, setFormUnit] = useState("");
   const [formPrice, setFormPrice] = useState("");
+
+  // Price-history modal state. `historyCat` = null → whole site; otherwise a
+  // single category key.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyCat, setHistoryCat] = useState<string | null>(null);
 
   function priceOf(row: PriceRow): number {
     return siteOverrides[row.key] ?? row.price;
@@ -154,17 +145,18 @@ export function HargaMealsClient() {
     const price = Math.max(0, Math.round(Number(formPrice) || 0));
     if (editKey) {
       // Editing an existing/custom row → record a price override for this site.
-      const prevRow = rows.find((r) => r.key === editKey);
-      const oldPrice = prevRow ? priceOf(prevRow) : 0;
+      const prevPrice = siteOverrides[editKey] ?? rows.find((r) => r.key === editKey)?.price ?? 0;
       setOverrides((prev) => ({
         ...prev,
         [siteKey]: { ...(prev[siteKey] ?? {}), [editKey]: price },
       }));
-      if (oldPrice !== price) {
-        logHistory({
-          category: formLabel,
-          action: "Ubah",
-          detail: `Harga ${formatCurrency(oldPrice)} → ${formatCurrency(price)}.`,
+      if (price !== prevPrice) {
+        recordChange({
+          categoryKey: editKey,
+          categoryLabel: formLabel.trim() || editKey,
+          action: "update",
+          before: prevPrice,
+          after: price,
         });
       }
     } else {
@@ -176,13 +168,27 @@ export function HargaMealsClient() {
         ...prev,
         [siteKey]: [...(prev[siteKey] ?? []), { key, label, unit: formUnit.trim() || "unit", price, custom: true }],
       }));
-      logHistory({
-        category: label,
-        action: "Tambah",
-        detail: `Kategori baru ditambahkan · ${formatCurrency(price)}/${formUnit.trim() || "unit"}.`,
-      });
+      recordChange({ categoryKey: key, categoryLabel: label, action: "create", before: null, after: price });
     }
     setFormOpen(false);
+  }
+
+  // Seeded master history for this site + this session's edits, newest first.
+  const siteHistory: PriceChangeEntry[] = useMemo(() => {
+    if (!ws) return [];
+    const base = buildPriceChanges(ws.projectCode, ws.locationId);
+    const session = sessionLog[siteKey] ?? [];
+    return [...session, ...base];
+  }, [ws, sessionLog, siteKey]);
+
+  const historyEntries = useMemo(
+    () => (historyCat ? siteHistory.filter((e) => e.categoryKey === historyCat) : siteHistory),
+    [siteHistory, historyCat],
+  );
+
+  function openHistory(categoryKey: string | null) {
+    setHistoryCat(categoryKey);
+    setHistoryOpen(true);
   }
 
   if (!ws) {
@@ -210,7 +216,7 @@ export function HargaMealsClient() {
               <th className="px-3 py-2 font-medium">Kategori</th>
               <th className="px-3 py-2 font-medium">Satuan</th>
               <th className="px-3 py-2 text-right font-medium">Harga</th>
-              {editable && <th className="px-3 py-2 text-right font-medium">Aksi</th>}
+              <th className="px-3 py-2 text-right font-medium">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -246,40 +252,51 @@ export function HargaMealsClient() {
                   <td className="px-3 py-2 text-right font-semibold tabular-nums">
                     {formatCurrency(priceOf(c))}
                   </td>
-                  {editable && (
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEdit(c)}
-                          disabled={off}
-                          className="h-7 gap-1 px-2"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Ubah
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleActive(c.key, c.label)}
-                          className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
-                        >
-                          {off ? (
-                            <>
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              Aktifkan
-                            </>
-                          ) : (
-                            <>
-                              <Ban className="h-3.5 w-3.5" />
-                              Nonaktifkan
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </td>
-                  )}
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openHistory(c.key)}
+                        className="h-7 gap-1 px-2 text-muted-foreground"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                        Riwayat
+                      </Button>
+                      {editable && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEdit(c)}
+                            disabled={off}
+                            className="h-7 gap-1 px-2"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Ubah
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleActive(c.key, c.label)}
+                            className={`h-7 gap-1 px-2 ${off ? "text-emerald-600" : "text-rose-600"}`}
+                          >
+                            {off ? (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Aktifkan
+                              </>
+                            ) : (
+                              <>
+                                <Ban className="h-3.5 w-3.5" />
+                                Nonaktifkan
+                              </>
+                            )}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -317,6 +334,10 @@ export function HargaMealsClient() {
           <Badge variant="default" className="ml-auto">
             {rows.length - siteInactive.length} aktif / {rows.length} kategori
           </Badge>
+          <Button variant="outline" size="sm" onClick={() => openHistory(null)} className="gap-1.5">
+            <History className="h-4 w-4" />
+            Riwayat Perubahan
+          </Button>
           {editable && (
             <Button size="sm" onClick={openAdd} className="gap-1.5">
               <Plus className="h-4 w-4" />
@@ -345,54 +366,6 @@ export function HargaMealsClient() {
             <CardDescription>Harga default kategori layanan non-meals.</CardDescription>
           </CardHeader>
           <CardContent>{priceTable(others, "Tidak ada kategori layanan lain.")}</CardContent>
-        </Card>
-
-        {/* Price change history */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-4 w-4 text-primary" />
-              Riwayat Perubahan Harga
-            </CardTitle>
-            <CardDescription>
-              {siteHistory.length === 0
-                ? "Belum ada perubahan pada sesi ini."
-                : `${siteHistory.length} perubahan · ${ws.locationName}.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {siteHistory.length === 0 ? (
-              <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
-                Perubahan harga (tambah/ubah/nonaktifkan) akan tercatat di sini.
-              </div>
-            ) : (
-              <ul className="space-y-2">
-                {siteHistory.map((h) => {
-                  const variant =
-                    h.action === "Tambah"
-                      ? "success"
-                      : h.action === "Ubah"
-                        ? "warning"
-                        : h.action === "Nonaktifkan"
-                          ? "danger"
-                          : "info";
-                  return (
-                    <li
-                      key={h.id}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-card px-3 py-2 text-sm"
-                    >
-                      <Badge variant={variant}>{h.action}</Badge>
-                      <span className="font-medium">{h.category}</span>
-                      <span className="text-xs text-muted-foreground">{h.detail}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {h.actor} · {h.at}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
         </Card>
       </div>
 
@@ -453,6 +426,17 @@ export function HargaMealsClient() {
           </div>
         </div>
       </Dialog>
+
+      <PriceHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        entries={historyEntries}
+        scopeLabel={
+          historyCat
+            ? `${rows.find((r) => r.key === historyCat)?.label ?? historyCat} · ${ws.locationName}`
+            : `Semua kategori · ${ws.projectName} · ${ws.locationName}`
+        }
+      />
     </div>
   );
 }

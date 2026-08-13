@@ -25,16 +25,19 @@ export const ROLE_NAV_ACCESS: Record<PersonaRole, NavAccessRule> = {
       "/dashboard",
       "/ranking",
       "/leader",
+      "/leader-workspace",
       "/margin",
       "/performance",
       "/project-performance",
       "/sales-compare",
       "/cost-compare",
+      "/audit-log",
+      "/comparison",
     ],
   },
   viewer: {
     sections: ["Overview", "Operasional"],
-    denyHrefs: ["/leader"],
+    denyHrefs: ["/leader", "/leader-workspace", "/audit-log", "/comparison"],
   },
 };
 
@@ -49,6 +52,55 @@ export function canAccessNavHref(role: PersonaRole, sectionLabel: string, href: 
   if (!canAccessSection(role, sectionLabel)) return false;
   const rule = ROLE_NAV_ACCESS[role];
   return !(rule.denyHrefs ?? []).includes(href);
+}
+
+/**
+ * Whether a role may open a given path. Resolves the path to its nav item
+ * (exact match or nested sub-route) and applies the section/href rules. Paths
+ * not backed by a nav item (e.g. `/login`, the root) are allowed by default so
+ * the guard never traps utility routes.
+ */
+export function isPathAllowedForRole(role: PersonaRole, pathname: string): boolean {
+  for (const section of NAV_SECTIONS) {
+    for (const item of section.items) {
+      if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return canAccessNavHref(role, section.label, item.href);
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether a role may view the Audit Log (system/security trail). Restricted to
+ * Leader Admin / Super Admin — a Site Admin or Viewer must never see privileged
+ * configuration/security events. Single source of truth for the Audit Log guard,
+ * consumed by the page and mirrored by the nav deny-list.
+ */
+export function canViewAuditLog(role: PersonaRole): boolean {
+  return role === "leader_admin" || role === "super_admin";
+}
+
+/**
+ * Whether a role may view the cross-site Project & Location Comparison. Comparing
+ * across projects/locations is a portfolio (leadership) view, so a single-site
+ * Site Admin and a Viewer are excluded. Single source of truth for the guard,
+ * mirrored by the nav deny-list.
+ */
+export function canViewComparison(role: PersonaRole): boolean {
+  return role === "leader_admin" || role === "super_admin";
+}
+
+/** The default landing route for a role — where a denied navigation redirects. */
+export function landingForRole(role: PersonaRole): string {
+  switch (role) {
+    case "site_admin":
+      return "/site-workspace";
+    case "viewer":
+      return "/activity";
+    default:
+      return "/dashboard";
+  }
 }
 
 /**

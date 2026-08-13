@@ -34,6 +34,21 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * Effective Formula Engine overrides for a project. Any field left undefined
+ * falls back to the config default, so callers can pass a partial set. Resolved
+ * server-side from the formula_parameters table (see the formula-parameter
+ * resolver) and threaded into `computeInvoice`; this keeps the calc function pure
+ * and client-importable while still honoring configured overrides on the server.
+ */
+export type FormulaOverrides = {
+  taxRate?: number;
+  penaltyMonthlyRate?: number;
+  penaltyGraceDays?: number;
+  bbmApplies?: boolean;
+  bbmTaxable?: boolean;
+};
+
 /** Fully-validated, defaults-resolved invoice calculation input. */
 export type ResolvedInvoiceCalcInput = {
   projectCode: string;
@@ -165,23 +180,29 @@ export function invoiceCalcColumns(calc: InvoiceCalc, overdueDays: number) {
  * No project-named branches — all rates come from getTaxConfig / getPenaltyConfig
  * / getBbmConfig keyed by project code.
  */
-export function computeInvoice(input: InvoiceCalcInput): InvoiceCalc {
+export function computeInvoice(input: InvoiceCalcInput, overrides: FormulaOverrides = {}): InvoiceCalc {
   const subtotal = input.subtotal;
   const deduction = input.deduction ?? 0;
   const base = Math.max(0, subtotal - deduction);
 
   const bbmCfg = getBbmConfig(input.projectCode);
-  const bbmAmount = bbmCfg.applies ? Math.max(0, input.bbm ?? 0) : 0;
-  const taxableBase = bbmCfg.taxable ? base + bbmAmount : base;
+  // Formula Engine overrides supersede the project's config defaults when set.
+  const bbmApplies = overrides.bbmApplies ?? bbmCfg.applies;
+  const bbmTaxable = overrides.bbmTaxable ?? bbmCfg.taxable;
+  const bbmAmount = bbmApplies ? Math.max(0, input.bbm ?? 0) : 0;
+  const taxableBase = bbmTaxable ? base + bbmAmount : base;
 
   const tax = getTaxConfig(input.projectCode);
-  const taxAmount = round2(taxableBase * tax.rate);
+  const taxRate = overrides.taxRate ?? tax.rate;
+  const taxAmount = round2(taxableBase * taxRate);
 
   const penalty = getPenaltyConfig(input.projectCode);
+  const penaltyMonthlyRate = overrides.penaltyMonthlyRate ?? penalty.monthlyRate;
+  const graceDays = overrides.penaltyGraceDays ?? penalty.graceDays;
   const overdueDays = Math.max(0, input.overdueDays ?? 0);
-  const chargeableDays = Math.max(0, overdueDays - penalty.graceDays);
+  const chargeableDays = Math.max(0, overdueDays - graceDays);
   const penaltyMonths = chargeableDays > 0 ? Math.ceil(chargeableDays / 30) : 0;
-  const penaltyAmount = round2(base * penalty.monthlyRate * penaltyMonths);
+  const penaltyAmount = round2(base * penaltyMonthlyRate * penaltyMonths);
 
   return {
     subtotal: round2(subtotal),
@@ -191,9 +212,9 @@ export function computeInvoice(input: InvoiceCalcInput): InvoiceCalc {
     taxableBase: round2(taxableBase),
     taxCode: tax.code,
     taxLabel: tax.label,
-    taxRate: tax.rate,
+    taxRate,
     taxAmount,
-    penaltyRate: penalty.monthlyRate,
+    penaltyRate: penaltyMonthlyRate,
     penaltyMonths,
     penaltyAmount,
     total: round2(base + bbmAmount + taxAmount + penaltyAmount),
