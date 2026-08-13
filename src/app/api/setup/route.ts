@@ -1,7 +1,9 @@
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 import { db } from "@/db";
 import { resolveDatabaseUrl, databaseishEnvKeys } from "@/db/connection-url";
 import { seedDatabase } from "@/db/seed";
@@ -12,14 +14,18 @@ import { seedMasterLocks } from "@/db/seed-master-locks";
 /**
  * TEMPORARY one-shot database setup endpoint.
  *
- * Purpose: run the Drizzle migrations + seed the initial data on the production
- * (Neon) database from within Vercel — where the database is reachable — without
- * the operator needing a local CLI. Open it once in the browser with the token,
- * then this file is removed.
+ * Runs the Drizzle migrations + seeds the initial data on the production (Neon)
+ * database from within Vercel — where the database is reachable. Open it once in
+ * the browser with the token, then this file is removed.
  *
- * Guarded by a fixed token (`?key=`), served over HTTPS, and safe to re-run:
- * migrations are tracked (idempotent) and the seeds upsert; the sample-
- * transaction seed only runs when the table is still empty.
+ * Split into steps to stay within the serverless time limit:
+ *   ?step=migrate  → create tables only (uses a DIRECT, non-pooled connection —
+ *                    running migrations through Neon's PgBouncer pooler can hang)
+ *   ?step=seed     → seed roles/master data + sample transactions (?days=, ?tx=0)
+ *   (no step/all)  → both, for small databases
+ *
+ * Idempotent: migrations are tracked; seeds upsert; sample transactions only
+ * seed when the table is empty. Safe to re-open if a call times out — it resumes.
  *
  * DELETE THIS ROUTE after setup succeeds.
  */
@@ -30,9 +36,26 @@ export const maxDuration = 60;
 
 const SETUP_TOKEN = "pac-setup-65d2cbec9841faf9d3";
 
+/** Neon's direct (session-mode) host is the pooled host without `-pooler`. */
+function toDirectUrl(url: string): string {
+  return url.replace("-pooler.", ".");
+}
+
+async function runMigrate(): Promise<string> {
+  const directUrl = toDirectUrl(resolveDatabaseUrl()!);
+  // Dedicated short-lived client on the DIRECT endpoint for reliable DDL.
+  const client = postgres(directUrl, { max: 1, ssl: "require", prepare: false });
+  try {
+    await migrate(drizzle(client), { migrationsFolder: path.join(process.cwd(), "drizzle") });
+    return "ok";
+  } finally {
+    await client.end({ timeout: 5 }).catch(() => {});
+  }
+}
+
 export async function GET(req: NextRequest) {
-  const key = req.nextUrl.searchParams.get("key");
-  if (key !== SETUP_TOKEN) {
+  const sp = req.nextUrl.searchParams;
+  if (sp.get("key") !== SETUP_TOKEN) {
     return NextResponse.json({ ok: false, error: "Token setup salah atau tidak ada (?key=...)." }, { status: 401 });
   }
 
@@ -41,58 +64,68 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error:
-          "Connection string database tidak ditemukan. Pastikan variabel bernama persis DATABASE_URL (huruf besar), aktif untuk Production, lalu Redeploy.",
-        // Names only (no values) to help diagnose a naming/case mismatch.
+          "Connection string database tidak ditemukan. Pastikan connection string ada di kolom VALUE variabel DATABASE_URL (bukan Note), aktif untuk Production, lalu Redeploy.",
         dbEnvVarsPresent: databaseishEnvKeys(),
       },
       { status: 400 },
     );
   }
 
-  // Optional: number of trailing days of sample transactions (default 30, max 90).
-  const daysRaw = Number(req.nextUrl.searchParams.get("days"));
-  const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 90) : 30;
+  const step = (sp.get("step") ?? "all").toLowerCase();
+  const doMigrate = step === "all" || step === "migrate";
+  const doSeed = step === "all" || step === "seed";
+
+  const daysRaw = Number(sp.get("days"));
+  const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 90) : 14;
+  const includeTx = sp.get("tx") !== "0";
 
   const steps: Record<string, unknown> = {};
   try {
-    // 1) Migrate — creates all tables (idempotent; tracked in __drizzle_migrations).
-    await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });
-    steps.migrate = "ok";
-
-    // 2) Idempotent seeds (upsert).
-    steps.roles = await seedRoles();
-    steps.masterCategories = await seedMasterCategories();
-    steps.masterTimeframes = await seedMasterTimeframes();
-    steps.masterLocks = await seedMasterLocks();
-
-    // 3) Sample transactions — only when the table is still empty (append-only seed).
-    const existing = await db.execute(sql`select count(*)::int as n from daily_transactions`);
-    const count = Number((existing as unknown as Array<{ n: number }>)[0]?.n ?? 0);
-    if (count === 0) {
-      steps.transactions = await seedDatabase({ days });
-    } else {
-      steps.transactions = `dilewati — sudah ada ${count} transaksi`;
+    if (doMigrate) {
+      steps.migrate = await runMigrate();
     }
 
-    // Report the schema size so the operator can confirm.
+    if (doSeed) {
+      steps.roles = await seedRoles();
+      steps.masterCategories = await seedMasterCategories();
+      steps.masterTimeframes = await seedMasterTimeframes();
+      steps.masterLocks = await seedMasterLocks();
+
+      if (includeTx) {
+        const existing = await db.execute(sql`select count(*)::int as n from daily_transactions`);
+        const count = Number((existing as unknown as Array<{ n: number }>)[0]?.n ?? 0);
+        steps.transactions =
+          count === 0 ? await seedDatabase({ days }) : `dilewati — sudah ada ${count} transaksi`;
+      } else {
+        steps.transactions = "dilewati (tx=0)";
+      }
+    }
+
     const tables = await db.execute(
       sql`select count(*)::int as n from information_schema.tables where table_schema='public'`,
     );
     const tableCount = Number((tables as unknown as Array<{ n: number }>)[0]?.n ?? 0);
 
+    const done = step === "all" && tableCount > 0;
     return NextResponse.json({
       ok: true,
-      message: "Database Neon siap. Tabel dibuat & data awal terisi. Hapus endpoint /api/setup ini sekarang.",
+      step,
       publicTables: tableCount,
       steps,
+      message: done
+        ? "Database Neon siap. Hapus endpoint /api/setup ini sekarang."
+        : step === "migrate"
+          ? "Migrasi selesai. Lanjut buka ?step=seed untuk mengisi data."
+          : "Selesai.",
     });
   } catch (err) {
     return NextResponse.json(
       {
         ok: false,
+        step,
         error: err instanceof Error ? err.message : String(err),
         steps,
-        hint: "Cek DATABASE_URL (pakai string pooled Neon, diakhiri ?sslmode=require).",
+        hint: "Jika timeout, buka bertahap: ?step=migrate lalu ?step=seed. Migrasi memakai koneksi direct (tanpa -pooler).",
       },
       { status: 500 },
     );
