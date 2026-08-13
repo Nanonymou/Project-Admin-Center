@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
+import postgres from "postgres";
 import { db } from "@/db";
 import { resolveDatabaseUrl, databaseishEnvKeys } from "@/db/connection-url";
 import { seedDatabase } from "@/db/seed";
@@ -49,6 +50,12 @@ const IGNORABLE_CODES = new Set([
 type MigrateResult = { applied: number; skipped: number; files: number };
 
 async function runMigrate(): Promise<MigrateResult> {
+  const url = resolveDatabaseUrl()!;
+  const pooled = url.includes("-pooler.") || /[?&]pgbouncer=true/.test(url);
+  // Raw postgres.js client (not Drizzle) so SQLSTATE codes and error messages
+  // come through clean — Drizzle's wrapper hides the real cause.
+  const client = postgres(url, { max: 1, ssl: "require", prepare: !pooled });
+
   const dir = path.join(process.cwd(), "drizzle");
   const files = fs
     .readdirSync(dir)
@@ -57,25 +64,30 @@ async function runMigrate(): Promise<MigrateResult> {
 
   let applied = 0;
   let skipped = 0;
-  for (const file of files) {
-    const content = fs.readFileSync(path.join(dir, file), "utf8");
-    const statements = content
-      .split("--> statement-breakpoint")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const stmt of statements) {
-      try {
-        await db.execute(sql.raw(stmt));
-        applied++;
-      } catch (err) {
-        const code = (err as { code?: string })?.code;
-        if (code && IGNORABLE_CODES.has(code)) {
-          skipped++;
-          continue;
+  try {
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(dir, file), "utf8");
+      const statements = content
+        .split("--> statement-breakpoint")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const stmt of statements) {
+        try {
+          await client.unsafe(stmt);
+          applied++;
+        } catch (err) {
+          const code = (err as { code?: string })?.code;
+          if (code && IGNORABLE_CODES.has(code)) {
+            skipped++;
+            continue;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`Migrasi gagal di ${file} [${code ?? "?"}]: ${msg}`);
         }
-        throw new Error(`Migrasi gagal di ${file}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+  } finally {
+    await client.end({ timeout: 5 }).catch(() => {});
   }
   return { applied, skipped, files: files.length };
 }
