@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { resolveDatabaseUrl } from "./connection-url";
 
 /**
  * Database client (Drizzle ORM over postgres.js).
@@ -24,7 +25,7 @@ import * as schema from "./schema";
  */
 
 const connectionString =
-  process.env.DATABASE_URL ?? "postgres://localhost:5432/project_admin_center";
+  resolveDatabaseUrl() ?? "postgres://localhost:5432/project_admin_center";
 
 /** True for local/loopback hosts where SSL should stay off by default. */
 function isLocalHost(url: string): boolean {
