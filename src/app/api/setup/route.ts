@@ -111,6 +111,41 @@ export async function GET(req: NextRequest) {
   }
 
   const step = (sp.get("step") ?? "all").toLowerCase();
+
+  // Browser-friendly status check (no persona header needed): reports whether the
+  // schema + data are present so the operator can confirm the DB is live.
+  if (step === "check") {
+    try {
+      const q = async (text: string) => {
+        const r = await db.execute(sql.raw(text));
+        return Number((r as unknown as Array<{ n: number }>)[0]?.n ?? 0);
+      };
+      const publicTables = await q(
+        "select count(*)::int as n from information_schema.tables where table_schema='public'",
+      );
+      const roles = publicTables > 0 ? await q("select count(*)::int as n from roles") : 0;
+      const transactions = publicTables > 0 ? await q("select count(*)::int as n from daily_transactions") : 0;
+      const ready = publicTables > 0 && roles > 0;
+      return NextResponse.json({
+        ok: true,
+        step: "check",
+        ready,
+        publicTables,
+        rows: { roles, daily_transactions: transactions },
+        message: ready
+          ? "DB Neon AKTIF & berisi data. Aman untuk hapus /api/setup."
+          : publicTables === 0
+            ? "Tabel belum ada — jalankan ?step=migrate dulu."
+            : "Tabel ada tapi data kosong — jalankan ?step=seed.",
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { ok: false, step: "check", error: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      );
+    }
+  }
+
   const doMigrate = step === "all" || step === "migrate";
   const doSeed = step === "all" || step === "seed";
 
