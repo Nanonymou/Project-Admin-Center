@@ -1,9 +1,7 @@
+import fs from "node:fs";
 import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
 import { db } from "@/db";
 import { resolveDatabaseUrl, databaseishEnvKeys } from "@/db/connection-url";
 import { seedDatabase } from "@/db/seed";
@@ -14,18 +12,20 @@ import { seedMasterLocks } from "@/db/seed-master-locks";
 /**
  * TEMPORARY one-shot database setup endpoint.
  *
- * Runs the Drizzle migrations + seeds the initial data on the production (Neon)
- * database from within Vercel — where the database is reachable. Open it once in
- * the browser with the token, then this file is removed.
+ * Applies the schema + seeds initial data on the production (Neon) database from
+ * within Vercel. Open it once with the token, then this file is removed.
  *
- * Split into steps to stay within the serverless time limit:
- *   ?step=migrate  → create tables only (uses a DIRECT, non-pooled connection —
- *                    running migrations through Neon's PgBouncer pooler can hang)
- *   ?step=seed     → seed roles/master data + sample transactions (?days=, ?tx=0)
- *   (no step/all)  → both, for small databases
+ * Migrations are applied statement-by-statement over the app's (pooled) Neon
+ * connection — the same one the seeds use and which is proven reachable — in
+ * autocommit, WITHOUT the Drizzle migrator. This avoids the migrator stalling
+ * over PgBouncer and keeps each round-trip small so it finishes fast. Errors
+ * meaning "object already exists" are ignored, so the step is idempotent and
+ * resumable.
  *
- * Idempotent: migrations are tracked; seeds upsert; sample transactions only
- * seed when the table is empty. Safe to re-open if a call times out — it resumes.
+ * Steps (to stay within the serverless time limit):
+ *   ?step=migrate  → create tables/types/indexes
+ *   ?step=seed     → roles/master data + sample transactions (?days=, ?tx=0)
+ *   (no step/all)  → both
  *
  * DELETE THIS ROUTE after setup succeeds.
  */
@@ -36,21 +36,48 @@ export const maxDuration = 60;
 
 const SETUP_TOKEN = "pac-setup-65d2cbec9841faf9d3";
 
-/** Neon's direct (session-mode) host is the pooled host without `-pooler`. */
-function toDirectUrl(url: string): string {
-  return url.replace("-pooler.", ".");
-}
+/** Postgres error codes that mean "already there" — safe to ignore for idempotency. */
+const IGNORABLE_CODES = new Set([
+  "42P07", // duplicate_table
+  "42710", // duplicate_object (type, constraint, etc.)
+  "42701", // duplicate_column
+  "42P06", // duplicate_schema
+  "42P16", // invalid_table_definition (e.g. constraint already exists variants)
+  "23505", // unique_violation (re-insert of an enum/label row)
+]);
 
-async function runMigrate(): Promise<string> {
-  const directUrl = toDirectUrl(resolveDatabaseUrl()!);
-  // Dedicated short-lived client on the DIRECT endpoint for reliable DDL.
-  const client = postgres(directUrl, { max: 1, ssl: "require", prepare: false });
-  try {
-    await migrate(drizzle(client), { migrationsFolder: path.join(process.cwd(), "drizzle") });
-    return "ok";
-  } finally {
-    await client.end({ timeout: 5 }).catch(() => {});
+type MigrateResult = { applied: number; skipped: number; files: number };
+
+async function runMigrate(): Promise<MigrateResult> {
+  const dir = path.join(process.cwd(), "drizzle");
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+
+  let applied = 0;
+  let skipped = 0;
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(dir, file), "utf8");
+    const statements = content
+      .split("--> statement-breakpoint")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const stmt of statements) {
+      try {
+        await db.execute(sql.raw(stmt));
+        applied++;
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code && IGNORABLE_CODES.has(code)) {
+          skipped++;
+          continue;
+        }
+        throw new Error(`Migrasi gagal di ${file}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
+  return { applied, skipped, files: files.length };
 }
 
 export async function GET(req: NextRequest) {
@@ -64,7 +91,7 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error:
-          "Connection string database tidak ditemukan. Pastikan connection string ada di kolom VALUE variabel DATABASE_URL (bukan Note), aktif untuk Production, lalu Redeploy.",
+          "Connection string database tidak ditemukan. Pastikan ada di kolom VALUE variabel DATABASE_URL (bukan Note), aktif untuk Production, lalu Redeploy.",
         dbEnvVarsPresent: databaseishEnvKeys(),
       },
       { status: 400 },
@@ -106,17 +133,17 @@ export async function GET(req: NextRequest) {
     );
     const tableCount = Number((tables as unknown as Array<{ n: number }>)[0]?.n ?? 0);
 
-    const done = step === "all" && tableCount > 0;
     return NextResponse.json({
       ok: true,
       step,
       publicTables: tableCount,
       steps,
-      message: done
-        ? "Database Neon siap. Hapus endpoint /api/setup ini sekarang."
-        : step === "migrate"
+      message:
+        step === "migrate"
           ? "Migrasi selesai. Lanjut buka ?step=seed untuk mengisi data."
-          : "Selesai.",
+          : step === "seed"
+            ? "Seed selesai. Cek /api/dashboard — source harus 'db'. Lalu minta hapus /api/setup."
+            : "Database Neon siap. Hapus endpoint /api/setup ini sekarang.",
     });
   } catch (err) {
     return NextResponse.json(
@@ -125,7 +152,7 @@ export async function GET(req: NextRequest) {
         step,
         error: err instanceof Error ? err.message : String(err),
         steps,
-        hint: "Jika timeout, buka bertahap: ?step=migrate lalu ?step=seed. Migrasi memakai koneksi direct (tanpa -pooler).",
+        hint: "Buka bertahap: ?step=migrate dulu (aman diulang), lalu ?step=seed.",
       },
       { status: 500 },
     );
