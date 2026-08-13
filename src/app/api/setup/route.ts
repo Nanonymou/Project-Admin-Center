@@ -47,9 +47,23 @@ const IGNORABLE_CODES = new Set([
   "23505", // unique_violation (re-insert of an enum/label row)
 ]);
 
-type MigrateResult = { applied: number; skipped: number; files: number };
+type MigrateResult = {
+  totalFiles: number;
+  alreadyApplied: number;
+  appliedThisCall: number;
+  remaining: number;
+  done: boolean;
+};
 
-async function runMigrate(): Promise<MigrateResult> {
+/**
+ * Apply migrations incrementally with progress tracking, so repeated calls
+ * converge without ever exceeding the serverless time limit. A tiny
+ * `__setup_applied` table records which migration files are done; each call
+ * processes up to `limit` not-yet-applied files and marks them. Statements whose
+ * objects already exist are ignored, so a DB that was partially set up earlier is
+ * reconciled cleanly.
+ */
+async function runMigrate(limit: number): Promise<MigrateResult> {
   const url = resolveDatabaseUrl()!;
   const pooled = url.includes("-pooler.") || /[?&]pgbouncer=true/.test(url);
   // Raw postgres.js client (not Drizzle) so SQLSTATE codes and error messages
@@ -62,10 +76,19 @@ async function runMigrate(): Promise<MigrateResult> {
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
-  let applied = 0;
-  let skipped = 0;
   try {
-    for (const file of files) {
+    await client.unsafe(
+      "create table if not exists __setup_applied (file text primary key, applied_at timestamptz default now())",
+    );
+    const doneRows = (await client.unsafe(
+      "select file from __setup_applied",
+    )) as unknown as Array<{ file: string }>;
+    const doneSet = new Set(doneRows.map((r) => r.file));
+
+    const pending = files.filter((f) => !doneSet.has(f));
+    const batch = pending.slice(0, Math.max(1, limit));
+
+    for (const file of batch) {
       const content = fs.readFileSync(path.join(dir, file), "utf8");
       const statements = content
         .split("--> statement-breakpoint")
@@ -74,22 +97,27 @@ async function runMigrate(): Promise<MigrateResult> {
       for (const stmt of statements) {
         try {
           await client.unsafe(stmt);
-          applied++;
         } catch (err) {
           const code = (err as { code?: string })?.code;
-          if (code && IGNORABLE_CODES.has(code)) {
-            skipped++;
-            continue;
-          }
+          if (code && IGNORABLE_CODES.has(code)) continue;
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`Migrasi gagal di ${file} [${code ?? "?"}]: ${msg}`);
         }
       }
+      await client.unsafe("insert into __setup_applied (file) values ($1) on conflict do nothing", [file]);
     }
+
+    const remaining = pending.length - batch.length;
+    return {
+      totalFiles: files.length,
+      alreadyApplied: doneSet.size,
+      appliedThisCall: batch.length,
+      remaining,
+      done: remaining === 0,
+    };
   } finally {
     await client.end({ timeout: 5 }).catch(() => {});
   }
-  return { applied, skipped, files: files.length };
 }
 
 export async function GET(req: NextRequest) {
@@ -152,11 +180,16 @@ export async function GET(req: NextRequest) {
   const daysRaw = Number(sp.get("days"));
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 90) : 14;
   const includeTx = sp.get("tx") !== "0";
+  const limitRaw = Number(sp.get("limit"));
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 76) : 20;
 
   const steps: Record<string, unknown> = {};
+  let migrateDone = true;
   try {
     if (doMigrate) {
-      steps.migrate = await runMigrate();
+      const m = await runMigrate(limit);
+      steps.migrate = m;
+      migrateDone = m.done;
     }
 
     if (doSeed) {
@@ -180,6 +213,10 @@ export async function GET(req: NextRequest) {
     );
     const tableCount = Number((tables as unknown as Array<{ n: number }>)[0]?.n ?? 0);
 
+    const migrateMsg = migrateDone
+      ? "Migrasi selesai. Lanjut buka ?step=seed untuk mengisi data."
+      : "Sebagian migrasi terpasang. BUKA LAGI link ?step=migrate yang sama sampai remaining = 0.";
+
     return NextResponse.json({
       ok: true,
       step,
@@ -187,9 +224,9 @@ export async function GET(req: NextRequest) {
       steps,
       message:
         step === "migrate"
-          ? "Migrasi selesai. Lanjut buka ?step=seed untuk mengisi data."
+          ? migrateMsg
           : step === "seed"
-            ? "Seed selesai. Cek /api/dashboard — source harus 'db'. Lalu minta hapus /api/setup."
+            ? "Seed selesai. Terakhir buka ?step=check untuk memastikan ready:true."
             : "Database Neon siap. Hapus endpoint /api/setup ini sekarang.",
     });
   } catch (err) {
