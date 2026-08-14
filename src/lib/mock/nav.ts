@@ -38,6 +38,7 @@ import {
   FunctionSquare,
   Hash,
   Landmark,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -116,6 +117,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Projects", href: "/master/projects", icon: Building2 },
       { label: "Kelola Pengguna", href: "/kelola-pengguna", icon: Users },
+      { label: "Kelola Akun Login", href: "/kelola-akun", icon: KeyRound },
       { label: "Role", href: "/role", icon: Shield },
       { label: "User & Storage", href: "/user-monitoring", icon: Users },
       { label: "Manajemen Periode", href: "/period-status", icon: CalendarDays },

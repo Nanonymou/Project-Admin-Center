@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { DEMO_PASSWORD, getPersonaByEmail, type PersonaRole } from "@/lib/personas";
+import { DEMO_PASSWORD, getPersonaByEmail, getPersonaById, type PersonaRole } from "@/lib/personas";
+import { getAppUserByEmail, verifyPassword } from "@/lib/server/app-users";
 
 /**
  * NextAuth (Auth.js v5) configuration — real authentication over the dummy
@@ -29,18 +30,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Kata Sandi", type: "password" },
       },
-      authorize(credentials) {
-        const email = typeof credentials?.email === "string" ? credentials.email : "";
+      async authorize(credentials) {
+        const email = typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
         const password = typeof credentials?.password === "string" ? credentials.password : "";
+        if (!email || !password) return null;
+
+        // Primary: validate against the DB login accounts (per-user hashed password).
+        try {
+          const user = await getAppUserByEmail(email);
+          if (user) {
+            if (!user.isActive) return null;
+            const ok = await verifyPassword(password, user.passwordHash);
+            if (!ok) return null;
+            const persona = getPersonaById(user.personaId);
+            return { id: user.id, name: user.name, email: user.email, personaId: persona.id, role: persona.role };
+          }
+          // No such account in the DB → fall through to the demo fallback below.
+        } catch {
+          // DB unreachable (frontend-first / DB down) → fall through to demo login
+          // so the app is never locked out.
+        }
+
+        // Fallback: the built-in persona roster + shared demo password.
         const persona = getPersonaByEmail(email);
-        if (!persona || password !== DEMO_PASSWORD) return null;
-        return {
-          id: persona.id,
-          name: persona.name,
-          email: persona.email,
-          personaId: persona.id,
-          role: persona.role,
-        };
+        if (persona && password === DEMO_PASSWORD) {
+          return { id: persona.id, name: persona.name, email: persona.email, personaId: persona.id, role: persona.role };
+        }
+        return null;
       },
     }),
   ],
