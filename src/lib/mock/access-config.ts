@@ -17,7 +17,8 @@ export type NavAccessRule = {
 
 export const ROLE_NAV_ACCESS: Record<PersonaRole, NavAccessRule> = {
   super_admin: { sections: "all" },
-  leader_admin: { sections: "all" },
+  // Leader Admin sees everything except the Super-Admin-only login manager.
+  leader_admin: { sections: "all", denyHrefs: ["/kelola-akun"] },
   site_admin: {
     sections: ["Overview", "Operasional"],
     // Cross-site / leadership surfaces are not available to a single-site admin.
