@@ -1,16 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { filterNavForRole } from "@/lib/mock/access-config";
 import { usePersona } from "@/components/providers/persona-provider";
-import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard } from "lucide-react";
-import { SITE_KPI } from "@/lib/mock/site-kpi";
-import { buildReminders } from "@/lib/mock/reminders";
-import { buildDeadlines } from "@/lib/mock/deadlines";
+import { onNotifChanged, personaHeaders } from "@/lib/client/notif";
 
 /** Nav hrefs that show the live unread-notification count badge. */
 const NOTIFICATION_HREFS = new Set(["/pusat-notifikasi", "/notification-center"]);
@@ -20,16 +17,30 @@ export function Sidebar() {
   const { persona } = usePersona();
   const sections = filterNavForRole(persona.role);
 
-  // Live unread count: critical/warning reminders + overdue/due-today deadlines
-  // across the sites this persona can access.
-  const unreadCount = useMemo(() => {
-    const sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
-    const reminderCount = sites.flatMap((s) => buildReminders(s)).filter((r) => r.level !== "info").length;
-    const deadlineCount = buildDeadlines(sites).filter(
-      (d) => d.status === "overdue" || d.status === "due_today",
-    ).length;
-    return reminderCount + deadlineCount;
-  }, [persona]);
+  // Live unread count from the DB inbox — the same source as the topbar bell,
+  // refreshed whenever a notification is marked read.
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const res = await fetch("/api/pusat-notifikasi/unread-count", {
+          cache: "no-store",
+          headers: personaHeaders(persona.id),
+        });
+        const data = await res.json();
+        if (!cancelled) setUnreadCount(Number(data?.unread ?? 0));
+      } catch {
+        /* keep last value */
+      }
+    }
+    void refresh();
+    const off = onNotifChanged(refresh);
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [persona.id]);
   return (
     <aside className="hidden md:flex md:w-64 md:shrink-0 md:flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <div className="flex items-center gap-2 px-5 h-16 border-b border-sidebar-border">
