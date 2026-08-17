@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BadgeCheck, Clock3, Download, Info, Lock, Pencil, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -31,6 +31,7 @@ import { buildStageProgress, summarizeApprovalProgress } from "@/lib/mock/approv
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { canAccessLocation } from "@/lib/personas";
+import { personaHeaders } from "@/lib/client/notif";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -100,12 +101,41 @@ export function ApprovalProgressClient() {
   // Local edits applied to approval activities this session.
   const [approvalOverrides, setApprovalOverrides] = useState<Record<string, Partial<ApprovalReminder>>>({});
 
+  // Persisted DB state per approval (keyed by the mock subjectId): the real DB id
+  // plus the authoritative currentStage/assignee. Drives display + transitions.
+  type DbApproval = { dbId: string; currentStage: string; assignedTo: string | null };
+  const [dbApprovals, setDbApprovals] = useState<Record<string, DbApproval>>({});
+
+  const loadQueue = useCallback(async () => {
+    try {
+      const res = await fetch("/api/approvals/queue", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        items?: Array<{ subjectId: string; id: string; currentStage: string; assignedTo: string | null }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.items)) return;
+      const map: Record<string, DbApproval> = {};
+      for (const it of data.items) map[it.subjectId] = { dbId: it.id, currentStage: it.currentStage, assignedTo: it.assignedTo };
+      setDbApprovals(map);
+    } catch {
+      /* keep current */
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
+
   const allApprovals = useMemo(
     () =>
-      buildApprovalRemindersFor(filteredSites, scopedDetailMap).map((a) =>
-        approvalOverrides[a.id] ? { ...a, ...approvalOverrides[a.id] } : a,
-      ),
-    [filteredSites, scopedDetailMap, approvalOverrides],
+      buildApprovalRemindersFor(filteredSites, scopedDetailMap).map((a) => {
+        const db = dbApprovals[a.id];
+        // DB stage/assignee is authoritative; a fresh session edit still wins for
+        // immediate feedback until the queue refetches.
+        const withDb = db ? { ...a, stage: db.currentStage, assignee: db.assignedTo ?? a.assignee } : a;
+        return approvalOverrides[a.id] ? { ...withDb, ...approvalOverrides[a.id] } : withDb;
+      }),
+    [filteredSites, scopedDetailMap, approvalOverrides, dbApprovals],
   );
 
   // Change history for activity edits this session.
@@ -129,22 +159,25 @@ export function ApprovalProgressClient() {
     setEditStage(a.stage as ApprovalStageName);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editTarget) return;
+    const target = editTarget;
     const changes: string[] = [];
-    const assignee = editAssignee.trim() || editTarget.assignee;
-    if (assignee !== editTarget.assignee) changes.push(`Assignee: ${editTarget.assignee} → ${assignee}`);
-    if (editPriority !== editTarget.priority) changes.push(`Prioritas: ${editTarget.priority} → ${editPriority}`);
-    if (editStage !== editTarget.stage) changes.push(`Stage: ${editTarget.stage} → ${editStage}`);
+    const assignee = editAssignee.trim() || target.assignee;
+    const stageChanged = editStage !== target.stage;
+    const assigneeChanged = assignee !== target.assignee;
+    if (assigneeChanged) changes.push(`Assignee: ${target.assignee} → ${assignee}`);
+    if (editPriority !== target.priority) changes.push(`Prioritas: ${target.priority} → ${editPriority}`);
+    if (stageChanged) changes.push(`Stage: ${target.stage} → ${editStage}`);
     setApprovalOverrides((prev) => ({
       ...prev,
-      [editTarget.id]: { assignee, priority: editPriority, stage: editStage },
+      [target.id]: { assignee, priority: editPriority, stage: editStage },
     }));
     if (changes.length > 0) {
       setEditHistory((prev) => [
         {
-          id: `${editTarget.id}-${Date.now()}`,
-          invoiceNumber: editTarget.invoiceNumber,
+          id: `${target.id}-${Date.now()}`,
+          invoiceNumber: target.invoiceNumber,
           changes: changes.join(" · "),
           by: persona.roleLabel,
           time: new Date().toLocaleTimeString("id-ID"),
@@ -153,6 +186,31 @@ export function ApprovalProgressClient() {
       ]);
     }
     setEditTarget(null);
+
+    // Persist to the database when this approval has a DB row and something that
+    // maps to a transition changed (stage advance/return or reassignment).
+    const db = dbApprovals[target.id];
+    if (db && (stageChanged || assigneeChanged)) {
+      const action = stageChanged ? "approve" : "reassign";
+      try {
+        await fetch("/api/approvals/transition", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+          body: JSON.stringify({
+            approvalId: db.dbId,
+            projectId: target.projectCode,
+            locationId: target.locationId,
+            toStage: editStage,
+            action,
+            assignedTo: assignee,
+            note: changes.join(" · "),
+          }),
+        });
+        await loadQueue();
+      } catch {
+        /* keep the optimistic override */
+      }
+    }
   }
 
   const canEditApproval =
