@@ -2,7 +2,7 @@ import { PERSONAS, canAccessLocation, type Persona } from "@/lib/personas";
 import { SITE_KPI, type SiteKpi } from "@/lib/mock/site-kpi";
 import { buildDeadlines } from "@/lib/mock/deadlines";
 import { planCutOffReminders } from "@/lib/server/services/reminder-scheduler-service";
-import { insertNotifications } from "@/db/repositories/notification-repository";
+import { countForRecipient, insertNotifications } from "@/db/repositories/notification-repository";
 import type { NewNotificationRow } from "@/db/schema";
 
 /**
@@ -111,6 +111,32 @@ function incompleteDataNotifications(persona: Persona, sites: SiteKpi[]): NewNot
     projectCode: r.projectCode,
     locationId: r.locationId,
   }));
+}
+
+/** The notification rows for a single recipient, from all sources. */
+export function buildPersonaNotifications(persona: Persona): NewNotificationRow[] {
+  const sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
+  if (sites.length === 0) return [];
+  return [
+    ...deadlineNotifications(persona, sites),
+    ...overdueInvoiceNotifications(persona, sites),
+    ...paidInvoiceNotifications(persona, sites),
+    ...approvalNotifications(persona, sites),
+    ...incompleteDataNotifications(persona, sites),
+  ];
+}
+
+/**
+ * Lazily populate a recipient's DB inbox the first time it is accessed: if they
+ * have no notifications yet, generate and persist their rows. Idempotent — once
+ * rows exist (read or unread) it does nothing, so it never duplicates. This makes
+ * the inbox real and mark-as-read persistent without a separate scheduled job.
+ */
+export async function ensurePersonaInbox(persona: Persona): Promise<void> {
+  const existing = await countForRecipient(persona.id);
+  if (existing > 0) return;
+  const rows = buildPersonaNotifications(persona);
+  if (rows.length > 0) await insertNotifications(rows);
 }
 
 export type GeneratorResult = { recipients: number; generated: number; persisted: number };
