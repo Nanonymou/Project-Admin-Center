@@ -1,235 +1,219 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Inbox, Bell, CalendarClock, Filter, MapPin, ChevronRight } from "lucide-react";
+import { Inbox, Bell, CalendarClock, CheckCheck, Filter, MapPin, ChevronRight, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
-import { canAccessLocation } from "@/lib/personas";
 import { cn } from "@/lib/utils";
-import { SITE_KPI } from "@/lib/mock/site-kpi";
-import { buildReminders } from "@/lib/mock/reminders";
-import { buildDeadlines, STATUS_META } from "@/lib/mock/deadlines";
+import { emitNotifChanged, personaHeaders } from "@/lib/client/notif";
 
-type NotifSource = "reminder" | "deadline";
+type NotifSource = "reminder" | "deadline" | "system";
 type NotifLevel = "info" | "warning" | "danger";
 
-type NotifEntry = {
+type Notif = {
   id: string;
   source: NotifSource;
   level: NotifLevel;
   title: string;
   detail: string;
-  location: string;
-  dueLabel: string;
-  order: number; // lower = more urgent
-  /** Related page this notification links to. */
-  href: string;
+  href: string | null;
+  projectCode: string | null;
+  locationId: string | null;
+  read: boolean;
+  at: string | null;
 };
 
-/** Map a deadline kind to the page a user would act on it. */
-function deadlineHref(kind: string, locationId: string): string {
-  if (kind === "invoice_submit" || kind === "payment") return "/invoices";
-  if (kind === "approval") return "/dashboard-calendar";
-  if (kind === "closing") return `/site/${locationId}`;
-  return "/dashboard-calendar";
-}
+const SOURCE_META: Record<NotifSource, { label: string; icon: typeof Bell }> = {
+  reminder: { label: "Reminder", icon: Bell },
+  deadline: { label: "Deadline", icon: CalendarClock },
+  system: { label: "Sistem", icon: Inbox },
+};
 
-const LEVEL_META: Record<NotifLevel, { label: string; variant: "info" | "warning" | "danger" }> = {
-  info: { label: "Info", variant: "info" },
-  warning: { label: "Peringatan", variant: "warning" },
-  danger: { label: "Kritis", variant: "danger" },
+const LEVEL_BADGE: Record<NotifLevel, "info" | "warning" | "danger"> = {
+  info: "info",
+  warning: "warning",
+  danger: "danger",
 };
 
 /**
- * Pusat Notifikasi & Reminder — a unified inbox that merges cut-off reminders and
- * deadline notifications across the sites a persona can see into one urgency-
- * ranked feed, filterable by source and severity. Frontend-first (reminders +
- * deadlines mocks), persona-scoped, no backend required.
+ * Pusat Notifikasi & Reminder — the persona's DB-backed inbox. Lists reminders,
+ * deadlines and system notices, supports marking one/all read (persisted), and
+ * keeps the topbar badge in sync.
  */
 export function PusatNotifikasiClient() {
   const { persona } = usePersona();
-
-  const scopedSites = useMemo(
-    () => SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
-    [persona],
-  );
-
-  const entries = useMemo<NotifEntry[]>(() => {
-    const out: NotifEntry[] = [];
-
-    for (const site of scopedSites) {
-      for (const r of buildReminders(site)) {
-        out.push({
-          id: `rem-${r.id}`,
-          source: "reminder",
-          level: r.level === "critical" ? "danger" : r.level,
-          title: r.title,
-          detail: r.detail,
-          location: `${site.locationName} · ${site.projectCode}`,
-          dueLabel: r.dueLabel,
-          order: r.level === "critical" ? 0 : r.level === "warning" ? 1 : 2,
-          href: `/site/${site.locationId}`,
-        });
-      }
-    }
-
-    for (const d of buildDeadlines(scopedSites)) {
-      const level: NotifLevel =
-        d.status === "overdue" || d.status === "due_today" ? "danger" : d.status === "due_soon" ? "warning" : "info";
-      out.push({
-        id: `dl-${d.id}`,
-        source: "deadline",
-        level,
-        title: d.title,
-        detail: `PIC ${d.owner} · progres ${d.progressPct}%`,
-        location: `${d.locationName} · ${d.projectCode}`,
-        dueLabel: d.dueLabel,
-        order: d.daysRelative,
-        href: deadlineHref(d.kind, d.locationId),
-      });
-    }
-
-    return out.sort((a, b) => a.order - b.order);
-  }, [scopedSites]);
-
+  const [items, setItems] = useState<Notif[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<"all" | NotifSource>("all");
-  const [levelFilter, setLevelFilter] = useState<"all" | NotifLevel>("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const visible = useMemo(
-    () =>
-      entries.filter(
-        (e) => (sourceFilter === "all" || e.source === sourceFilter) && (levelFilter === "all" || e.level === levelFilter),
-      ),
-    [entries, sourceFilter, levelFilter],
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/pusat-notifikasi", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = await res.json();
+      setItems(Array.isArray(data.notifications) ? data.notifications : []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const unreadCount = useMemo(() => items.filter((n) => !n.read).length, [items]);
+
+  const visible = useMemo(() => {
+    return items.filter((n) => {
+      if (sourceFilter !== "all" && n.source !== sourceFilter) return false;
+      if (unreadOnly && n.read) return false;
+      return true;
+    });
+  }, [items, sourceFilter, unreadOnly]);
+
+  const markRead = useCallback(
+    async (id: string, read: boolean) => {
+      // Optimistic update.
+      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read } : n)));
+      try {
+        await fetch(`/api/pusat-notifikasi/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+          body: JSON.stringify({ read }),
+        });
+        emitNotifChanged();
+      } catch {
+        void load(); // reconcile on failure
+      }
+    },
+    [persona.id, load],
   );
 
-  const counts = useMemo(
-    () => ({
-      reminders: entries.filter((e) => e.source === "reminder").length,
-      deadlines: entries.filter((e) => e.source === "deadline").length,
-      critical: entries.filter((e) => e.level === "danger").length,
-    }),
-    [entries],
-  );
+  const markAllRead = useCallback(async () => {
+    if (unreadCount === 0) return;
+    setBusy(true);
+    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await fetch("/api/pusat-notifikasi/mark-all-read", { method: "POST", headers: personaHeaders(persona.id) });
+      emitNotifChanged();
+    } catch {
+      void load();
+    } finally {
+      setBusy(false);
+    }
+  }, [persona.id, unreadCount, load]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 md:p-6">
       <PageHeader
         title="Pusat Notifikasi & Reminder"
-        description="Satu inbox untuk reminder cut-off dan notifikasi tenggat lintas site dalam cakupan Anda."
+        description="Reminder, deadline, dan pemberitahuan sistem dalam cakupan Anda."
+        actions={
+          <Button variant="outline" size="sm" onClick={markAllRead} disabled={busy || unreadCount === 0} className="gap-1.5">
+            <CheckCheck className="h-4 w-4" />
+            Tandai semua dibaca
+          </Button>
+        }
       />
-      <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+      <PersonaBanner persona={persona} scopeSummary={`${unreadCount} belum dibaca`} />
 
-      <div className="grid grid-cols-3 gap-3">
-        <SummaryTile icon={Bell} label="Reminder" value={counts.reminders} />
-        <SummaryTile icon={CalendarClock} label="Tenggat" value={counts.deadlines} />
-        <SummaryTile icon={Inbox} label="Kritis" value={counts.critical} tone="danger" />
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        {(["all", "reminder", "deadline", "system"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSourceFilter(s)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs transition-colors",
+              sourceFilter === s ? "border-primary bg-primary/5 text-primary" : "hover:bg-accent",
+            )}
+          >
+            {s === "all" ? "Semua" : SOURCE_META[s].label}
+          </button>
+        ))}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input type="checkbox" checked={unreadOnly} onChange={(e) => setUnreadOnly(e.target.checked)} className="h-3.5 w-3.5" />
+          Belum dibaca saja
+        </label>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Inbox className="h-5 w-5" />
-                Inbox Notifikasi
-              </CardTitle>
-              <CardDescription>{visible.length} notifikasi ditampilkan</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Filter className="h-4 w-4" />
-                <select
-                  value={sourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value as "all" | NotifSource)}
-                  className="rounded-md border bg-background px-2 py-1 text-sm"
-                  aria-label="Filter sumber"
+      {loading ? (
+        <Card>
+          <CardContent className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Memuat notifikasi…
+          </CardContent>
+        </Card>
+      ) : visible.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <Inbox className="h-8 w-8 text-muted-foreground" />
+            <p className="text-sm font-medium">Tidak ada notifikasi.</p>
+            <p className="text-xs text-muted-foreground">Semua sudah ditangani. 🎉</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="space-y-2">
+          {visible.map((n) => {
+            const meta = SOURCE_META[n.source] ?? SOURCE_META.system;
+            const Icon = meta.icon;
+            return (
+              <li key={n.id}>
+                <div
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                    n.read ? "bg-background" : "border-primary/30 bg-primary/5",
+                  )}
                 >
-                  <option value="all">Semua sumber</option>
-                  <option value="reminder">Reminder</option>
-                  <option value="deadline">Tenggat</option>
-                </select>
-              </div>
-              <select
-                value={levelFilter}
-                onChange={(e) => setLevelFilter(e.target.value as "all" | NotifLevel)}
-                className="rounded-md border bg-background px-2 py-1 text-sm"
-                aria-label="Filter level"
-              >
-                <option value="all">Semua level</option>
-                <option value="danger">Kritis</option>
-                <option value="warning">Peringatan</option>
-                <option value="info">Info</option>
-              </select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {visible.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada notifikasi.</p>
-          ) : (
-            <ol className="space-y-3">
-              {visible.map((e) => {
-                const meta = LEVEL_META[e.level];
-                const SourceIcon = e.source === "reminder" ? Bell : CalendarClock;
-                return (
-                  <li key={e.id}>
-                    <Link
-                      href={e.href}
-                      className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
-                    >
-                      <Badge variant={meta.variant} className="mt-0.5 shrink-0">
+                  <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full", n.read ? "bg-muted" : "bg-primary/10")}>
+                    <Icon className={cn("h-4 w-4", n.read ? "text-muted-foreground" : "text-primary")} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={cn("truncate text-sm", n.read ? "font-medium" : "font-semibold")}>{n.title}</p>
+                      <Badge variant={LEVEL_BADGE[n.level] ?? "muted"} className="shrink-0">
                         {meta.label}
                       </Badge>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <SourceIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          <span className="font-medium">{e.title}</span>
-                          <span className="ml-auto text-xs text-muted-foreground">{e.dueLabel}</span>
-                        </div>
-                        <p className="mt-0.5 text-sm text-foreground">{e.detail}</p>
-                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="belum dibaca" />}
+                    </div>
+                    {n.detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{n.detail}</p>}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      {n.locationId && (
+                        <span className="inline-flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {e.location}
-                        </div>
-                      </div>
-                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
+                          {n.locationId}
+                          {n.projectCode ? ` · ${n.projectCode}` : ""}
+                        </span>
+                      )}
+                      {n.href && (
+                        <Link href={n.href} className="inline-flex items-center gap-0.5 text-primary hover:underline">
+                          Buka <ChevronRight className="h-3 w-3" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => markRead(n.id, !n.read)}
+                    className="shrink-0 rounded-md border px-2 py-1 text-[11px] hover:bg-accent"
+                  >
+                    {n.read ? "Tandai belum" : "Tandai dibaca"}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
-  );
-}
-
-function SummaryTile({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Inbox;
-  label: string;
-  value: number;
-  tone?: "danger";
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <Icon className={cn("h-6 w-6 shrink-0", tone === "danger" ? "text-rose-600" : "text-sky-600")} />
-        <div>
-          <p className="text-2xl font-semibold">{value}</p>
-          <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

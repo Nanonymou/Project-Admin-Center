@@ -3,6 +3,7 @@ import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { listNotifications } from "@/db/repositories/notification-repository";
 import { buildNotificationInbox } from "@/lib/server/services/notification-inbox-service";
+import { ensurePersonaInbox } from "@/lib/server/services/notification-generator-service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   const persona = auth.persona;
 
   try {
+    await ensurePersonaInbox(persona);
     // A successful query (even zero unread) is authoritative; only a DB error
     // falls through to the config-derived count.
     const unread = (await listNotifications({ recipient: persona.id, unreadOnly: true })).filter(

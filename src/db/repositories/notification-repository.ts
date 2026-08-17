@@ -33,6 +33,15 @@ export async function insertNotifications(entries: NewNotificationRow[]): Promis
   return entries.length;
 }
 
+/** Number of notifications a recipient has (any read state). */
+export async function countForRecipient(recipient: string): Promise<number> {
+  const rows = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(eq(notifications.recipient, recipient));
+  return rows.length;
+}
+
 /** Mark a notification read/unread. Returns false when not found. */
 export async function setNotificationRead(id: string, read: boolean): Promise<boolean> {
   const existing = await getNotificationById(id);
