@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Contact, Building2, Truck, Mail, Phone, MapPin, Search, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { CustomerVendorSelect } from "@/components/master-customer-vendor/customer-vendor-select";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import {
   listCustomerVendors,
   PARTY_TYPE_META,
@@ -60,12 +61,64 @@ export function CustomerVendorClient() {
   // Session-local new parties + field overrides on existing ones.
   const [customParties, setCustomParties] = useState<CustomerVendor[]>([]);
   const [overrides, setOverrides] = useState<Record<string, Partial<CustomerVendor>>>({});
+  const [dbParties, setDbParties] = useState<CustomerVendor[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadParties = useCallback(async () => {
+    try {
+      const res = await fetch("/api/master-customer-vendor", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        parties?: Array<{
+          code: string;
+          name: string;
+          type: string;
+          category?: string;
+          contactPerson?: string;
+          phone?: string;
+          email?: string;
+          city?: string;
+          npwp?: string;
+          address?: string;
+          active?: boolean;
+        }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.parties)) {
+        setDbParties(null); // DB empty/unavailable → fall back to the config feed.
+        return;
+      }
+      setDbParties(
+        data.parties.map((r) => ({
+          id: r.code,
+          code: r.code,
+          name: r.name,
+          type: r.type as CustomerVendor["type"],
+          category: r.category ?? "",
+          contactPerson: r.contactPerson ?? "",
+          phone: r.phone ?? "",
+          email: r.email ?? "",
+          city: r.city ?? "",
+          npwp: r.npwp ?? "",
+          address: r.address ?? "",
+          status: r.active === false ? "inactive" : "active",
+          createdAt: "",
+        })),
+      );
+    } catch {
+      setDbParties(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadParties();
+  }, [loadParties]);
+
   const all = useMemo(
     () =>
-      [...customParties, ...listCustomerVendors()].map((p) =>
+      [...customParties, ...(dbParties ?? listCustomerVendors())].map((p) =>
         overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
       ),
-    [customParties, overrides],
+    [customParties, dbParties, overrides],
   );
   const isEdited = (id: string) => id in overrides;
 
@@ -89,11 +142,17 @@ export function CustomerVendorClient() {
 
   function requestToggle(p: CustomerVendor) {
     if (p.status === "active") setConfirmParty(p);
-    else setStatus(p.id, "active");
+    else {
+      setStatus(p.id, "active");
+      void persistStatus(p.code, true);
+    }
   }
 
   function confirmDeactivate() {
-    if (confirmParty) setStatus(confirmParty.id, "inactive");
+    if (confirmParty) {
+      setStatus(confirmParty.id, "inactive");
+      void persistStatus(confirmParty.code, false);
+    }
     setConfirmParty(null);
   }
 
@@ -130,7 +189,7 @@ export function CustomerVendorClient() {
 
   const formValid = form.name.trim().length > 0 && form.code.trim().length > 0;
 
-  function saveForm() {
+  async function saveForm() {
     if (!formValid) return;
     if (editId) {
       setOverrides((prev) => ({ ...prev, [editId]: { ...form } }));
@@ -145,6 +204,53 @@ export function CustomerVendorClient() {
       setCustomParties((prev) => [party, ...prev]);
     }
     setFormOpen(false);
+
+    // Persist (upsert by code) to the database.
+    try {
+      const res = await fetch("/api/master-customer-vendor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          code: form.code.trim(),
+          name: form.name.trim(),
+          type: form.type,
+          category: form.category,
+          contactPerson: form.contactPerson,
+          phone: form.phone,
+          email: form.email,
+          city: form.city,
+          npwp: form.npwp,
+          address: form.address,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      if (res.ok && data.source === "db") {
+        setSaveNote("Tersimpan ke database ✓");
+        setCustomParties([]);
+        setOverrides({});
+        await loadParties();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
+  }
+
+  // Persist an active/inactive change (PATCH by code) to the database.
+  async function persistStatus(code: string, active: boolean) {
+    try {
+      await fetch("/api/master-customer-vendor", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ code, active }),
+      });
+      await loadParties();
+    } catch {
+      /* keep optimistic status */
+    }
   }
 
   const stats = useMemo(() => {
@@ -179,6 +285,11 @@ export function CustomerVendorClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${stats.total} entitas`} />
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {saveNote}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[

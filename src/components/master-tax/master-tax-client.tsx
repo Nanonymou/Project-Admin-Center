@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Landmark, Percent, GitCommitVertical, Plus, Pencil, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { formatDateTime } from "@/lib/utils";
 import {
   listTaxTypes,
@@ -37,10 +38,51 @@ export function MasterTaxClient() {
 
   const [customTaxes, setCustomTaxes] = useState<TaxType[]>([]);
   const [overrides, setOverrides] = useState<Record<string, Partial<TaxType>>>({});
+  const [dbTaxes, setDbTaxes] = useState<TaxType[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadTaxes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/master-tax", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        taxes?: Array<{ projectCode?: string | null; code: string; label: string; rate: number | string; active?: boolean }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.taxes)) {
+        setDbTaxes(null);
+        return;
+      }
+      const catByCode = new Map(listTaxTypes().map((t) => [t.code, t.category] as const));
+      const byCode = new Map<string, TaxType>();
+      for (const r of data.taxes) {
+        if (r.projectCode) continue; // master catalog = global rows only
+        if (byCode.has(r.code)) continue;
+        byCode.set(r.code, {
+          code: r.code,
+          label: r.label,
+          category: catByCode.get(r.code) ?? "PPN",
+          rate: Number(r.rate) || 0,
+          description: "",
+          version: 1,
+          active: r.active !== false,
+        });
+      }
+      setDbTaxes(byCode.size > 0 ? Array.from(byCode.values()) : null);
+    } catch {
+      setDbTaxes(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadTaxes();
+  }, [loadTaxes]);
+
   const taxes = useMemo(
     () =>
-      [...listTaxTypes(), ...customTaxes].map((t) => (overrides[t.code] ? { ...t, ...overrides[t.code] } : t)),
-    [customTaxes, overrides],
+      [...(dbTaxes ?? listTaxTypes()), ...customTaxes].map((t) =>
+        overrides[t.code] ? { ...t, ...overrides[t.code] } : t,
+      ),
+    [customTaxes, overrides, dbTaxes],
   );
   const isEdited = (code: string) => code in overrides;
   const activeCount = taxes.filter((t) => t.active).length;
@@ -74,22 +116,45 @@ export function MasterTaxClient() {
 
   const formValid = form.label.trim().length > 0 && (editCode !== null || form.code.trim().length > 0);
 
-  function saveForm() {
+  async function saveForm() {
     if (!formValid) return;
     const rate = Math.max(0, (Number(form.rate) || 0) / 100);
+    const code = editCode ?? (form.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || `TAX${Date.now()}`);
+    const label = form.label.trim();
     if (editCode) {
       setOverrides((prev) => ({
         ...prev,
-        [editCode]: { label: form.label.trim(), category: form.category, rate, description: form.description.trim() },
+        [editCode]: { label, category: form.category, rate, description: form.description.trim() },
       }));
     } else {
-      const code = form.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || `TAX${Date.now()}`;
       setCustomTaxes((prev) => [
         ...prev,
-        { code, label: form.label.trim(), category: form.category, rate, description: form.description.trim(), version: 1, active: true },
+        { code, label, category: form.category, rate, description: form.description.trim(), version: 1, active: true },
       ]);
     }
     setFormOpen(false);
+
+    // Persist (upsert by code, global default) to the database.
+    try {
+      const res = await fetch("/api/master-tax", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ code, label, rate }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      if (res.ok && data.source === "db") {
+        setSaveNote("Tersimpan ke database ✓");
+        setCustomTaxes([]);
+        setOverrides({});
+        await loadTaxes();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
   }
 
   return (
@@ -103,6 +168,7 @@ export function MasterTaxClient() {
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <PersonaBanner persona={persona} scopeSummary={`${taxes.length} jenis pajak`} />
+          {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
           <div className="ml-auto flex items-center gap-2">
             <Badge variant="default">{taxes.length} jenis</Badge>
             <Badge variant="success">{activeCount} aktif</Badge>
