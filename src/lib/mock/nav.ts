@@ -104,7 +104,6 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Master Data",
     items: [
       { label: "Projects", href: "/master/projects", icon: Building2 },
-      { label: "Kelola Pengguna", href: "/kelola-pengguna", icon: Users },
       { label: "Kelola Akun Login", href: "/kelola-akun", icon: KeyRound },
       { label: "Role", href: "/role", icon: Shield },
       { label: "User & Storage", href: "/user-monitoring", icon: Users },
@@ -127,7 +126,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Kategori Sales", href: "/kategori-sales", icon: ListChecks },
       { label: "Jenis Invoice", href: "/jenis-invoice", icon: FileText },
       { label: "Customer & Vendor", href: "/master-customer-vendor", icon: Contact },
-      { label: "Hak Akses", href: "/hak-akses", icon: ShieldCheck },
       { label: "Backup & Restore", href: "/backup", icon: Settings2 },
       { label: "Recycle Bin", href: "/recycle-bin", icon: Settings2 },
       { label: "Import/Export", href: "/import-export", icon: Settings2 },
