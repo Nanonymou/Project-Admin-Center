@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCheck,
@@ -42,6 +42,7 @@ import { buildSalesHistory } from "@/lib/mock/sales-history";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks } from "@/lib/mock/lock-period";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { computeTax } from "@/lib/finance";
 import { toCsv, parseCsv, downloadTextFile } from "@/lib/csv";
@@ -115,6 +116,48 @@ export function DailySalesEngine() {
   const [activeKeys, setActiveKeys] = useState<string[]>(() => categories.map((c) => c.key));
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // Load persisted entries for the selected site from the database. DB rows are
+  // header-level (date/total/status); full line detail lives behind the entry.
+  const loadEntries = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        projectId: workspace.projectCode,
+        locationId: workspace.locationId,
+        scope: "tenant",
+        limit: "200",
+      });
+      const res = await fetch(`/api/daily-sales?${params.toString()}`, {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        entries?: Array<{ id: string; trxDate?: string; date?: string; total?: number; tax?: number; status?: string; area?: string; areaId?: string }>;
+      };
+      if (!Array.isArray(data.entries)) return;
+      setEntries(
+        data.entries.map((r) => ({
+          id: String(r.id),
+          date: r.trxDate ?? r.date ?? "",
+          area: r.area ?? "—",
+          areaId: r.areaId ?? "",
+          total: Number(r.total ?? 0),
+          tax: Number(r.tax ?? 0),
+          status: (r.status === "locked" ? "approved" : (r.status ?? "submitted")) as EntryStatus,
+          input: {},
+          activeKeys: [],
+          lines: [],
+        })),
+      );
+    } catch {
+      /* keep current entries on failure */
+    }
+  }, [workspace.projectCode, workspace.locationId, persona.id]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [loadEntries]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
 
@@ -202,18 +245,21 @@ export function DailySalesEngine() {
     setEditingId(null);
   }
 
-  function handleSubmit(status: "draft" | "submitted") {
+  async function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
     if (!dateAllowed || !area || errors.length > 0 || isPeriodLocked) return;
+    const areaName = areas.find((a) => a.id === area)?.name ?? area;
+    const editId = editingId;
+    const payloadValues = JSON.parse(JSON.stringify(values)) as SalesEntryInput;
     const entry: SubmittedEntry = {
-      id: editingId ?? `${date}-${Date.now()}`,
+      id: editId ?? `${date}-${Date.now()}`,
       date,
-      area: areas.find((a) => a.id === area)?.name ?? area,
+      area: areaName,
       areaId: area,
       total: subtotal,
       tax,
       status,
-      input: JSON.parse(JSON.stringify(values)),
+      input: payloadValues,
       activeKeys: [...activeKeys],
       lines: activeCategories
         .filter((c) => (values[c.key]?.qty || 0) > 0)
@@ -224,13 +270,39 @@ export function DailySalesEngine() {
           total: lineTotal(values[c.key]),
         })),
     };
-    setEntries((prev) =>
-      editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev],
-    );
+    setEntries((prev) => (editId ? prev.map((e) => (e.id === editId ? entry : e)) : [entry, ...prev]));
     logActivity(
-      `${editingId ? "Mengubah" : status === "submitted" ? "Submit" : "Menyimpan draft"} entri ${entry.date} · ${entry.area} (${formatCurrency(entry.total)})`,
+      `${editId ? "Mengubah" : status === "submitted" ? "Submit" : "Menyimpan draft"} entri ${entry.date} · ${entry.area} (${formatCurrency(entry.total)})`,
     );
     resetForm();
+
+    // Persist to the database (create or edit).
+    const payload = {
+      projectId: workspace.projectCode,
+      locationId: workspace.locationId,
+      trxDate: entry.date,
+      area: areaName,
+      areaId: area,
+      values: payloadValues,
+    };
+    try {
+      const res = await fetch(editId ? `/api/daily-sales/${editId}` : "/api/daily-sales", {
+        method: editId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      if (res.ok && data.source === "db") {
+        setSaveNote("Tersimpan ke database ✓");
+        await loadEntries();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan ke database.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
   }
 
   function approveEntry(id: string) {
@@ -249,11 +321,18 @@ export function DailySalesEngine() {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function deleteEntry(id: string) {
+  async function deleteEntry(id: string) {
     const target = entries.find((e) => e.id === id);
     setEntries((prev) => prev.filter((e) => e.id !== id));
     if (editingId === id) resetForm();
     if (target) logActivity(`Menghapus entri ${target.date} · ${target.area}`);
+    try {
+      await fetch(`/api/daily-sales/${id}`, { method: "DELETE", headers: personaHeaders(persona.id) });
+      setSaveNote("Entri dihapus dari database.");
+      await loadEntries();
+    } catch {
+      /* keep optimistic removal */
+    }
   }
 
   // Prefill the form from yesterday's entry (or the latest one) as a fresh entry.
@@ -584,7 +663,8 @@ export function DailySalesEngine() {
             <CardHeader>
               <CardTitle>Entri Terbaru</CardTitle>
               <CardDescription>
-                Tersimpan di sesi ini (mock){entries.length > 0 ? ` · ${entries.length} entri` : ""}.
+                {saveNote ?? "Tersimpan ke database Neon"}
+                {entries.length > 0 ? ` · ${entries.length} entri` : ""}.
               </CardDescription>
             </CardHeader>
             <CardContent>
