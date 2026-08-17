@@ -18,6 +18,7 @@ import { MOCK_WORKSPACES, type Workspace } from "@/lib/mock/workspaces";
 import { getServiceCategories, type ServiceCategory } from "@/lib/mock/service-config";
 import { getPriceFor } from "@/lib/mock/pricing-config";
 import { buildPriceChanges, type PriceChangeEntry, type PriceChangeAction } from "@/lib/mock/price-change-log";
+import { personaHeaders } from "@/lib/client/notif";
 
 type ProjectOption = { projectCode: string; projectName: string; locations: Workspace[] };
 type PriceCategory = ServiceCategory & { custom?: boolean };
@@ -157,6 +158,7 @@ export function MasterPricingClient() {
   // Edit-price-per-project modal.
   const [editCat, setEditCat] = useState<PriceCategory | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   function openEdit(c: PriceCategory) {
     setEditCat(c);
@@ -169,21 +171,43 @@ export function MasterPricingClient() {
     setEditPrice(String(current));
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editCat) return;
+    const cat = editCat;
     const price = Math.max(0, Math.round(Number(editPrice) || 0));
     const before =
-      editCat.key in projOverrides
-        ? projOverrides[editCat.key]
-        : editCat.custom
-          ? editCat.defaultPrice
-          : getPriceFor(projectCode, project?.locations[0]?.locationId ?? "", editCat.key);
+      cat.key in projOverrides
+        ? projOverrides[cat.key]
+        : cat.custom
+          ? cat.defaultPrice
+          : getPriceFor(projectCode, project?.locations[0]?.locationId ?? "", cat.key);
     setPriceOverrides((prev) => ({
       ...prev,
-      [projectCode]: { ...(prev[projectCode] ?? {}), [editCat.key]: price },
+      [projectCode]: { ...(prev[projectCode] ?? {}), [cat.key]: price },
     }));
-    if (price !== before) recordChange(editCat.key, editCat.label, "update", before, price);
+    if (price !== before) recordChange(cat.key, cat.label, "update", before, price);
     setEditCat(null);
+
+    // Persist the new price to every location in the project (the price applies
+    // project-wide in this UI; master_prices is per-location).
+    const locations = project?.locations ?? [];
+    if (locations.length === 0) return;
+    try {
+      const oks = await Promise.all(
+        locations.map((loc) =>
+          fetch("/api/master-pricing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+            body: JSON.stringify({ projectCode, locationId: loc.locationId, categoryKey: cat.key, price }),
+          })
+            .then((r) => r.ok)
+            .catch(() => false),
+        ),
+      );
+      setSaveNote(oks.every(Boolean) ? "Harga tersimpan ke database ✓" : "Sebagian lokasi belum tersimpan.");
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+    }
   }
 
   if (!project) {
@@ -205,6 +229,11 @@ export function MasterPricingClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${projects.length} proyek`} />
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {saveNote}
+          </div>
+        )}
         <LockBanner reason={lock.reason} />
 
         <div className="flex flex-wrap items-center gap-3">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, FileText, History, Info, Lock, MapPin, Paperclip, Pencil, Save, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -19,6 +19,7 @@ import { buildSubmitStatus } from "@/lib/mock/closing-status";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import { buildPeriodLocks } from "@/lib/mock/lock-period";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import {
   getCostCategories,
@@ -70,6 +71,43 @@ export function DailyCostClient() {
   const [previewProof, setPreviewProof] = useState<ProofFile | null>(null);
   const [touched, setTouched] = useState(false);
   const [entries, setEntries] = useState<SubmittedEntry[]>([]);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // Load persisted cost entries for the current project from the database.
+  const loadEntries = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ projectId: workspace.projectCode, scope: "tenant", limit: "200" });
+      const res = await fetch(`/api/daily-cost?${params.toString()}`, {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        entries?: Array<{ id: string; trxDate?: string; date?: string; total?: number; status?: string; locationId?: string }>;
+      };
+      if (!Array.isArray(data.entries)) return;
+      setEntries(
+        data.entries.map((r) => {
+          const locId = r.locationId ?? "";
+          const ws = accessibleWorkspaces.find((w) => w.locationId === locId);
+          return {
+            id: String(r.id),
+            date: r.trxDate ?? r.date ?? "",
+            total: Number(r.total ?? 0),
+            locationId: locId,
+            locationName: ws?.locationName ?? locId,
+            breakdown: [],
+            status: (r.status === "draft" ? "draft" : "submitted") as "draft" | "submitted",
+          };
+        }),
+      );
+    } catch {
+      /* keep current entries on failure */
+    }
+  }, [workspace.projectCode, persona.id, accessibleWorkspaces]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [loadEntries]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [entryScope, setEntryScope] = useState<"current" | "all">("current");
 
@@ -158,8 +196,15 @@ export function DailyCostClient() {
     return { all, submitted, count: visibleEntries.length };
   }, [visibleEntries]);
 
-  function deleteEntry(id: string) {
+  async function deleteEntry(id: string) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
+    try {
+      await fetch(`/api/daily-cost/${id}`, { method: "DELETE", headers: personaHeaders(persona.id) });
+      setSaveNote("Entri dihapus dari database.");
+      await loadEntries();
+    } catch {
+      /* keep optimistic removal */
+    }
   }
 
   // Aggregate cost per category across all session entries.
@@ -184,13 +229,18 @@ export function DailyCostClient() {
     setProofs((prev) => ({ ...prev, [key]: { name: file.name, url, isImage } }));
   }
 
-  function handleSubmit(status: "draft" | "submitted") {
+  async function handleSubmit(status: "draft" | "submitted") {
     setTouched(true);
     if (!dateAllowed || errors.length > 0 || isPeriodLocked) return;
     // Drafts may miss proofs; a final submit cannot.
     if (status === "submitted" && missingProofKeys.length > 0) return;
+    const editId = editingId;
+    const payloadValues = categories.reduce<Record<string, number>>((acc, c) => {
+      if ((values[c.key] || 0) > 0) acc[c.key] = values[c.key];
+      return acc;
+    }, {});
     const entry: SubmittedEntry = {
-      id: editingId ?? `${date}-${Date.now()}`,
+      id: editId ?? `${date}-${Date.now()}`,
       date,
       total,
       locationId: workspace.locationId,
@@ -200,12 +250,38 @@ export function DailyCostClient() {
         .filter((c) => (values[c.key] || 0) > 0)
         .map((c) => ({ label: c.label, amount: values[c.key], proof: proofs[c.key]?.name })),
     };
-    setEntries((prev) => (editingId ? prev.map((e) => (e.id === editingId ? entry : e)) : [entry, ...prev]));
+    setEntries((prev) => (editId ? prev.map((e) => (e.id === editId ? entry : e)) : [entry, ...prev]));
     setValues({});
     setProofs({});
     setDate(today);
     setTouched(false);
     setEditingId(null);
+
+    // Persist to the database (create via submit, edit via [id] PATCH).
+    const payload = {
+      projectId: workspace.projectCode,
+      locationId: workspace.locationId,
+      trxDate: entry.date,
+      values: payloadValues,
+    };
+    try {
+      const res = await fetch(editId ? `/api/daily-cost/${editId}` : "/api/daily-cost/submit", {
+        method: editId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      if (res.ok && data.source === "db") {
+        setSaveNote("Tersimpan ke database ✓");
+        await loadEntries();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan ke database.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
   }
 
   function editEntry(entry: SubmittedEntry) {
@@ -505,7 +581,7 @@ export function DailyCostClient() {
                 <div>
                   <CardTitle>Daftar Transaksi</CardTitle>
                   <CardDescription>
-                    Tersimpan di sesi ini (mock){sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
+                    {saveNote ?? "Tersimpan ke database Neon"}{sessionTotals.count > 0 ? ` · ${sessionTotals.count} entri` : ""}.
                   </CardDescription>
                 </div>
                 <Link href={`/riwayat-perubahan-pengeluaran?location=${workspace.locationId}`}>
