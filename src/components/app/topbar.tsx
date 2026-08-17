@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, ChevronsUpDown, Search, UserCog, LogOut } from "lucide-react";
+import { Bell, Check, ChevronsUpDown, Search, LogOut } from "lucide-react";
 import { usePersona } from "@/components/providers/persona-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { TopbarFilter } from "@/components/app/topbar-filter";
@@ -17,7 +17,7 @@ import { buildDeadlines } from "@/lib/mock/deadlines";
 
 export function Topbar() {
   const router = useRouter();
-  const { persona, personas, setPersonaId } = usePersona();
+  const { persona } = usePersona();
   const { activeWorkspace, workspaces, activeLocationId, setActiveLocationId } = useActiveSite();
 
   function logout() {
@@ -262,48 +262,23 @@ export function Topbar() {
           {open && (
             <div
               role="menu"
-              className="absolute right-0 top-full z-40 mt-2 w-72 rounded-lg border bg-card p-2 shadow-lg"
+              className="absolute right-0 top-full z-40 mt-2 w-64 rounded-lg border bg-card p-2 shadow-lg"
             >
-              <div className="mb-1 flex items-center gap-2 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <UserCog className="h-3.5 w-3.5" />
-                Simulasikan sebagai
+              <div className="flex items-center gap-2 rounded-md px-2 py-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {persona.initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{persona.name}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{persona.email}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{persona.roleLabel}</div>
+                </div>
               </div>
-              <ul className="space-y-0.5">
-                {personas.map((p) => {
-                  const active = p.id === persona.id;
-                  return (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPersonaId(p.id);
-                          setOpen(false);
-                        }}
-                        className={cn(
-                          "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
-                          active && "bg-accent",
-                        )}
-                      >
-                        <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                          {p.initials}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{p.name}</div>
-                          <div className="truncate text-[11px] text-muted-foreground">{p.roleLabel}</div>
-                        </div>
-                        {active && <Check className="mt-1.5 h-4 w-4 text-primary" />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="mt-2 border-t px-2 pt-2 text-[11px] text-muted-foreground">
-                Persona hanya simulasi UI — tidak menembus backend security.
-              </div>
+              <div className="my-1 border-t" />
               <button
                 type="button"
                 onClick={logout}
-                className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-rose-600 hover:bg-accent"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-rose-600 hover:bg-accent"
               >
                 <LogOut className="h-4 w-4" />
                 Keluar
