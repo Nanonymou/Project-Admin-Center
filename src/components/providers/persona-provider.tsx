@@ -1,54 +1,69 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { signOut, useSession } from "next-auth/react";
 import { DEFAULT_PERSONA_ID, getPersonaById, PERSONAS, type Persona } from "@/lib/personas";
 
 type PersonaContextValue = {
   persona: Persona;
   personas: Persona[];
-  setPersonaId: (id: string) => void;
 };
 
 const PersonaContext = createContext<PersonaContextValue | null>(null);
 
-const STORAGE_KEY = "pac.persona";
+type LiveUser = { personaId: string; name: string; email: string };
+
+/** Initials from a display name, e.g. "Desy Carolina" → "DC". */
+function initialsOf(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase() ?? "").join("");
+}
 
 /**
- * Active-persona context. The persona is the identity the UI acts as.
- *
- * Identity comes from the NextAuth session (`session.user.personaId`) once the
- * user has signed in. The topbar "simulasikan sebagai" switcher may override it
- * locally (persisted in localStorage) to preview other roles without changing
- * the real login — so a stored value always wins over the session value.
+ * Active-persona context. The identity is the real signed-in account (NextAuth
+ * session), enriched with its live database record so name/email/role changes a
+ * Super Admin makes are reflected. The persona id maps to the role/scope/
+ * capabilities template in `personas.ts`. There is no demo switching — you are
+ * whoever you logged in as.
  */
 export function PersonaProvider({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
-  const [personaId, setPersonaIdState] = useState<string>(DEFAULT_PERSONA_ID);
+  const { data: session, status } = useSession();
+  const [live, setLive] = useState<LiveUser | null>(null);
 
-  // Adopt a stored simulation override, or fall back to the signed-in persona.
+  // Pull the fresh DB identity; sign out if the account was deleted/deactivated.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setPersonaIdState(stored);
+    if (status !== "authenticated") {
+      setLive(null);
       return;
     }
-    const sessionPersonaId = session?.user?.personaId;
-    if (sessionPersonaId) setPersonaIdState(sessionPersonaId);
-  }, [session?.user?.personaId]);
+    let cancelled = false;
+    fetch("/api/account/me", { cache: "no-store" })
+      .then(async (res) => {
+        if (res.status === 401) {
+          await signOut({ redirectTo: "/login" });
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.user) {
+          setLive({ personaId: data.user.personaId, name: data.user.name, email: data.user.email });
+        }
+      })
+      .catch(() => {
+        /* transient — keep the session values */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
 
-  const setPersonaId = useCallback((id: string) => {
-    setPersonaIdState(id);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, id);
-    }
-  }, []);
+  const persona = useMemo<Persona>(() => {
+    const personaId = live?.personaId ?? session?.user?.personaId ?? DEFAULT_PERSONA_ID;
+    const base = getPersonaById(personaId);
+    const name = live?.name ?? session?.user?.name ?? base.name;
+    const email = live?.email ?? session?.user?.email ?? base.email;
+    return { ...base, name, email, initials: initialsOf(name) };
+  }, [live, session?.user?.personaId, session?.user?.name, session?.user?.email]);
 
-  const value = useMemo<PersonaContextValue>(
-    () => ({ persona: getPersonaById(personaId), personas: PERSONAS, setPersonaId }),
-    [personaId, setPersonaId],
-  );
+  const value = useMemo<PersonaContextValue>(() => ({ persona, personas: PERSONAS }), [persona]);
 
   return <PersonaContext.Provider value={value}>{children}</PersonaContext.Provider>;
 }

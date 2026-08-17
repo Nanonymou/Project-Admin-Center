@@ -8,6 +8,7 @@ import type { PersonaRole } from "@/lib/personas";
 declare module "next-auth" {
   interface Session {
     user: {
+      id: string;
       personaId: string;
       role?: PersonaRole;
     } & DefaultSession["user"];
@@ -21,6 +22,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    uid?: string;
     personaId?: string;
     role?: PersonaRole;
   }
