@@ -27,18 +27,16 @@ export const ROLE_NAV_ACCESS: Record<PersonaRole, NavAccessRule> = {
       "/ranking",
       "/leader",
       "/leader-workspace",
-      "/margin",
       "/performance",
       "/project-performance",
       "/sales-compare",
       "/cost-compare",
-      "/audit-log",
       "/comparison",
     ],
   },
   viewer: {
     sections: ["Overview", "Operasional"],
-    denyHrefs: ["/leader", "/leader-workspace", "/audit-log", "/comparison"],
+    denyHrefs: ["/leader", "/leader-workspace", "/comparison"],
   },
 };
 
