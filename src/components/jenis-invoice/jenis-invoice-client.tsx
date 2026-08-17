@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Fuel, Percent, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { InvoiceTypeSelect } from "@/components/jenis-invoice/invoice-type-select";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { type Persona } from "@/lib/personas";
 import { listInvoiceTypes, type InvoiceTypeProfile } from "@/lib/mock/invoice-type-config";
 
@@ -44,9 +45,41 @@ export function JenisInvoiceClient() {
   const [customTypes, setCustomTypes] = useState<(InvoiceTypeProfile & { custom: true })[]>([]);
   const [overrides, setOverrides] = useState<Record<string, TypeOverride>>({});
   const [inactive, setInactive] = useState<string[]>([]);
+  const [dbTypes, setDbTypes] = useState<InvoiceTypeProfile[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadTypes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/jenis-invoice", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        types?: Array<{ code: string; label: string; deductionRate: number | string; hasBbm?: boolean; bbmRate?: number | string; active?: boolean }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.types)) {
+        setDbTypes(null);
+        return;
+      }
+      setDbTypes(
+        data.types.map((t) => ({
+          key: t.code,
+          label: t.label,
+          deductionRate: Number(t.deductionRate) || 0,
+          hasBbm: Boolean(t.hasBbm),
+          bbmRate: Number(t.bbmRate ?? 0) || 0,
+        })),
+      );
+      setInactive(data.types.filter((t) => t.active === false).map((t) => t.code));
+    } catch {
+      setDbTypes(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadTypes();
+  }, [loadTypes]);
 
   const types = useMemo<InvoiceTypeRow[]>(() => {
-    const base: InvoiceTypeRow[] = [...listInvoiceTypes(), ...customTypes].map((t) => {
+    const base: InvoiceTypeRow[] = [...(dbTypes ?? listInvoiceTypes()), ...customTypes].map((t) => {
       const ov = overrides[t.key] ?? {};
       return {
         key: t.key,
@@ -59,7 +92,7 @@ export function JenisInvoiceClient() {
       };
     });
     return base;
-  }, [customTypes, overrides, inactive]);
+  }, [customTypes, overrides, inactive, dbTypes]);
 
   const activeTypes = useMemo(() => types.filter((t) => t.active), [types]);
   const activeCount = activeTypes.length;
@@ -106,26 +139,54 @@ export function JenisInvoiceClient() {
     return Math.min(1, Math.max(0, n / 100));
   }
 
-  function saveForm() {
+  async function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
     const bbmRate = formHasBbm ? parsePct(formBbm) : 0;
-    const fields: TypeOverride = {
-      label,
-      deductionRate: parsePct(formDeduction),
-      hasBbm: formHasBbm,
-      bbmRate,
-    };
+    const deductionRate = parsePct(formDeduction);
+    const fields: TypeOverride = { label, deductionRate, hasBbm: formHasBbm, bbmRate };
+    const code = editKey ?? `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
     if (editKey) {
       setOverrides((prev) => ({ ...prev, [editKey]: { ...prev[editKey], ...fields } }));
     } else {
-      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
-      setCustomTypes((prev) => [
-        ...prev,
-        { key, label, deductionRate: fields.deductionRate!, hasBbm: formHasBbm, bbmRate, custom: true },
-      ]);
+      setCustomTypes((prev) => [...prev, { key: code, label, deductionRate, hasBbm: formHasBbm, bbmRate, custom: true }]);
     }
     setFormOpen(false);
+
+    // Persist (upsert by code) to the database.
+    try {
+      const res = await fetch("/api/jenis-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ code, label, deductionRate, hasBbm: formHasBbm, bbmRate }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      if (res.ok && data.source === "db") {
+        setSaveNote("Tersimpan ke database ✓");
+        setCustomTypes([]);
+        setOverrides({});
+        await loadTypes();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
+  }
+
+  async function persistActive(code: string, active: boolean) {
+    try {
+      await fetch("/api/jenis-invoice", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ code, active }),
+      });
+      await loadTypes();
+    } catch {
+      /* keep optimistic */
+    }
   }
 
   // Deactivating asks for confirmation (it hides the type from invoice-creation
@@ -135,11 +196,18 @@ export function JenisInvoiceClient() {
 
   function requestToggle(t: InvoiceTypeRow) {
     if (t.active) setConfirmKey(t.key);
-    else setInactive((prev) => prev.filter((k) => k !== t.key));
+    else {
+      setInactive((prev) => prev.filter((k) => k !== t.key));
+      void persistActive(t.key, true);
+    }
   }
 
   function confirmDeactivate() {
-    if (confirmKey) setInactive((prev) => (prev.includes(confirmKey) ? prev : [...prev, confirmKey]));
+    if (confirmKey) {
+      const key = confirmKey;
+      setInactive((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      void persistActive(key, false);
+    }
     setConfirmKey(null);
   }
 
@@ -154,6 +222,7 @@ export function JenisInvoiceClient() {
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <PersonaBanner persona={persona} scopeSummary={`${types.length} jenis`} />
+          {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
           <Badge variant="default" className="ml-auto">
             {activeCount} aktif / {types.length}
           </Badge>
