@@ -7,6 +7,7 @@ import {
   approvals,
   type Approval,
   type ApprovalHistoryEntry,
+  type NewApproval,
 } from "@/db/schema";
 
 export type ApprovalFilter = {
@@ -33,6 +34,19 @@ function buildWhere(filter: ApprovalFilter, base?: SQL): SQL | undefined {
   if (filter.locationId) conds.push(eq(approvals.locationId, filter.locationId));
   if (filter.subjectType) conds.push(eq(approvals.subjectType, filter.subjectType));
   return conds.length ? and(...conds) : undefined;
+}
+
+/** List individual approval rows for a scope (newest first). */
+export async function listApprovals(filter: ApprovalFilter): Promise<Approval[]> {
+  const where = buildWhere(filter);
+  return db.select().from(approvals).where(where).orderBy(desc(approvals.updatedAt));
+}
+
+/** Bulk-insert approval rows. Returns the number inserted. */
+export async function insertApprovals(rows: NewApproval[]): Promise<number> {
+  if (rows.length === 0) return 0;
+  await db.insert(approvals).values(rows);
+  return rows.length;
 }
 
 export type SiteApprovalProgress = {

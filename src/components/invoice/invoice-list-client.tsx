@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Building2, CheckCircle2, Clock, FileText, Info, MapPin, Pencil, Plus, Wallet } from "lucide-react";
@@ -22,6 +22,7 @@ import {
   type InvoiceSettlement,
 } from "@/lib/mock/invoice-list";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
+import { personaHeaders } from "@/lib/client/notif";
 import { getTaxConfig } from "@/lib/mock/tax-config";
 import { Button } from "@/components/ui/button";
 import { InvoiceForm, type InvoiceComputed, type InvoiceFormValue } from "@/components/invoice/invoice-form";
@@ -98,14 +99,76 @@ export function InvoiceListClient() {
     [filteredSites],
   );
 
-  // Session-created invoices and edits applied to existing ones (mock — no
-  // backend yet). Merged into the base feed for display.
+  // Optimistic session items + per-id edits. When the database has invoices,
+  // `dbInvoices` becomes the authoritative feed (replacing the mock base).
   const [addedItems, setAddedItems] = useState<InvoiceListItem[]>([]);
   const [edits, setEdits] = useState<Record<string, InvoiceListItem>>({});
+  const [dbInvoices, setDbInvoices] = useState<InvoiceListItem[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const DB_STATUS_TO_UI: Record<string, InvoiceListItem["status"]> = {
+    on_time: "onTime",
+    at_risk: "atRisk",
+    overdue: "overdue",
+    settled: "onTime",
+  };
+
+  const loadDbInvoices = useCallback(async () => {
+    try {
+      const res = await fetch("/api/invoices?scope=executive&limit=500", {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        source?: string;
+        invoices?: Array<{
+          id: string;
+          number?: string;
+          amount?: number | string;
+          projectId?: string;
+          locationId?: string;
+          status?: string;
+          stage?: string;
+          agingBucket?: string;
+          dueDate?: string | null;
+          pic?: string | null;
+        }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.invoices)) {
+        setDbInvoices(null); // DB empty/unavailable → fall back to the mock feed.
+        return;
+      }
+      setDbInvoices(
+        data.invoices.map((r) => ({
+          id: String(r.id),
+          invoiceNumber: r.number ?? "—",
+          amount: Number(r.amount ?? 0),
+          projectCode: r.projectId ?? "",
+          locationId: r.locationId ?? "",
+          locationName: scopedSites.find((s) => s.locationId === r.locationId)?.locationName ?? (r.locationId ?? "—"),
+          stage: r.stage ?? "Verifikasi Site",
+          status: DB_STATUS_TO_UI[r.status ?? "on_time"] ?? "onTime",
+          settlement: r.status === "settled" ? "settled" : "outstanding",
+          agingBucket: (r.agingBucket ?? "0-30") as InvoiceListItem["agingBucket"],
+          dueDate: r.dueDate
+            ? new Date(r.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+            : "—",
+          pic: r.pic ?? "—",
+        })),
+      );
+    } catch {
+      setDbInvoices(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persona.id, scopedSites]);
+
+  useEffect(() => {
+    void loadDbInvoices();
+  }, [loadDbInvoices]);
 
   const allInvoices = useMemo(
-    () => [...addedItems, ...baseInvoices].map((i) => edits[i.id] ?? i),
-    [addedItems, baseInvoices, edits],
+    () => [...addedItems, ...(dbInvoices ?? baseInvoices)].map((i) => edits[i.id] ?? i),
+    [addedItems, dbInvoices, baseInvoices, edits],
   );
 
   // On-page project filter — chips derived from the invoices in scope.
@@ -240,7 +303,7 @@ export function InvoiceListClient() {
     return `INV/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${projectCode}/${seq}`;
   }
 
-  function handleSubmit(value: InvoiceFormValue, computed: InvoiceComputed) {
+  async function handleSubmit(value: InvoiceFormValue, computed: InvoiceComputed) {
     const dueDate = value.dueDate
       ? new Date(value.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
       : editingItem?.dueDate ?? "—";
@@ -258,14 +321,64 @@ export function InvoiceListClient() {
       dueDate,
       pic: value.pic,
     };
-    if (formMode === "add") {
-      setAddedItems((prev) => [item, ...prev]);
-    } else if (item.id.startsWith("session-")) {
-      setAddedItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
-    } else {
-      setEdits((prev) => ({ ...prev, [item.id]: item }));
-    }
     setFormOpen(false);
+
+    const uiToDb: Record<string, string> = { onTime: "on_time", atRisk: "at_risk", overdue: "overdue" };
+    const payload = {
+      projectId: value.projectCode,
+      locationId: value.locationId,
+      number: item.invoiceNumber,
+      dueDate: value.dueDate || undefined,
+      pic: value.pic,
+      subtotal: computed.subtotal,
+      deduction: computed.deduction,
+      status: item.settlement === "settled" ? "settled" : uiToDb[item.status] ?? "on_time",
+      stage: item.stage,
+    };
+    const headers = { "Content-Type": "application/json", ...personaHeaders(persona.id) };
+
+    if (formMode === "add") {
+      setAddedItems((prev) => [item, ...prev]); // optimistic
+      try {
+        const res = await fetch("/api/invoices", { method: "POST", headers, body: JSON.stringify(payload) });
+        const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+        if (res.ok && data.source === "db") {
+          setSaveNote("Invoice tersimpan ke database ✓");
+          setAddedItems([]);
+          await loadDbInvoices();
+        } else if (res.ok) {
+          setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+        } else {
+          setSaveNote(data.error ?? "Gagal menyimpan invoice.");
+        }
+      } catch {
+        setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+      }
+      return;
+    }
+
+    // Edit an existing DB invoice → PATCH and reconcile.
+    if (dbInvoices && !item.id.startsWith("session-")) {
+      setEdits((prev) => ({ ...prev, [item.id]: item })); // optimistic
+      try {
+        const res = await fetch(`/api/invoices/${item.id}`, { method: "PATCH", headers, body: JSON.stringify(payload) });
+        const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+        if (res.ok && data.source === "db") {
+          setSaveNote("Perubahan invoice tersimpan ✓");
+          setEdits({});
+          await loadDbInvoices();
+        } else {
+          setSaveNote(data.error ?? "Perubahan disimpan di sesi ini.");
+        }
+      } catch {
+        setSaveNote("Perubahan disimpan di sesi ini.");
+      }
+      return;
+    }
+
+    // Mock-mode edit (no DB): keep the session behaviour.
+    if (item.id.startsWith("session-")) setAddedItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+    else setEdits((prev) => ({ ...prev, [item.id]: item }));
   }
 
   function navigateFromRow(e: React.MouseEvent, item: InvoiceListItem) {
@@ -294,6 +407,11 @@ export function InvoiceListClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {saveNote}
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
