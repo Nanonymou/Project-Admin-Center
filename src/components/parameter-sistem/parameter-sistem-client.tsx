@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   SlidersHorizontal,
   Search,
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { formatDateTime } from "@/lib/utils";
 import {
   listSystemParameters,
@@ -57,10 +58,46 @@ export function ParameterSistemClient() {
   const editable = persona.capabilities.canConfigure;
   const [query, setQuery] = useState("");
 
-  // Session-local value overrides keyed by parameter key.
+  // Value overrides keyed by parameter key (seeded from the DB, then edited).
   const [overrides, setOverrides] = useState<Record<string, SystemParameter["value"]>>({});
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const valueOf = (p: SystemParameter) => overrides[p.key] ?? p.value;
   const isEdited = (key: string) => key in overrides;
+
+  // Seed the displayed values from the persisted DB parameters.
+  const loadParams = useCallback(async () => {
+    try {
+      const res = await fetch("/api/parameter-sistem", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        parameters?: Array<{ key: string; value: SystemParameter["value"] }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.parameters)) return;
+      const map: Record<string, SystemParameter["value"]> = {};
+      for (const p of data.parameters) map[p.key] = p.value;
+      setOverrides(map);
+    } catch {
+      /* keep config defaults */
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadParams();
+  }, [loadParams]);
+
+  async function persistParam(key: string, value: SystemParameter["value"]) {
+    try {
+      const res = await fetch("/api/parameter-sistem", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ key, value }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      setSaveNote(res.ok && data.source === "db" ? "Tersimpan ke database ✓" : res.ok ? "Tersimpan di sesi ini." : data.error ?? "Gagal menyimpan.");
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
+  }
 
   // Change-history log (this session), newest first.
   const [history, setHistory] = useState<
@@ -105,14 +142,17 @@ export function ParameterSistemClient() {
   function saveEdit() {
     if (!editParam) return;
     const before = valueOf(editParam);
+    const key = editParam.key;
     if (editParam.type === "boolean") {
-      setOverrides((prev) => ({ ...prev, [editParam.key]: draftBool }));
+      setOverrides((prev) => ({ ...prev, [key]: draftBool }));
       recordChange(editParam, before, draftBool);
+      void persistParam(key, draftBool);
     } else {
       if (validateParameterValue(editParam, draft)) return;
       const value = editParam.type === "number" ? Number(draft) : draft;
-      setOverrides((prev) => ({ ...prev, [editParam.key]: value }));
+      setOverrides((prev) => ({ ...prev, [key]: value }));
       recordChange(editParam, before, value);
+      void persistParam(key, value);
     }
     setEditParam(null);
   }
@@ -136,6 +176,7 @@ export function ParameterSistemClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${listSystemParameters().length} parameter`} />
+        {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
