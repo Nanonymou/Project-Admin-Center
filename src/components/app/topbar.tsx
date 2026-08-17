@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Check, ChevronsUpDown, Search, LogOut } from "lucide-react";
@@ -11,9 +11,7 @@ import { signOut } from "next-auth/react";
 import { canAccessLocation } from "@/lib/personas";
 import { clearSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { SITE_KPI } from "@/lib/mock/site-kpi";
-import { buildReminders } from "@/lib/mock/reminders";
-import { buildDeadlines } from "@/lib/mock/deadlines";
+import { onNotifChanged, personaHeaders } from "@/lib/client/notif";
 
 export function Topbar() {
   const router = useRouter();
@@ -43,14 +41,30 @@ export function Topbar() {
     return () => window.removeEventListener("mousedown", onClickOutside);
   }, [open, siteOpen]);
 
-  // Live unread-notification count (critical/warning reminders + overdue/
-  // due-today deadlines) across the persona's accessible sites.
-  const unreadCount = useMemo(() => {
-    const sites = SITE_KPI.filter((s) => canAccessLocation(persona, s.locationId, s.projectCode));
-    const reminders = sites.flatMap((s) => buildReminders(s)).filter((r) => r.level !== "info").length;
-    const deadlines = buildDeadlines(sites).filter((d) => d.status === "overdue" || d.status === "due_today").length;
-    return reminders + deadlines;
-  }, [persona]);
+  // Live unread-notification count from the DB inbox. Refreshes on mount and
+  // whenever a notification page marks something read (via the shared event).
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const res = await fetch("/api/pusat-notifikasi/unread-count", {
+          cache: "no-store",
+          headers: personaHeaders(persona.id),
+        });
+        const data = await res.json();
+        if (!cancelled) setUnreadCount(Number(data?.unread ?? 0));
+      } catch {
+        /* keep last value */
+      }
+    }
+    void refresh();
+    const off = onNotifChanged(refresh);
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [persona.id]);
 
   const accessibleWorkspaces = workspaces.filter((w) =>
     canAccessLocation(persona, w.locationId, w.projectCode),
