@@ -96,7 +96,7 @@ export function GlobalSearchClient() {
           kind: "user",
           title: u.name,
           subtitle: `${u.email} · ${u.role}`,
-          href: `/hak-akses?user=${u.id}`,
+          href: `/kelola-akun?user=${u.id}`,
           info: [
             { label: u.role, tone: "muted" },
             { label: u.status, tone: u.status === "active" ? "success" : u.status === "invited" ? "warning" : "danger" },
