@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
   if (persona.capabilities.canConfigure) {
     for (const u of listManagedUsers()) {
-      index.push({ id: `user-${u.id}`, kind: "user", title: u.name, subtitle: `${u.email} · ${u.role}`, href: `/hak-akses?user=${u.id}` });
+      index.push({ id: `user-${u.id}`, kind: "user", title: u.name, subtitle: `${u.email} · ${u.role}`, href: `/kelola-akun?user=${u.id}` });
     }
   }
   for (const p of listCustomerVendors()) {
