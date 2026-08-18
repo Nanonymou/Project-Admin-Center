@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   MapPin,
@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { cn } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -63,20 +64,100 @@ export function MasterTimeframeClient() {
   const [applied, setApplied] = useState<Record<string, ParsedActivity[]>>({});
   const [inactiveWf, setInactiveWf] = useState<Record<string, boolean>>({});
 
+  // DB-sourced workflows for the active site, keyed by subject — durable layer.
+  const [dbBySubject, setDbBySubject] = useState<Record<
+    string,
+    { activities: { order: number; name: string; slaDays: number; pic: string }[]; active: boolean }
+  > | null>(null);
+
+  const loadWorkflows = useCallback(async () => {
+    if (!ws) return;
+    try {
+      const res = await fetch(`/api/master-timeframe?locationId=${encodeURIComponent(ws.locationId)}`, {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbBySubject(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        workflows?: Array<{
+          subject: string;
+          active: boolean;
+          activities: Array<{ orderIndex?: number; order?: number; name: string; slaDays: number; pic?: string | null }>;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.workflows)) {
+        const map: Record<string, { activities: { order: number; name: string; slaDays: number; pic: string }[]; active: boolean }> = {};
+        for (const wf of data.workflows) {
+          map[wf.subject] = {
+            active: wf.active,
+            activities: wf.activities.map((a, i) => ({
+              order: a.orderIndex ?? a.order ?? i,
+              name: a.name,
+              slaDays: a.slaDays,
+              pic: a.pic ?? "-",
+            })),
+          };
+        }
+        setDbBySubject(map);
+      } else {
+        setDbBySubject(null);
+      }
+    } catch {
+      setDbBySubject(null);
+    }
+  }, [ws, persona.id]);
+
+  useEffect(() => {
+    void loadWorkflows();
+  }, [loadWorkflows]);
+
   const workflows: Workflow[] = useMemo(() => {
     if (!ws) return [];
     return buildWorkflowsForSite(ws.locationId).map((wf) => {
+      const db = dbBySubject?.[wf.subject];
       const override = applied[`${wf.locationId}:${wf.subject}`];
-      const active = !inactiveWf[wf.id];
+      // Precedence: session upload override → DB activities → config defaults.
       const activities = override
         ? override.map((a, i) => ({ order: i, name: a.name, slaDays: a.slaDays, pic: a.pic }))
-        : wf.activities;
+        : db
+          ? db.activities
+          : wf.activities;
+      // Precedence for active: session toggle → DB active → default (true).
+      const active = wf.id in inactiveWf ? !inactiveWf[wf.id] : db ? db.active : true;
       return { ...wf, activities, active };
     });
-  }, [ws, applied, inactiveWf]);
+  }, [ws, applied, inactiveWf, dbBySubject]);
+
+  /** Persist a workflow's active flag (best-effort). */
+  async function persistActive(wf: Workflow, active: boolean) {
+    if (!ws) return;
+    try {
+      const res = await fetch("/api/master-timeframe", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectCode: ws.projectCode,
+          locationId: ws.locationId,
+          subjectType: wf.subject,
+          active,
+        }),
+      });
+      if (res.ok) await loadWorkflows();
+    } catch {
+      // best-effort — optimistic toggle already applied
+    }
+  }
 
   function toggleWorkflow(wf: Workflow) {
-    setInactiveWf((prev) => ({ ...prev, [wf.id]: !prev[wf.id] }));
+    const nextActive = !wf.active;
+    // Store the explicit inactive flag so the toggle is correct even when the
+    // DB reports this workflow as inactive (default-active assumption breaks).
+    setInactiveWf((prev) => ({ ...prev, [wf.id]: !nextActive }));
+    void persistActive(wf, nextActive);
   }
 
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -109,6 +190,34 @@ export function MasterTimeframeClient() {
     }
   }
 
+  async function persistWorkflow(activities: ParsedActivity[]) {
+    if (!ws) return;
+    const wf = workflows.find((w) => w.subject === uploadSubject);
+    try {
+      const res = await fetch("/api/master-timeframe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectCode: ws.projectCode,
+          locationId: ws.locationId,
+          subjectType: uploadSubject,
+          code: wf?.code ?? `${uploadSubject.toUpperCase()}-${ws.locationId}`,
+          name: SUBJECT_LABEL[uploadSubject],
+          activities: activities.map((a, i) => ({ order: i, name: a.name, slaDays: a.slaDays, pic: a.pic })),
+        }),
+      });
+      if (res.ok) {
+        await loadWorkflows();
+        setNotice({
+          type: "success",
+          text: `Tersimpan ke database: ${activities.length} aktivitas untuk ${SUBJECT_LABEL[uploadSubject]} — ${ws.locationName}.`,
+        });
+      }
+    } catch {
+      // best-effort — the optimistic override already reflects the change
+    }
+  }
+
   function saveUpload() {
     if (!ws || !canSave) {
       setNotice({ type: "error", text: "Gagal menyimpan — masih ada baris yang bermasalah." });
@@ -120,6 +229,7 @@ export function MasterTimeframeClient() {
       type: "success",
       text: `Berhasil menyimpan ${validRows.length} aktivitas untuk ${SUBJECT_LABEL[uploadSubject]} — ${ws.locationName}.`,
     });
+    void persistWorkflow(validRows);
   }
 
   function openUpload() {

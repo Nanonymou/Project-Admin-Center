@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -84,24 +85,60 @@ export function UnlockPeriodClient() {
   const stillLockedCount = visible.filter((r) => !r.locallyOpen).length;
 
   // Confirmation modal state.
-  const [target, setTarget] = useState<{ id: string; label: string } | null>(null);
+  const [target, setTarget] = useState<{
+    id: string;
+    label: string;
+    projectCode: string;
+    locationId: string;
+    periodLabel: string;
+  } | null>(null);
   const [reason, setReason] = useState("");
 
-  function requestUnlock(id: string, label: string) {
+  function requestUnlock(row: { id: string; projectCode: string; locationId: string; periodLabel: string; locationName: string }) {
     if (!canUnlock) return;
-    setTarget({ id, label });
+    setTarget({
+      id: row.id,
+      label: `${row.locationName} ${row.periodLabel}`,
+      projectCode: row.projectCode,
+      locationId: row.locationId,
+      periodLabel: row.periodLabel,
+    });
     setReason("");
+  }
+
+  /** Persist the unlock to the DB (best-effort); the optimistic UI already updated. */
+  async function persistUnlock(t: { projectCode: string; locationId: string; periodLabel: string }, reasonText: string) {
+    try {
+      const res = await fetch("/api/unlock-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: t.projectCode,
+          locationId: t.locationId,
+          periodLabel: t.periodLabel,
+          reason: reasonText,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        if (data.source === "db") setMsg((prev) => (prev ? `${prev} (tersimpan ke database)` : prev));
+      }
+    } catch {
+      // best-effort — the optimistic state already reflects the unlock
+    }
   }
 
   function confirmUnlock() {
     if (!target || reason.trim().length < 3) return;
-    setUnlockedIds((prev) => new Set(prev).add(target.id));
+    const t = target;
+    const reasonText = reason.trim();
+    setUnlockedIds((prev) => new Set(prev).add(t.id));
     setSessionHistory((prev) => [
       {
         id: `sess-${Date.now()}`,
-        period: target.label,
+        period: t.label,
         by: persona.roleLabel,
-        reason: reason.trim(),
+        reason: reasonText,
         at: new Date().toLocaleString("id-ID", {
           day: "2-digit",
           month: "short",
@@ -112,7 +149,8 @@ export function UnlockPeriodClient() {
       },
       ...prev,
     ]);
-    setMsg(`Periode ${target.label} dibuka oleh ${persona.roleLabel}. Alasan: ${reason.trim()}`);
+    setMsg(`Periode ${t.label} dibuka oleh ${persona.roleLabel}. Alasan: ${reasonText}`);
+    void persistUnlock(t, reasonText);
     setTarget(null);
   }
 
@@ -245,7 +283,7 @@ export function UnlockPeriodClient() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => requestUnlock(r.id, `${r.locationName} ${r.periodLabel}`)}
+                              onClick={() => requestUnlock(r)}
                             >
                               <LockOpen className="h-4 w-4" />
                               Buka Kunci

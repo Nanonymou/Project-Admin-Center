@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, RotateCcw, Search, Trash2, Trash } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,20 +10,92 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import {
   buildDeletedItems,
   DELETED_TYPE_META,
   type DeletedItem,
   type DeletedType,
 } from "@/lib/mock/recycle-bin";
-import { cn } from "@/lib/utils";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export function RecycleBinClient() {
   const { persona } = usePersona();
   const canManage = persona.role === "leader_admin" || persona.role === "super_admin";
 
-  const seeded = useMemo(() => buildDeletedItems(), []);
+  const mockSeeded = useMemo(() => buildDeletedItems(), []);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+
+  // DB-sourced recycled items — authoritative list when present.
+  const [dbItems, setDbItems] = useState<DeletedItem[] | null>(null);
+
+  const loadItems = useCallback(async () => {
+    try {
+      const res = await fetch("/api/recycle-bin?scope=executive", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbItems(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        items?: Array<{
+          id: string;
+          type: string;
+          projectCode: string;
+          locationId: string;
+          label: string;
+          amount?: number;
+          deletedAt?: string | null;
+          deletedBy?: string | null;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.items)) {
+        setDbItems(
+          data.items.map((it) => {
+            const deletedDate = it.deletedAt ? new Date(it.deletedAt) : null;
+            const daysSince = deletedDate
+              ? Math.floor((Date.now() - deletedDate.getTime()) / 86_400_000)
+              : 0;
+            const daysUntilPurge = Math.max(0, 30 - daysSince);
+            const purge = deletedDate ? new Date(deletedDate.getTime() + 30 * 86_400_000) : null;
+            return {
+              id: it.id,
+              originalId: it.id,
+              type: it.type as DeletedType,
+              label: it.label,
+              detail: it.amount ? formatCurrency(it.amount) : "—",
+              projectCode: it.projectCode,
+              locationName:
+                SITE_KPI.find((s) => s.locationId === it.locationId)?.locationName ?? it.locationId,
+              deletedAt: deletedDate
+                ? deletedDate.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                : "—",
+              deletedBy: it.deletedBy ?? "-",
+              reason: "—",
+              purgeDate: purge
+                ? purge.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                : "—",
+              daysUntilPurge,
+            } satisfies DeletedItem;
+          }),
+        );
+      } else {
+        setDbItems(null);
+      }
+    } catch {
+      setDbItems(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadItems();
+  }, [loadItems]);
+
+  const seeded = dbItems ?? mockSeeded;
   const [typeFilter, setTypeFilter] = useState<DeletedType | "all">("all");
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -86,13 +158,46 @@ export function RecycleBinClient() {
     [items],
   );
 
+  // Only these recycled types can be restored/purged against the DB.
+  const isPersistable = (t: DeletedType) => t === "invoice" || t === "daily_sales" || t === "daily_cost";
+
+  async function persistRestore(it: DeletedItem) {
+    if (!isPersistable(it.type)) return;
+    try {
+      const res = await fetch("/api/recycle-bin/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ type: it.type, id: it.id }),
+      });
+      if (res.ok) await loadItems();
+    } catch {
+      // best-effort — optimistic removal already applied
+    }
+  }
+
+  async function persistPurge(it: DeletedItem) {
+    if (!isPersistable(it.type)) return;
+    try {
+      const res = await fetch("/api/recycle-bin/purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ type: it.type, id: it.id, confirm: true }),
+      });
+      if (res.ok) await loadItems();
+    } catch {
+      // best-effort — optimistic removal already applied
+    }
+  }
+
   function restore(it: DeletedItem) {
     setRemovedIds((prev) => new Set(prev).add(it.id));
     setNotice(`"${it.label}" dipulihkan.`);
+    void persistRestore(it);
   }
   function purge(it: DeletedItem) {
     setRemovedIds((prev) => new Set(prev).add(it.id));
     setNotice(`"${it.label}" dihapus permanen.`);
+    void persistPurge(it);
   }
 
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
@@ -111,6 +216,9 @@ export function RecycleBinClient() {
   function bulkAction(kind: "restore" | "purge") {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    const targets = ids
+      .map((id) => items.find((i) => i.id === id))
+      .filter((i): i is DeletedItem => Boolean(i));
     setRemovedIds((prev) => {
       const next = new Set(prev);
       ids.forEach((id) => next.add(id));
@@ -118,6 +226,11 @@ export function RecycleBinClient() {
     });
     setNotice(`${ids.length} item ${kind === "restore" ? "dipulihkan" : "dihapus permanen"}.`);
     setSelected(new Set());
+    // Persist each supported item to the DB (best-effort).
+    for (const it of targets) {
+      if (kind === "restore") void persistRestore(it);
+      else void persistPurge(it);
+    }
   }
 
   const typeTabs: (DeletedType | "all")[] = ["all", "invoice", "daily_sales", "daily_cost", "user", "master"];
