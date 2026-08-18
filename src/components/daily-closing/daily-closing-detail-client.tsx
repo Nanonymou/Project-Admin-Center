@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { notFound, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Info, Lock, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { ClosingStatusBadge } from "@/components/daily-closing/closing-status-badge";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
 import {
@@ -29,7 +30,9 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
   const site = SITE_KPI.find((s) => s.locationId === locationId);
   if (!site) notFound();
 
-  const inScope = canAccessLocation(persona, site.locationId, site.projectCode);
+  // Narrowed once here so nested callbacks don't lose the non-null narrowing.
+  const projectCode = site.projectCode;
+  const inScope = canAccessLocation(persona, site.locationId, projectCode);
   const status = useMemo(() => buildSubmitStatus([site])[0], [site]);
 
   const overall = useMemo<ClosingState>(() => {
@@ -42,6 +45,50 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
   const [notes, setNotes] = useState("");
   const [editing, setEditing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // The transition API operates per closing date; default to today.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [closingDate, setClosingDate] = useState(todayIso);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // Map the DB closing status (open|submitted|approved|locked) to a client state.
+  const DB_TO_STATE: Record<string, ClosingState> = useMemo(
+    () => ({ open: "draft", submitted: "submitted", approved: "approved", locked: "locked" }),
+    [],
+  );
+  // Map a client target state to the transition API action (reviewed is
+  // client-only and has no server action).
+  const STATE_TO_ACTION: Partial<Record<ClosingState, string>> = useMemo(
+    () => ({ submitted: "submit", approved: "approve", locked: "lock" }),
+    [],
+  );
+
+  // Reflect the persisted closing status for the selected date, when present.
+  const loadClosing = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/daily-closing?projectId=${encodeURIComponent(projectCode)}&locationId=${encodeURIComponent(
+          locationId,
+        )}&from=${closingDate}&to=${closingDate}&scope=tenant`,
+        { headers: personaHeaders(persona.id), cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        source?: string;
+        closings?: Array<{ closingDate: string; status: string }>;
+      };
+      if (data.source === "db" && Array.isArray(data.closings)) {
+        const match = data.closings.find((c) => c.closingDate?.slice(0, 10) === closingDate);
+        if (match && DB_TO_STATE[match.status]) setClosingState(DB_TO_STATE[match.status]);
+      }
+    } catch {
+      // keep the mock-derived state
+    }
+  }, [projectCode, locationId, closingDate, persona.id, DB_TO_STATE]);
+
+  useEffect(() => {
+    void loadClosing();
+  }, [loadClosing]);
 
   // Status-change history timeline — seeded from the steps already reached.
   const [history, setHistory] = useState<StatusHistoryEntry[]>(() => {
@@ -84,6 +131,35 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
 
   const currentStep = CLOSING_STATE_META[closingState].step;
 
+  async function persistTransition(target: ClosingState) {
+    const action = STATE_TO_ACTION[target];
+    if (!action) return; // "reviewed" is a client-only intermediate step
+    try {
+      const res = await fetch("/api/daily-closing/transition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: projectCode,
+          locationId,
+          closingDate,
+          action,
+          note: notes.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        if (data.source === "db") {
+          await loadClosing();
+          setSaveNote(`Status closing ${closingDate} tersimpan ke database.`);
+          return;
+        }
+      }
+      setSaveNote(null);
+    } catch {
+      setSaveNote(null);
+    }
+  }
+
   function confirmAdvance() {
     if (nextState) {
       setClosingState(nextState);
@@ -91,6 +167,7 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
         { id: `h-${Date.now()}`, state: nextState, time: "baru saja", by: persona.roleLabel },
         ...prev,
       ]);
+      void persistTransition(nextState);
     }
     setConfirmOpen(false);
   }
@@ -221,7 +298,17 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
               )}
             />
             {editing && !readOnly && (
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+                  Tanggal closing
+                  <input
+                    type="date"
+                    value={closingDate}
+                    max={todayIso}
+                    onChange={(e) => setClosingDate(e.target.value || todayIso)}
+                    className="h-8 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
                 <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
                   Selesai
                 </Button>
@@ -231,6 +318,11 @@ export function DailyClosingDetailClient({ locationId }: { locationId: string })
                     {actionVerb} → {CLOSING_STATE_META[nextState].label}
                   </Button>
                 )}
+              </div>
+            )}
+            {saveNote && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                {saveNote}
               </div>
             )}
           </CardContent>

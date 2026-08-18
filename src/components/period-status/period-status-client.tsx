@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarRange, CheckCircle2, History, Lock, LockOpen, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks, type PeriodLockState } from "@/lib/mock/lock-period";
 import { CutOffCalculator } from "@/components/period-status/cutoff-calculator";
@@ -42,9 +43,72 @@ export function PeriodStatusClient() {
 
   const baseRows = useMemo(() => buildPeriodLocks(scopedSites), [scopedSites]);
   const [overrides, setOverrides] = useState<Record<string, PeriodLockState>>({});
+
+  // Persisted lock state keyed by `${locationId}::${periodLabel}` from the DB.
+  const [dbLockByKey, setDbLockByKey] = useState<Record<string, boolean>>({});
+
+  const loadLocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/lock-period?scope=executive", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbLockByKey({});
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        periods?: Array<{ locationId: string; periodLabel: string; locked: boolean }>;
+      };
+      if (data.source === "db" && Array.isArray(data.periods)) {
+        const map: Record<string, boolean> = {};
+        for (const p of data.periods) map[`${p.locationId}::${p.periodLabel}`] = p.locked;
+        setDbLockByKey(map);
+      } else {
+        setDbLockByKey({});
+      }
+    } catch {
+      setDbLockByKey({});
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadLocks();
+  }, [loadLocks]);
+
   const rows = useMemo(
-    () => baseRows.map((r) => ({ ...r, state: overrides[r.id] ?? r.state })),
-    [baseRows, overrides],
+    () =>
+      baseRows.map((r) => {
+        const dbLocked = dbLockByKey[`${r.locationId}::${r.periodLabel}`];
+        const dbState: PeriodLockState | undefined =
+          dbLocked === undefined ? undefined : dbLocked ? "locked" : "open";
+        return { ...r, state: overrides[r.id] ?? dbState ?? r.state };
+      }),
+    [baseRows, overrides, dbLockByKey],
+  );
+
+  /** Persist a period lock for one site (best-effort), consistent with Lock Period. */
+  const persistLock = useCallback(
+    async (site: { projectCode: string; locationId: string; periodLabel: string }, reasonText: string) => {
+      try {
+        const res = await fetch("/api/lock-period", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+          body: JSON.stringify({
+            projectId: site.projectCode,
+            locationId: site.locationId,
+            periodLabel: site.periodLabel,
+            action: "lock",
+            reason: reasonText,
+          }),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    [persona.id],
   );
 
   // Reason-modal state for locking a whole period.
@@ -124,7 +188,9 @@ export function PeriodStatusClient() {
   function confirmLock() {
     setTouched(true);
     if (!modalPeriod || reason.trim().length < 4) return;
-    const openIds = modalPeriod.sites.filter((s) => s.state === "open").map((s) => s.id);
+    const reasonText = reason.trim();
+    const openSites = modalPeriod.sites.filter((s) => s.state === "open");
+    const openIds = openSites.map((s) => s.id);
     setOverrides((prev) => {
       const next = { ...prev };
       for (const id of openIds) next[id] = "locked";
@@ -137,10 +203,19 @@ export function PeriodStatusClient() {
         periodLabel: modalPeriod.label,
         by: persona.roleLabel,
         time: new Date().toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
-        reason: reason.trim(),
+        reason: reasonText,
       },
       ...prev,
     ]);
+    // Persist each open site's lock to the DB, then refresh the reflected state.
+    void (async () => {
+      const results = await Promise.all(
+        openSites.map((s) =>
+          persistLock({ projectCode: s.projectCode, locationId: s.locationId, periodLabel: s.periodLabel }, reasonText),
+        ),
+      );
+      if (results.some(Boolean)) await loadLocks();
+    })();
     setModalPeriodKey(null);
     setReason("");
     setTouched(false);
