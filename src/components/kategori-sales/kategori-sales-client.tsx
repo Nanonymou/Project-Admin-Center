@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ListChecks, MapPin, Tag, TrendingUp, TrendingDown, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -41,10 +42,49 @@ export function KategoriSalesClient() {
 
   const store = useKategoriStore(ws?.projectCode ?? "", ws?.locationId ?? "");
 
+  const [dbCats, setDbCats] = useState<KategoriRow[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadCats = useCallback(async () => {
+    if (!ws) return;
+    try {
+      const params = new URLSearchParams({ projectId: ws.projectCode, kind: "sales", locationId: ws.locationId });
+      const res = await fetch(`/api/master/categories?${params.toString()}`, {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        source?: string;
+        categories?: Array<{ categoryKey: string; label: string; unit?: string; price?: number; isDeduction?: boolean }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.categories)) {
+        setDbCats(null);
+        return;
+      }
+      setDbCats(
+        data.categories.map((c) => ({
+          key: c.categoryKey,
+          label: c.label,
+          unit: c.unit ?? "",
+          price: Number(c.price ?? 0),
+          deduction: Boolean(c.isDeduction),
+          active: true,
+        })),
+      );
+    } catch {
+      setDbCats(null);
+    }
+  }, [ws, persona.id]);
+
+  useEffect(() => {
+    void loadCats();
+  }, [loadCats]);
+
   const categories: KategoriRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return store.rows.filter((c) => !q || c.label.toLowerCase().includes(q) || c.key.includes(q));
-  }, [store.rows, query]);
+    const rows = dbCats ?? store.rows;
+    return rows.filter((c) => !q || c.label.toLowerCase().includes(q) || c.key.includes(q));
+  }, [dbCats, store.rows, query]);
 
   const revenueCount = categories.filter((c) => !c.deduction && c.active).length;
   const deductionCount = categories.filter((c) => c.deduction && c.active).length;
@@ -75,13 +115,59 @@ export function KategoriSalesClient() {
     setFormOpen(true);
   }
 
-  function saveForm() {
+  async function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
-    const input = { label, unit: formUnit, price: Number(formPrice) || 0, deduction: formDeduction };
+    const price = Number(formPrice) || 0;
+    const input = { label, unit: formUnit, price, deduction: formDeduction };
+    const categoryKey = editKey ?? `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
     if (editKey) store.editCategory(editKey, input);
     else store.addCategory(input);
     setFormOpen(false);
+    if (!ws) return;
+
+    // Persist (upsert) to the database.
+    try {
+      const res = await fetch("/api/master/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: ws.projectCode,
+          kind: "sales",
+          categoryKey,
+          label,
+          unit: formUnit,
+          defaultPrice: price,
+          isDeduction: formDeduction,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string; ok?: boolean };
+      if (res.ok && (data.source === "db" || data.ok)) {
+        setSaveNote("Tersimpan ke database ✓");
+        await loadCats();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
+  }
+
+  async function handleToggle(c: KategoriRow) {
+    store.toggleActive(c.key);
+    if (!ws) return;
+    try {
+      await fetch("/api/master/categories", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ projectId: ws.projectCode, kind: "sales", categoryKey: c.key, active: !c.active }),
+      });
+      await loadCats();
+    } catch {
+      /* keep optimistic */
+    }
   }
 
   if (!ws) {
@@ -103,6 +189,7 @@ export function KategoriSalesClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${workspaces.length} site`} />
+        {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
 
         <div className="flex flex-wrap items-center gap-3">
           <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -231,7 +318,7 @@ export function KategoriSalesClient() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => store.toggleActive(c.key)}
+                                onClick={() => handleToggle(c)}
                                 className={`h-7 gap-1 px-2 ${c.active ? "text-rose-600" : "text-emerald-600"}`}
                               >
                                 {c.active ? (

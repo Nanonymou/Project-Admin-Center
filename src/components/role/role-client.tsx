@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Shield, Users, ChevronDown, ChevronRight, Check, Minus, Plus, Pencil, Ban, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import {
   listRoles,
   listManagedUsers,
@@ -56,10 +57,43 @@ export function RoleClient() {
 
   // Deactivated role keys. Super Admin cannot be deactivated (system role).
   const [inactive, setInactive] = useState<string[]>([]);
+  const [dbRoles, setDbRoles] = useState<EditableRole[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadRoles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/role", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        roles?: Array<{ role: string; label: string; description?: string; permissions: RoleDefinition["permissions"]; active?: boolean }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.roles)) {
+        setDbRoles(null);
+        return;
+      }
+      const systemKeys = new Set<string>(listRoles().map((r) => r.role));
+      setDbRoles(
+        data.roles.map((r) => ({
+          role: r.role,
+          label: r.label,
+          description: r.description ?? "",
+          permissions: r.permissions,
+          custom: !systemKeys.has(r.role),
+        })),
+      );
+      setInactive(data.roles.filter((r) => r.active === false).map((r) => r.role));
+    } catch {
+      setDbRoles(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadRoles();
+  }, [loadRoles]);
 
   const roles: EditableRole[] = useMemo(
-    () => [...listRoles(), ...customRoles].map((r) => ({ ...r, ...(overrides[r.role] ?? {}) })),
-    [customRoles, overrides],
+    () => [...(dbRoles ?? listRoles()), ...customRoles].map((r) => ({ ...r, ...(overrides[r.role] ?? {}) })),
+    [customRoles, overrides, dbRoles],
   );
   const isEdited = (key: string) => key in overrides;
   const isActive = (key: string) => !inactive.includes(key);
@@ -68,13 +102,33 @@ export function RoleClient() {
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
   const confirmRole = confirmKey ? roles.find((r) => r.role === confirmKey) : null;
 
+  async function persistActive(role: string, active: boolean) {
+    try {
+      await fetch("/api/role", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ role, active }),
+      });
+      await loadRoles();
+    } catch {
+      /* keep optimistic */
+    }
+  }
+
   function requestToggle(role: EditableRole) {
     if (isActive(role.role)) setConfirmKey(role.role);
-    else setInactive((prev) => prev.filter((k) => k !== role.role));
+    else {
+      setInactive((prev) => prev.filter((k) => k !== role.role));
+      void persistActive(role.role, true);
+    }
   }
 
   function confirmDeactivate() {
-    if (confirmKey) setInactive((prev) => (prev.includes(confirmKey) ? prev : [...prev, confirmKey]));
+    if (confirmKey) {
+      const key = confirmKey;
+      setInactive((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      void persistActive(key, false);
+    }
     setConfirmKey(null);
   }
 
@@ -141,10 +195,11 @@ export function RoleClient() {
     });
   }
 
-  function saveForm() {
+  async function saveForm() {
     const label = formLabel.trim();
     if (!label) return;
     const description = formDesc.trim() || "Role kustom.";
+    const key = editKey ?? `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
     if (editKey) {
       if (editCustom) {
         setCustomRoles((prev) =>
@@ -154,10 +209,31 @@ export function RoleClient() {
         setOverrides((prev) => ({ ...prev, [editKey]: { label, description, permissions: formPerms } }));
       }
     } else {
-      const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
       setCustomRoles((prev) => [...prev, { role: key, label, description, permissions: formPerms, custom: true }]);
     }
     setFormOpen(false);
+
+    // Persist (upsert by role key) to the database.
+    try {
+      const res = await fetch("/api/role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ role: key, label, description, permissions: formPerms }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string; ok?: boolean };
+      if (res.ok && (data.source === "db" || data.ok)) {
+        setSaveNote("Tersimpan ke database ✓");
+        setCustomRoles([]);
+        setOverrides({});
+        await loadRoles();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
   }
 
   return (
@@ -171,6 +247,7 @@ export function RoleClient() {
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <PersonaBanner persona={persona} scopeSummary={`${roles.length} role`} />
+          {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
           {canManage && (
             <Button size="sm" onClick={openAdd} className="ml-auto gap-1.5">
               <Plus className="h-4 w-4" />

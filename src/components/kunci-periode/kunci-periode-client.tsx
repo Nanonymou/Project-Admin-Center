@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Lock, LockOpen, CalendarDays, ShieldCheck, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
+import { personaHeaders } from "@/lib/client/notif";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks, type PeriodLockState } from "@/lib/mock/lock-period";
@@ -33,6 +34,35 @@ export function KunciPeriodeClient() {
   const [overrides, setOverrides] = useState<Record<string, PeriodLockState>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Reflect the persisted lock status from the DB, matched by location+period.
+  const loadLocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/lock-period?scope=executive", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        periods?: Array<{ locationId: string; periodLabel: string; locked?: boolean; state?: string }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.periods)) return;
+      const stateByKey = new Map<string, PeriodLockState>();
+      for (const p of data.periods) {
+        const locked = p.locked ?? p.state === "locked";
+        stateByKey.set(`${p.locationId}|${p.periodLabel}`, locked ? "locked" : "open");
+      }
+      const next: Record<string, PeriodLockState> = {};
+      for (const r of baseline) {
+        const s = stateByKey.get(`${r.locationId}|${r.periodLabel}`);
+        if (s) next[r.id] = s;
+      }
+      if (Object.keys(next).length > 0) setOverrides((prev) => ({ ...next, ...prev }));
+    } catch {
+      /* keep config baseline */
+    }
+  }, [persona.id, baseline]);
+
+  useEffect(() => {
+    void loadLocks();
+  }, [loadLocks]);
+
   const rows = baseline.map((r) => ({ ...r, state: overrides[r.id] ?? r.state }));
 
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -44,21 +74,58 @@ export function KunciPeriodeClient() {
 
   const lockedCount = rows.filter((r) => r.state === "locked").length;
 
-  const [confirmRow, setConfirmRow] = useState<{ id: string; label: string; state: PeriodLockState } | null>(
-    null,
-  );
+  const [confirmRow, setConfirmRow] = useState<{
+    id: string;
+    label: string;
+    state: PeriodLockState;
+    projectCode: string;
+    locationId: string;
+    periodLabel: string;
+  } | null>(null);
 
-  function requestToggle(id: string, label: string, current: PeriodLockState) {
+  function requestToggle(r: {
+    id: string;
+    locationName: string;
+    periodLabel: string;
+    projectCode: string;
+    locationId: string;
+    state: PeriodLockState;
+  }) {
     if (!canManageLocks) return;
-    setConfirmRow({ id, label, state: current });
+    setConfirmRow({
+      id: r.id,
+      label: `${r.locationName} ${r.periodLabel}`,
+      state: r.state,
+      projectCode: r.projectCode,
+      locationId: r.locationId,
+      periodLabel: r.periodLabel,
+    });
   }
 
-  function applyToggle() {
+  async function applyToggle() {
     if (!confirmRow) return;
-    const next: PeriodLockState = confirmRow.state === "locked" ? "open" : "locked";
-    setOverrides((prev) => ({ ...prev, [confirmRow.id]: next }));
-    setMsg(`Periode ${confirmRow.label} ${next === "locked" ? "dikunci" : "dibuka"} oleh ${persona.roleLabel}.`);
+    const row = confirmRow;
+    const next: PeriodLockState = row.state === "locked" ? "open" : "locked";
+    setOverrides((prev) => ({ ...prev, [row.id]: next }));
+    setMsg(`Periode ${row.label} ${next === "locked" ? "dikunci" : "dibuka"} oleh ${persona.roleLabel}.`);
     setConfirmRow(null);
+
+    // Persist the lock/unlock to the database.
+    try {
+      await fetch("/api/lock-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: row.projectCode,
+          locationId: row.locationId,
+          periodLabel: row.periodLabel,
+          action: next === "locked" ? "lock" : "unlock",
+        }),
+      });
+      await loadLocks();
+    } catch {
+      /* keep optimistic */
+    }
   }
 
   return (
@@ -183,7 +250,7 @@ export function KunciPeriodeClient() {
                                     : "Kunci periode"
                                   : "Hanya Leader/Super Admin"
                               }
-                              onClick={() => requestToggle(r.id, `${r.locationName} ${r.periodLabel}`, r.state)}
+                              onClick={() => requestToggle(r)}
                               className={cn(locked && "text-emerald-700")}
                             >
                               {locked ? (
