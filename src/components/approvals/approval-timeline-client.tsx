@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import { ArrowLeft, Building2, Lock } from "lucide-react";
@@ -10,11 +10,137 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
-import { getSiteDetail } from "@/lib/mock/site-detail";
-import { buildSiteApprovalTimelines, type InvoiceTimeline } from "@/lib/mock/approval-timeline";
+import { personaHeaders } from "@/lib/client/notif";
+import { getSiteDetail, type InvoiceStatus } from "@/lib/mock/site-detail";
+import {
+  buildSiteApprovalTimelines,
+  type InvoiceTimeline,
+  type TimelineStage,
+  type TimelineStageState,
+} from "@/lib/mock/approval-timeline";
+import { APPROVAL_STAGES, type ApprovalStageName } from "@/lib/mock/approval-progress";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
+
+/** SLA (days) and default actor per approval stage — used to fill DB gaps. */
+const STAGE_SLA: Record<ApprovalStageName, number> = {
+  "Verifikasi Site": 2,
+  "Approval Leader": 3,
+  "Verifikasi Finance": 3,
+  "Kirim Client": 2,
+  Payment: 30,
+};
+const STAGE_ACTOR: Record<ApprovalStageName, string> = {
+  "Verifikasi Site": "Site Admin",
+  "Approval Leader": "Leader Admin",
+  "Verifikasi Finance": "Finance HO",
+  "Kirim Client": "Site Admin",
+  Payment: "Finance Client",
+};
+
+const DAY_MS = 86_400_000;
+
+type DbApproval = {
+  subjectId: string;
+  currentStage: string;
+  status: string;
+  assignedTo: string | null;
+  dueDate: string | null;
+  createdAt?: string | null;
+};
+type DbHistory = { toStage: string; actor: string; createdAt: string };
+
+/**
+ * Map one DB approval (+ its stage history) to the Gantt `InvoiceTimeline` the
+ * view renders. Stage vocabulary already matches `APPROVAL_STAGES`; per-stage
+ * durations come from the history timestamps when present, otherwise the stage
+ * SLA. The subject id is `${locationId}-${invoiceNumber}`, so the location
+ * prefix is stripped for display and to join the invoice amount.
+ */
+function mapDbTimeline(
+  approval: DbApproval,
+  history: DbHistory[],
+  locationId: string,
+  amountByNumber: Map<string, number>,
+): InvoiceTimeline {
+  const stageNames = APPROVAL_STAGES;
+  const currentStage = (stageNames as readonly string[]).includes(approval.currentStage)
+    ? (approval.currentStage as ApprovalStageName)
+    : stageNames[0];
+  const currentIdx = Math.max(0, stageNames.indexOf(currentStage));
+
+  const now = Date.now();
+  const overdueByDue = approval.dueDate ? new Date(approval.dueDate).getTime() < now : false;
+  let status: InvoiceStatus;
+  if (approval.status === "completed") status = "onTime";
+  else if (approval.status === "rejected" || approval.status === "returned" || overdueByDue) status = "overdue";
+  else if (approval.dueDate) {
+    const daysToDue = (new Date(approval.dueDate).getTime() - now) / DAY_MS;
+    status = daysToDue <= 3 ? "atRisk" : "onTime";
+  } else {
+    status = "onTime";
+  }
+
+  // First time each stage was entered, and the actor who moved it there.
+  const enteredAt = new Map<string, number>();
+  const actorByStage = new Map<string, string>();
+  for (const h of history) {
+    if (!enteredAt.has(h.toStage)) enteredAt.set(h.toStage, new Date(h.createdAt).getTime());
+    actorByStage.set(h.toStage, h.actor);
+  }
+  const createdMs = approval.createdAt
+    ? new Date(approval.createdAt).getTime()
+    : history[0]
+      ? new Date(history[0].createdAt).getTime()
+      : now;
+
+  let offset = 0;
+  const stages: TimelineStage[] = stageNames.map((stage, i) => {
+    const sla = STAGE_SLA[stage];
+    let state: TimelineStageState;
+    if (i < currentIdx) state = "done";
+    else if (i === currentIdx) state = status === "overdue" ? "overdue" : "current";
+    else state = "upcoming";
+
+    let duration = sla;
+    if (i < currentIdx) {
+      const startMs = enteredAt.get(stage);
+      const nextMs = stageNames[i + 1] ? enteredAt.get(stageNames[i + 1]) : undefined;
+      if (startMs && nextMs && nextMs > startMs) duration = Math.max(1, Math.round((nextMs - startMs) / DAY_MS));
+    } else if (i === currentIdx) {
+      const startMs = enteredAt.get(stage) ?? createdMs;
+      duration = Math.max(1, Math.round((now - startMs) / DAY_MS));
+    }
+
+    const startOffset = offset;
+    if (i <= currentIdx) offset += duration;
+    return {
+      stage,
+      state,
+      startOffset,
+      durationDays: duration,
+      slaDays: sla,
+      breachedSla: i <= currentIdx && duration > sla,
+      actor: actorByStage.get(stage) ?? approval.assignedTo ?? STAGE_ACTOR[stage],
+    };
+  });
+
+  const prefix = `${locationId}-`;
+  const invoiceNumber = approval.subjectId.startsWith(prefix)
+    ? approval.subjectId.slice(prefix.length)
+    : approval.subjectId;
+
+  return {
+    invoiceNumber,
+    amount: amountByNumber.get(invoiceNumber) ?? 0,
+    pic: approval.assignedTo ?? STAGE_ACTOR[currentStage],
+    status,
+    currentStage,
+    totalElapsedDays: offset,
+    stages,
+  };
+}
 
 const STATE_COLOR: Record<string, string> = {
   done: "bg-emerald-500",
@@ -30,7 +156,66 @@ export function ApprovalTimelineClient({ locationId }: { locationId: string }) {
   if (!detail) notFound();
 
   const inScope = canAccessLocation(persona, detail.site.locationId, detail.site.projectCode);
-  const timelines = useMemo(() => buildSiteApprovalTimelines(detail), [detail]);
+  const mockTimelines = useMemo(() => buildSiteApprovalTimelines(detail), [detail]);
+
+  const projectCode = detail.site.projectCode;
+
+  // Live approval timelines from the DB, remapped to the Gantt shape.
+  const [dbTimelines, setDbTimelines] = useState<InvoiceTimeline[] | null>(null);
+  const [live, setLive] = useState(false);
+
+  const loadTimelines = useCallback(async () => {
+    try {
+      // Fetch approval timelines and invoice amounts (for the value column) together.
+      const [tlRes, invRes] = await Promise.all([
+        fetch(`/api/approvals/timeline?locationId=${encodeURIComponent(locationId)}&scope=tenant`, {
+          headers: personaHeaders(persona.id),
+          cache: "no-store",
+        }),
+        fetch(
+          `/api/invoices?locationId=${encodeURIComponent(locationId)}&projectId=${encodeURIComponent(projectCode)}&scope=tenant`,
+          { headers: personaHeaders(persona.id), cache: "no-store" },
+        ),
+      ]);
+      if (!tlRes.ok) {
+        setDbTimelines(null);
+        setLive(false);
+        return;
+      }
+      const tlData = (await tlRes.json()) as {
+        source?: string;
+        timelines?: Array<{ approval: DbApproval; history: DbHistory[] }>;
+      };
+      const amountByNumber = new Map<string, number>();
+      if (invRes.ok) {
+        const invData = (await invRes.json()) as {
+          source?: string;
+          invoices?: Array<{ number: string; amount: number }>;
+        };
+        if (Array.isArray(invData.invoices)) {
+          for (const inv of invData.invoices) amountByNumber.set(inv.number, Number(inv.amount) || 0);
+        }
+      }
+      if (tlData.source === "db" && Array.isArray(tlData.timelines) && tlData.timelines.length > 0) {
+        setDbTimelines(
+          tlData.timelines.map((t) => mapDbTimeline(t.approval, t.history ?? [], locationId, amountByNumber)),
+        );
+        setLive(true);
+      } else {
+        setDbTimelines(null);
+        setLive(false);
+      }
+    } catch {
+      setDbTimelines(null);
+      setLive(false);
+    }
+  }, [locationId, projectCode, persona.id]);
+
+  useEffect(() => {
+    void loadTimelines();
+  }, [loadTimelines]);
+
+  const timelines = dbTimelines ?? mockTimelines;
 
   const maxSpan = useMemo(
     () => Math.max(1, ...timelines.map((t) => t.stages.reduce((m, s) => Math.max(m, s.startOffset + s.durationDays), 0))),
@@ -87,6 +272,13 @@ export function ApprovalTimelineClient({ locationId }: { locationId: string }) {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${detail.site.projectCode} · ${detail.site.locationName}`} />
+
+        {live && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Timeline approval diambil langsung dari database.
+          </div>
+        )}
 
         <Card>
           <CardHeader>
