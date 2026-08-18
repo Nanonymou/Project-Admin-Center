@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { PERSONAS } from "@/lib/personas";
+import { ASSIGNABLE_SITES } from "@/lib/site-access";
 
 type AppUser = {
   id: string;
@@ -19,18 +20,34 @@ type AppUser = {
   personaId: string;
   roleLabel: string;
   role: string;
+  locations: string[];
   isActive: boolean;
 };
 
-type FormState = { id?: string; name: string; email: string; personaId: string; password: string; isActive: boolean };
+type FormState = {
+  id?: string;
+  name: string;
+  email: string;
+  personaId: string;
+  password: string;
+  locations: string[];
+  isActive: boolean;
+};
 
 const EMPTY_FORM: FormState = {
   name: "",
   email: "",
   personaId: PERSONAS[0].id,
   password: "",
+  locations: [],
   isActive: true,
 };
+
+/** Roles that operate at the portfolio level — site grants don't apply to them. */
+function isSiteScopedRole(personaId: string): boolean {
+  const p = PERSONAS.find((x) => x.id === personaId);
+  return p?.role === "site_admin" || p?.role === "viewer";
+}
 
 /**
  * Kelola Akun Login — Super Admin only. Manage the DB-backed sign-in accounts:
@@ -98,9 +115,26 @@ export function KelolaAkunClient() {
   }
 
   function openEdit(u: AppUser) {
-    setForm({ id: u.id, name: u.name, email: u.email, personaId: u.personaId, password: "", isActive: u.isActive });
+    setForm({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      personaId: u.personaId,
+      password: "",
+      locations: u.locations ?? [],
+      isActive: u.isActive,
+    });
     setFormError("");
     setFormOpen(true);
+  }
+
+  function toggleFormSite(locationId: string) {
+    setForm((f) => ({
+      ...f,
+      locations: f.locations.includes(locationId)
+        ? f.locations.filter((l) => l !== locationId)
+        : [...f.locations, locationId],
+    }));
   }
 
   async function submitForm() {
@@ -114,6 +148,8 @@ export function KelolaAkunClient() {
         name: form.name,
         email: form.email,
         personaId: form.personaId,
+        // Site grants only apply to site-scoped roles; clear them otherwise.
+        locations: isSiteScopedRole(form.personaId) ? form.locations : [],
         isActive: form.isActive,
       };
       if (!isEdit) payload.password = form.password;
@@ -210,6 +246,7 @@ export function KelolaAkunClient() {
                     <th className="px-2 py-2 font-medium">Nama</th>
                     <th className="px-2 py-2 font-medium">Email</th>
                     <th className="px-2 py-2 font-medium">Peran</th>
+                    <th className="px-2 py-2 font-medium">Akses Site</th>
                     <th className="px-2 py-2 font-medium">Status</th>
                     <th className="px-2 py-2 text-right font-medium">Aksi</th>
                   </tr>
@@ -221,6 +258,22 @@ export function KelolaAkunClient() {
                       <td className="px-2 py-2 text-muted-foreground">{u.email}</td>
                       <td className="px-2 py-2">
                         <Badge variant="muted">{u.roleLabel}</Badge>
+                      </td>
+                      <td className="px-2 py-2">
+                        {u.locations && u.locations.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {u.locations.map((locId) => {
+                              const site = ASSIGNABLE_SITES.find((s) => s.locationId === locId);
+                              return (
+                                <Badge key={locId} variant="info" className="text-[10px]">
+                                  {site?.locationName ?? locId}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">Bawaan peran</span>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         <Badge variant={u.isActive ? "success" : "danger"}>{u.isActive ? "Aktif" : "Nonaktif"}</Badge>
@@ -287,6 +340,34 @@ export function KelolaAkunClient() {
               ))}
             </select>
           </div>
+          {isSiteScopedRole(form.personaId) && (
+            <div className="space-y-1.5 rounded-md border p-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Akses Workspace (site)
+                </label>
+                <span className="text-[11px] text-muted-foreground">{form.locations.length} dipilih</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Pilih site yang boleh diakses akun ini. Kosong = memakai cakupan bawaan perannya.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                {ASSIGNABLE_SITES.map((s) => (
+                  <label key={s.locationId} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={form.locations.includes(s.locationId)}
+                      onChange={() => toggleFormSite(s.locationId)}
+                      className="h-4 w-4"
+                    />
+                    <span>
+                      {s.locationName} <span className="text-muted-foreground">· {s.projectCode}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {!form.id && (
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Kata Sandi Awal</label>

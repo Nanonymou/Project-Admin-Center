@@ -13,8 +13,18 @@ export type AppUserPublic = {
   personaId: string;
   roleLabel: string;
   role: string;
+  /** LocationIds this account may access (Super-Admin granted); [] = persona default. */
+  locations: string[];
   isActive: boolean;
 };
+
+/** Parse the stored comma-separated locations into a clean id list. */
+export function parseLocations(raw: string | null | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 const ROUNDS = 10;
 
@@ -35,6 +45,7 @@ function toPublic(row: AppUserRow): AppUserPublic {
     personaId: row.personaId,
     roleLabel: persona.roleLabel,
     role: persona.role,
+    locations: parseLocations(row.locations),
     isActive: row.isActive,
   };
 }
@@ -67,6 +78,7 @@ export async function createAppUser(input: {
   name: string;
   personaId: string;
   password: string;
+  locations?: string[];
   isActive?: boolean;
 }): Promise<AppUserPublic> {
   const passwordHash = await hashPassword(input.password);
@@ -76,6 +88,7 @@ export async function createAppUser(input: {
       email: input.email.trim().toLowerCase(),
       name: input.name.trim(),
       personaId: input.personaId,
+      locations: (input.locations ?? []).join(","),
       passwordHash,
       isActive: input.isActive ?? true,
     })
@@ -85,12 +98,13 @@ export async function createAppUser(input: {
 
 export async function updateAppUser(
   id: string,
-  patch: { email?: string; name?: string; personaId?: string; isActive?: boolean },
+  patch: { email?: string; name?: string; personaId?: string; locations?: string[]; isActive?: boolean },
 ): Promise<AppUserPublic | undefined> {
   const values: Partial<typeof appUsers.$inferInsert> = { updatedAt: new Date() };
   if (patch.email !== undefined) values.email = patch.email.trim().toLowerCase();
   if (patch.name !== undefined) values.name = patch.name.trim();
   if (patch.personaId !== undefined) values.personaId = patch.personaId;
+  if (patch.locations !== undefined) values.locations = patch.locations.join(",");
   if (patch.isActive !== undefined) values.isActive = patch.isActive;
   const [row] = await db.update(appUsers).set(values).where(eq(appUsers.id, id)).returning();
   return row ? toPublic(row) : undefined;

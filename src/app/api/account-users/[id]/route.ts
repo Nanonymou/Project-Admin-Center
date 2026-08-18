@@ -8,6 +8,7 @@ import {
   updateAppUser,
 } from "@/lib/server/app-users";
 import { PERSONAS } from "@/lib/personas";
+import { sanitizeLocationIds } from "@/lib/site-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,11 +33,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     email?: string;
     name?: string;
     personaId?: string;
+    locations?: string[];
     isActive?: boolean;
   } | null;
   if (!body) return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
 
-  const patch: { email?: string; name?: string; personaId?: string; isActive?: boolean } = {};
+  const patch: { email?: string; name?: string; personaId?: string; locations?: string[]; isActive?: boolean } = {};
+
+  if (body.locations !== undefined) {
+    patch.locations = sanitizeLocationIds(Array.isArray(body.locations) ? body.locations : []);
+  }
 
   if (body.email !== undefined) {
     const email = body.email.trim().toLowerCase();

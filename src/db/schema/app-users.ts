@@ -19,6 +19,12 @@ export const appUsers = pgTable(
     name: varchar("name", { length: 128 }).notNull(),
     /** Maps to a persona id (role + scope + capabilities). */
     personaId: varchar("persona_id", { length: 48 }).notNull(),
+    /**
+     * Comma-separated locationIds this account may access, granted by a Super
+     * Admin (e.g. "loc-km22,loc-santan"). Empty = use the persona's default
+     * scope. When set, it overrides the persona's site scope for this account.
+     */
+    locations: varchar("locations", { length: 512 }).default("").notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
