@@ -81,8 +81,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!loaded.ok) return NextResponse.json({ error: loaded.message }, { status: loaded.status });
     const invoice = loaded.invoice;
 
-    // Derive a key-based storage reference (binary is not persisted in the DB).
-    const storageKey = `invoices/${invoice.id}/${Date.now()}-${fileName}`;
+    // Store the binary in Vercel Blob when a token is configured; otherwise keep
+    // the app's key-based convention (metadata only, no bytes persisted).
+    let storageKey = `invoices/${invoice.id}/${Date.now()}-${fileName}`;
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const { put } = await import("@vercel/blob");
+        const blob = await put(storageKey, file, { access: "public", addRandomSuffix: true });
+        storageKey = blob.url;
+      } catch {
+        // Blob upload failed — fall back to the metadata-only key reference.
+      }
+    }
 
     const values: NewInvoiceAttachment = {
       invoiceId: invoice.id,

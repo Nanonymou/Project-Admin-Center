@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import {
@@ -63,10 +63,10 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
   // the API and pair the DB invoice with its site's context so the detail page
   // renders instead of 404-ing.
   const [dbLookup, setDbLookup] = useState<{ invoice: MockInvoice; detail: SiteDetail } | null>(null);
+  const [invoiceDbId, setInvoiceDbId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(!mockLookup);
 
   useEffect(() => {
-    if (mockLookup) return; // mock already has it; no DB lookup needed
     let cancelled = false;
     async function resolve() {
       try {
@@ -78,6 +78,7 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
           const data = (await res.json()) as {
             source?: string;
             invoices?: Array<{
+              id: string;
               number: string;
               projectId: string;
               locationId: string;
@@ -90,24 +91,29 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
             }>;
           };
           const row = data.invoices?.find((i) => i.number === invoiceNumber);
-          const siteDetail = row ? getSiteDetail(row.locationId) : undefined;
-          if (!cancelled && row && siteDetail) {
-            setDbLookup({
-              invoice: {
-                number: row.number,
-                amount: Number(row.amount) || 0,
-                stage: row.stage,
-                status: mapDbStatus(row.status),
-                agingBucket: row.agingBucket as MockInvoice["agingBucket"],
-                dueDate: row.dueDate ?? "",
-                pic: row.pic ?? "-",
-              },
-              detail: siteDetail,
-            });
+          if (!cancelled && row) {
+            // Real DB id enables real attachments regardless of the data source.
+            setInvoiceDbId(row.id);
+            // Only synthesize a lookup when the mock seed doesn't have it.
+            const siteDetail = mockLookup ? undefined : getSiteDetail(row.locationId);
+            if (!mockLookup && siteDetail) {
+              setDbLookup({
+                invoice: {
+                  number: row.number,
+                  amount: Number(row.amount) || 0,
+                  stage: row.stage,
+                  status: mapDbStatus(row.status),
+                  agingBucket: row.agingBucket as MockInvoice["agingBucket"],
+                  dueDate: row.dueDate ?? "",
+                  pic: row.pic ?? "-",
+                },
+                detail: siteDetail,
+              });
+            }
           }
         }
       } catch {
-        // ignore — falls through to not-found
+        // ignore — falls through to not-found for DB-only invoices
       } finally {
         if (!cancelled) setResolving(false);
       }
@@ -280,7 +286,7 @@ export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }
               <CardDescription>Dokumen pendukung — mock attachment.</CardDescription>
             </CardHeader>
             <CardContent>
-              <AttachmentList invoiceNumber={invoice.number} />
+              <AttachmentList invoiceNumber={invoice.number} invoiceId={invoiceDbId} personaId={persona.id} />
             </CardContent>
           </Card>
         </section>
@@ -464,36 +470,134 @@ function ActivityTimeline({
   );
 }
 
-type Attachment = { id: string; name: string; size: string; type: string; uploaded?: boolean };
+type Attachment = {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  uploaded?: boolean;
+  url?: string;
+  persisted?: boolean;
+};
 
-function AttachmentList({ invoiceNumber }: { invoiceNumber: string }) {
+function sizeText(bytes: number): string {
+  const kb = Math.max(1, Math.round(bytes / 1024));
+  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} kB`;
+}
+
+function AttachmentList({
+  invoiceNumber,
+  invoiceId,
+  personaId,
+}: {
+  invoiceNumber: string;
+  invoiceId: string | null;
+  personaId: string;
+}) {
   const seed: Attachment[] = [
     { id: "seed-1", name: `${invoiceNumber.replace(/\//g, "-")}.pdf`, size: "1,2 MB", type: "Invoice PDF" },
     { id: "seed-2", name: "berita-acara.pdf", size: "480 kB", type: "Berita Acara" },
     { id: "seed-3", name: "supporting-doc.xlsx", size: "220 kB", type: "Rekap Kuantitas" },
   ];
   const [attachments, setAttachments] = useState<Attachment[]>(seed);
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // When the invoice exists in the DB, attachments are real (persisted); the
+  // config seed is only shown for mock-only invoices with no DB id.
+  const live = invoiceId !== null;
 
-  function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      const kb = Math.max(1, Math.round(file.size / 1024));
-      const size = kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} kB`;
-      setAttachments((prev) => [
-        ...prev,
-        { id: `up-${Date.now()}`, name: file.name, size, type: "Upload", uploaded: true },
-      ]);
+  const loadAttachments = useCallback(async () => {
+    if (!invoiceId) return;
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/attachments`, {
+        headers: personaHeaders(personaId),
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        source?: string;
+        attachments?: Array<{ id: string; fileName: string; fileType?: string | null; sizeBytes?: number | null; storageKey?: string | null }>;
+      };
+      if (data.source === "db" && Array.isArray(data.attachments)) {
+        setAttachments(
+          data.attachments.map((a) => {
+            const key = a.storageKey ?? "";
+            return {
+              id: a.id,
+              name: a.fileName,
+              size: sizeText(a.sizeBytes ?? 0),
+              type: a.fileType?.includes("pdf") ? "PDF" : a.fileType?.includes("image") ? "Gambar" : "Dokumen",
+              url: key.startsWith("http") ? key : undefined,
+              persisted: true,
+            };
+          }),
+        );
+      }
+    } catch {
+      // keep current list
     }
+  }, [invoiceId, personaId]);
+
+  useEffect(() => {
+    void loadAttachments();
+  }, [loadAttachments]);
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
     e.target.value = "";
+    if (!file) return;
+
+    if (invoiceId) {
+      // Persist the real document to the invoice.
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`/api/invoices/${invoiceId}/attachments/upload`, {
+          method: "POST",
+          headers: personaHeaders(personaId),
+          body: fd,
+        });
+        if (res.ok) await loadAttachments();
+      } catch {
+        // best-effort
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
+    // Mock-only invoice: keep the previous session-local behavior.
+    setAttachments((prev) => [
+      ...prev,
+      { id: `up-${Date.now()}`, name: file.name, size: sizeText(file.size), type: "Upload", uploaded: true },
+    ]);
   }
 
-  function remove(id: string) {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  async function remove(att: Attachment) {
+    if (invoiceId && att.persisted) {
+      try {
+        const res = await fetch(`/api/invoices/${invoiceId}/attachments/${att.id}`, {
+          method: "DELETE",
+          headers: personaHeaders(personaId),
+        });
+        if (res.ok) await loadAttachments();
+      } catch {
+        // best-effort
+      }
+      return;
+    }
+    setAttachments((prev) => prev.filter((a) => a.id !== att.id));
   }
 
   return (
     <div className="space-y-3">
+      {live && (
+        <div className="flex items-center gap-2 text-xs text-emerald-700">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          Dokumen tersimpan di database.
+        </div>
+      )}
       <ul className="divide-y">
         {attachments.map((att) => (
           <li key={att.id} className="flex items-center gap-3 py-2 text-sm">
@@ -504,31 +608,44 @@ function AttachmentList({ invoiceNumber }: { invoiceNumber: string }) {
               <div className="truncate text-sm font-medium">{att.name}</div>
               <div className="text-[11px] text-muted-foreground">{att.type} · {att.size}</div>
             </div>
-            {att.uploaded ? (
+            {att.url && (
+              <a
+                href={att.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+              >
+                Buka
+                <ArrowUpRight className="h-3 w-3" />
+              </a>
+            )}
+            {att.uploaded || att.persisted ? (
               <button
                 type="button"
-                onClick={() => remove(att.id)}
+                onClick={() => remove(att)}
                 className="rounded-md p-1 text-muted-foreground hover:text-rose-600"
                 aria-label={`Hapus ${att.name}`}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             ) : (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
-              >
-                Preview
-                <ArrowUpRight className="h-3 w-3" />
-              </button>
+              !att.url && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+                >
+                  Preview
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+              )
             )}
           </li>
         ))}
       </ul>
       <input ref={inputRef} type="file" className="hidden" onChange={onUpload} />
-      <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+      <Button variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
         <Upload className="h-4 w-4" />
-        Unggah Dokumen
+        {uploading ? "Mengunggah…" : "Unggah Dokumen"}
       </Button>
     </div>
   );
