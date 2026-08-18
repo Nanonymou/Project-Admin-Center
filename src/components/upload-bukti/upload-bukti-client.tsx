@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,8 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatDateTime } from "@/lib/utils";
+import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
 import {
   buildBuktiRecords,
   BUKTI_KINDS,
@@ -89,7 +91,9 @@ export function UploadBuktiClient() {
   const canUpload =
     persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin";
 
-  const seeded = useMemo(
+  const canReview = persona.capabilities.canApprove;
+
+  const mockSeeded = useMemo(
     () => buildBuktiRecords().filter((r) => canAccessLocation(persona, r.locationId, r.projectCode)),
     [persona],
   );
@@ -98,8 +102,89 @@ export function UploadBuktiClient() {
   const [statusFilter, setStatusFilter] = useState<"all" | BuktiStatus>("all");
   const [errors, setErrors] = useState<string[]>([]);
   const [okCount, setOkCount] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Accessible workspaces for choosing the target site of an upload.
+  const workspaces = useMemo(
+    () => MOCK_WORKSPACES.filter((w) => canAccessLocation(persona, w.locationId, w.projectCode)),
+    [persona],
+  );
+  const [uploadWsIndex, setUploadWsIndex] = useState(0);
+  const uploadWs = workspaces[uploadWsIndex] ?? workspaces[0];
+  const [uploadKind, setUploadKind] = useState<string>(BUKTI_KINDS[0]?.key ?? "payment");
+
+  // DB-sourced evidence — authoritative list when present.
+  const [dbRecords, setDbRecords] = useState<BuktiRecord[] | null>(null);
+
+  const loadEvidence = useCallback(async () => {
+    try {
+      const res = await fetch("/api/evidence?scope=executive", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbRecords(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        evidence?: Array<{
+          id: string;
+          projectId: string;
+          locationId: string;
+          kind: string;
+          fileName: string;
+          fileType?: string | null;
+          sizeBytes?: number | null;
+          storageKey?: string | null;
+          status: BuktiStatus;
+          reference?: string | null;
+          reviewNote?: string | null;
+          uploadedBy?: string | null;
+          uploadedAt?: string | null;
+          createdAt?: string | null;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.evidence)) {
+        setDbRecords(
+          data.evidence.map((e) => {
+            const ws = MOCK_WORKSPACES.find((w) => w.locationId === e.locationId);
+            const isPdf = (e.fileType ?? "").includes("pdf") || e.fileName.toLowerCase().endsWith(".pdf");
+            const key = e.storageKey ?? "";
+            return {
+              id: e.id,
+              projectCode: e.projectId,
+              locationId: e.locationId,
+              locationName: ws?.locationName ?? e.locationId,
+              kind: e.kind as BuktiRecord["kind"],
+              kindLabel: BUKTI_KINDS.find((k) => k.key === e.kind)?.label ?? e.kind,
+              fileName: e.fileName,
+              fileType: isPdf ? "pdf" : "image",
+              sizeKb: Math.max(1, Math.round((e.sizeBytes ?? 0) / 1024)),
+              status: e.status,
+              reference: e.reference ?? "—",
+              uploadedBy: e.uploadedBy ?? "-",
+              uploadedAt: e.uploadedAt ?? e.createdAt ?? new Date().toISOString(),
+              // Only a real (http) storage key is a usable preview/download URL.
+              url: key.startsWith("http") ? key : undefined,
+              note: e.reviewNote ?? undefined,
+            } satisfies BuktiRecord;
+          }),
+        );
+      } else {
+        setDbRecords(null);
+      }
+    } catch {
+      setDbRecords(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadEvidence();
+  }, [loadEvidence]);
+
+  const seeded = dbRecords ?? mockSeeded;
   const all = useMemo(() => [...uploaded, ...seeded], [uploaded, seeded]);
   const records = useMemo(
     () =>
@@ -150,39 +235,92 @@ export function UploadBuktiClient() {
     document.body.removeChild(a);
   }
 
-  function onFiles(files: FileList | null) {
+  /** Upload one validated file to the evidence store; returns true on DB persist. */
+  async function uploadOne(f: File): Promise<boolean> {
+    if (!uploadWs) return false;
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("projectId", uploadWs.projectCode);
+    fd.append("locationId", uploadWs.locationId);
+    fd.append("kind", uploadKind);
+    try {
+      const res = await fetch("/api/evidence/upload", {
+        method: "POST",
+        headers: personaHeaders(persona.id),
+        body: fd,
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        return data.source === "db";
+      }
+    } catch {
+      // fall through — treat as not persisted
+    }
+    return false;
+  }
+
+  async function onFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const firstSite = seeded[0];
     const now = new Date();
     const nextErrors: string[] = [];
-    const added: BuktiRecord[] = [];
-    Array.from(files).forEach((f, i) => {
+    const valid: File[] = [];
+    Array.from(files).forEach((f) => {
       const error = validateFile(f);
-      if (error) {
-        nextErrors.push(error);
-        return;
-      }
-      const isPdf = f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf");
-      added.push({
-        id: `local-${now.getTime()}-${i}`,
-        projectCode: firstSite?.projectCode ?? persona.scope.projects[0] ?? "BUMA",
-        locationId: firstSite?.locationId ?? persona.scope.locations[0] ?? "loc-km22",
-        locationName: firstSite?.locationName ?? "Site",
-        kind: "payment",
-        kindLabel: "Bukti Pembayaran",
-        fileName: f.name,
-        fileType: isPdf ? "pdf" : "image",
-        sizeKb: Math.max(1, Math.round(f.size / 1024)),
-        status: "pending",
-        reference: `PAYMENT/${firstSite?.projectCode ?? "BUMA"}/NEW`,
-        uploadedBy: persona.roleLabel,
-        uploadedAt: now.toISOString(),
-        url: URL.createObjectURL(f),
-      });
+      if (error) nextErrors.push(error);
+      else valid.push(f);
     });
     setErrors(nextErrors);
-    setOkCount(added.length);
-    if (added.length > 0) setUploaded((prev) => [...added, ...prev]);
+    setOkCount(0);
+
+    if (valid.length === 0) return;
+
+    setUploading(true);
+    const persistedFlags = await Promise.all(valid.map((f) => uploadOne(f)));
+    setUploading(false);
+
+    const anyPersisted = persistedFlags.some(Boolean);
+    if (anyPersisted) {
+      // DB is authoritative — refetch so the new rows appear from the store.
+      await loadEvidence();
+      setOkCount(persistedFlags.filter(Boolean).length);
+    } else {
+      // No database — keep the previous optimistic, session-local behavior.
+      const added: BuktiRecord[] = valid.map((f, i) => {
+        const isPdf = f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf");
+        return {
+          id: `local-${now.getTime()}-${i}`,
+          projectCode: uploadWs?.projectCode ?? persona.scope.projects[0] ?? "BUMA",
+          locationId: uploadWs?.locationId ?? persona.scope.locations[0] ?? "loc-km22",
+          locationName: uploadWs?.locationName ?? "Site",
+          kind: uploadKind as BuktiRecord["kind"],
+          kindLabel: BUKTI_KINDS.find((k) => k.key === uploadKind)?.label ?? "Bukti",
+          fileName: f.name,
+          fileType: isPdf ? "pdf" : "image",
+          sizeKb: Math.max(1, Math.round(f.size / 1024)),
+          status: "pending",
+          reference: `${uploadKind.toUpperCase()}/${uploadWs?.projectCode ?? "BUMA"}/NEW`,
+          uploadedBy: persona.roleLabel,
+          uploadedAt: now.toISOString(),
+          url: URL.createObjectURL(f),
+        };
+      });
+      setUploaded((prev) => [...added, ...prev]);
+      setOkCount(added.length);
+    }
+  }
+
+  /** Verify or reject an evidence attachment (persisted; refetches the list). */
+  async function reviewEvidence(id: string, status: "verified" | "rejected", note?: string) {
+    try {
+      const res = await fetch(`/api/evidence/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ status, note }),
+      });
+      if (res.ok) await loadEvidence();
+    } catch {
+      // best-effort
+    }
   }
 
   return (
@@ -232,6 +370,38 @@ export function UploadBuktiClient() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {canUpload && workspaces.length > 0 && (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Site tujuan</span>
+                  <select
+                    value={uploadWsIndex}
+                    onChange={(e) => setUploadWsIndex(Number(e.target.value))}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {workspaces.map((w, i) => (
+                      <option key={w.locationId} value={i}>
+                        {w.projectCode} — {w.locationName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs">
+                  <span className="text-muted-foreground">Jenis bukti</span>
+                  <select
+                    value={uploadKind}
+                    onChange={(e) => setUploadKind(e.target.value)}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {BUKTI_KINDS.map((k) => (
+                      <option key={k.key} value={k.key}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             <input
               ref={inputRef}
               type="file"
@@ -239,13 +409,13 @@ export function UploadBuktiClient() {
               multiple
               className="hidden"
               onChange={(e) => {
-                onFiles(e.target.files);
+                void onFiles(e.target.files);
                 e.target.value = "";
               }}
             />
             <button
               type="button"
-              disabled={!canUpload}
+              disabled={!canUpload || uploading}
               onClick={() => inputRef.current?.click()}
               className={cn(
                 "flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-10 text-center transition",
@@ -256,7 +426,11 @@ export function UploadBuktiClient() {
             >
               <Paperclip className="h-6 w-6 text-muted-foreground" />
               <span className="text-sm font-medium">
-                {canUpload ? "Klik untuk memilih berkas bukti" : "Persona ini tidak dapat mengunggah"}
+                {uploading
+                  ? "Mengunggah…"
+                  : canUpload
+                    ? "Klik untuk memilih berkas bukti"
+                    : "Persona ini tidak dapat mengunggah"}
               </span>
               <span className="text-xs text-muted-foreground">Bukti yang diunggah akan berstatus menunggu verifikasi.</span>
             </button>
@@ -404,7 +578,7 @@ export function UploadBuktiClient() {
         className="max-w-3xl"
         footer={
           previewRecord && (
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => step(-1)} disabled={records.length < 2}>
                   <ChevronLeft className="h-4 w-4" />
@@ -415,10 +589,35 @@ export function UploadBuktiClient() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-              <Button size="sm" variant="outline" onClick={() => download(previewRecord)}>
-                <Download className="h-4 w-4" />
-                Unduh
-              </Button>
+              <div className="flex items-center gap-1.5">
+                {/* Reviewers can verify/reject a DB-backed evidence row. */}
+                {canReview && !previewRecord.id.startsWith("local-") && previewRecord.status !== "verified" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-emerald-700"
+                    onClick={() => void reviewEvidence(previewRecord.id, "verified")}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Verifikasi
+                  </Button>
+                )}
+                {canReview && !previewRecord.id.startsWith("local-") && previewRecord.status !== "rejected" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-rose-700"
+                    onClick={() => void reviewEvidence(previewRecord.id, "rejected", "Ditolak saat pratinjau.")}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Tolak
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={() => download(previewRecord)}>
+                  <Download className="h-4 w-4" />
+                  Unduh
+                </Button>
+              </div>
             </div>
           )
         }
