@@ -8,6 +8,7 @@ import {
 import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
+import { notifySiteEvent } from "@/lib/server/services/event-notifier";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildPeriodLocks } from "@/lib/mock/lock-period";
@@ -155,6 +156,17 @@ export async function POST(req: NextRequest) {
       // audit is best-effort
     }
     revalidateKpi();
+    // Notify the site that the period was locked/unlocked.
+    await notifySiteEvent({
+      projectCode: projectId,
+      locationId,
+      source: "lock_period",
+      level: locked ? "warning" : "info",
+      title: `Periode ${periodLabel} ${locked ? "dikunci" : "dibuka"}`,
+      detail: `${persona.name} ${locked ? "mengunci" : "membuka"} periode ${periodLabel}${reason ? ` — ${reason}` : ""}.`,
+      href: "/lock-period",
+      excludeActor: persona.name,
+    });
     return NextResponse.json({ source: "db", lock, affectedTransactions: affected });
   } catch (err) {
     revalidateKpi();

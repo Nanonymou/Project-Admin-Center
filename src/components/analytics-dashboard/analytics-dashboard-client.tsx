@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, TrendingUp, Wallet, Percent, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -18,6 +18,7 @@ import { CircleDollarSign } from "lucide-react";
 import { FileText, BadgeCheck, CalendarRange, ArrowUp, ArrowDown, LayoutGrid } from "lucide-react";
 import { formatCurrencyCompact } from "@/lib/utils";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { buildMarginBySite } from "@/lib/mock/margin-data";
@@ -55,14 +56,61 @@ export function AnalyticsDashboardClient() {
     [allScopedSites, filterProject],
   );
 
+  // Live per-site financials (sales/cost/profit) from the DB for the default
+  // period; margin figures below then reflect real data (trends stay config).
+  const [dbFinance, setDbFinance] = useState<Map<string, { sales: number; cost: number; profit: number }> | null>(null);
+  const dbActive = dbFinance !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/dashboard/overview?scope=executive", {
+          headers: personaHeaders(persona.id),
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          if (!cancelled) setDbFinance(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          source?: string;
+          sites?: Array<{ locationId: string; sales: number; cost: number; profit: number }>;
+        };
+        if (!cancelled && data.source === "db" && Array.isArray(data.sites) && data.sites.length > 0) {
+          const map = new Map<string, { sales: number; cost: number; profit: number }>();
+          for (const s of data.sites) map.set(s.locationId, { sales: s.sales, cost: s.cost, profit: s.profit });
+          setDbFinance(map);
+        } else if (!cancelled) {
+          setDbFinance(null);
+        }
+      } catch {
+        if (!cancelled) setDbFinance(null);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [persona.id]);
+
   const scopedSites = useMemo(
     () =>
-      allScopedSites.filter(
-        (s) =>
-          (filterProject === "all" || s.projectCode === filterProject) &&
-          (filterLocation === "all" || s.locationId === filterLocation),
-      ),
-    [allScopedSites, filterProject, filterLocation],
+      allScopedSites
+        .filter(
+          (s) =>
+            (filterProject === "all" || s.projectCode === filterProject) &&
+            (filterLocation === "all" || s.locationId === filterLocation),
+        )
+        .map((s) => {
+          if (!dbActive) return s;
+          const f = dbFinance?.get(s.locationId);
+          const sales = f ? f.sales : 0;
+          const cost = f ? f.cost : 0;
+          const netMargin = f ? f.profit : 0;
+          return { ...s, sales, cost, netMargin, marginPct: sales > 0 ? (netMargin / sales) * 100 : 0 };
+        }),
+    [allScopedSites, filterProject, filterLocation, dbActive, dbFinance],
   );
 
   const totals = useMemo(() => {
@@ -171,6 +219,13 @@ export function AnalyticsDashboardClient() {
         description="Ringkasan analitik portofolio — penjualan, biaya, margin, dan kepatuhan SLA lintas site dalam cakupan Anda."
       />
       <PersonaBanner persona={persona} scopeSummary={`${allScopedSites.length} site accessible`} />
+
+      {dbActive && (
+        <div className="flex items-center gap-2 text-xs text-emerald-700">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          Angka margin (sales, cost, profit) diambil langsung dari database.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">Filter:</span>
