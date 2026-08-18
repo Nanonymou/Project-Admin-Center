@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { toCsv, parseCsv, downloadTextFile } from "@/lib/csv";
@@ -56,6 +57,9 @@ export function ImporExcelClient() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [header, setHeader] = useState<string[] | null>(null);
   const [rows, setRows] = useState<ParsedRow[]>([]);
+  // Raw CSV text kept so a confirmed import can be sent to the server as-is.
+  const [rawCsv, setRawCsv] = useState<string>("");
+  const [importing, setImporting] = useState(false);
 
   type ImportedRecord = {
     id: string;
@@ -71,6 +75,7 @@ export function ImporExcelClient() {
 
   async function onFile(file: File) {
     const text = await file.text();
+    setRawCsv(text);
     const parsed = parseCsv(text).filter((r) => r.length && r.some((c) => c.trim() !== ""));
     setFileName(file.name);
     if (parsed.length === 0) {
@@ -109,9 +114,36 @@ export function ImporExcelClient() {
     setFileName(null);
     setHeader(null);
     setRows([]);
+    setRawCsv("");
   }
 
-  function confirmImport() {
+  /** Persist the imported CSV to the DB (grouped per date server-side). */
+  async function persistImport(): Promise<string | null> {
+    if (!ws || !rawCsv) return null;
+    try {
+      const res = await fetch("/api/daily-sales/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ projectId: ws.projectCode, locationId: ws.locationId, csv: rawCsv }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        source?: string;
+        summary?: { datesImported: number; datesTotal: number; datesFailed: number };
+      };
+      if (data.source === "db" && data.summary) {
+        const s = data.summary;
+        return `Tersimpan ke database: ${s.datesImported} dari ${s.datesTotal} tanggal berhasil diimpor${
+          s.datesFailed > 0 ? `, ${s.datesFailed} gagal` : ""
+        }.`;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function confirmImport() {
     const okRows = rows.filter((r) => r.valid && !r.duplicate);
     if (okRows.length === 0 || !ws) return;
     const now = Date.now();
@@ -124,8 +156,13 @@ export function ImporExcelClient() {
       locationName: ws.locationName,
       projectCode: ws.projectCode,
     }));
+
+    setImporting(true);
+    const dbMsg = await persistImport();
+    setImporting(false);
+
     setImported((prev) => [...records, ...prev]);
-    setImportMsg(`${records.length} baris berhasil diimpor ke ${ws.locationName}.`);
+    setImportMsg(dbMsg ?? `${records.length} baris berhasil diimpor ke ${ws.locationName}.`);
     reset();
   }
 
@@ -247,7 +284,9 @@ export function ImporExcelClient() {
             fileName={fileName}
             onReset={reset}
             onConfirm={confirmImport}
-            confirmLabel={`Impor ${validCount} baris ke ${ws?.locationName ?? "site"}`}
+            confirmLabel={
+              importing ? "Mengimpor…" : `Impor ${validCount} baris ke ${ws?.locationName ?? "site"}`
+            }
           />
         )}
 
