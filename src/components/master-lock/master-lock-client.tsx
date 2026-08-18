@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink, History } from "lucide-react";
+import { ShieldCheck, Lock, LockOpen, GitCommitVertical, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import {
   listMasterEntities,
@@ -30,11 +31,90 @@ export function MasterLockClient() {
   // Only Leader/Super Admin may lock or unlock master data.
   const canManage = persona.role === "super_admin" || persona.role === "leader_admin";
 
-  // Session-local lock-state overrides keyed by entity key.
+  // DB-sourced lock state per entity — authoritative when present.
+  const [dbByKey, setDbByKey] = useState<Record<
+    string,
+    { locked: boolean; version: number; lastModifiedBy: string; lastModifiedAt: string }
+  > | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadLocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/master-lock", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbByKey(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        entities?: Array<{
+          key: string;
+          locked: boolean;
+          version: number;
+          lastModifiedBy: string | null;
+          lastModifiedAt: string | null;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.entities)) {
+        const map: Record<string, { locked: boolean; version: number; lastModifiedBy: string; lastModifiedAt: string }> = {};
+        for (const e of data.entities) {
+          map[e.key] = {
+            locked: e.locked,
+            version: e.version,
+            lastModifiedBy: e.lastModifiedBy ?? "-",
+            lastModifiedAt: e.lastModifiedAt ?? "",
+          };
+        }
+        setDbByKey(map);
+      } else {
+        setDbByKey(null);
+      }
+    } catch {
+      setDbByKey(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadLocks();
+  }, [loadLocks]);
+
+  // Session-local lock-state overrides keyed by entity key (optimistic layer).
   const [lockOverrides, setLockOverrides] = useState<Record<string, boolean>>({});
   const isLocked = (e: MasterEntity) => lockOverrides[e.key] ?? e.locked;
-  function toggleLock(e: MasterEntity) {
-    setLockOverrides((prev) => ({ ...prev, [e.key]: !isLocked(e) }));
+
+  async function toggleLock(e: MasterEntity) {
+    const next = !isLocked(e);
+    setLockOverrides((prev) => ({ ...prev, [e.key]: next }));
+    try {
+      const res = await fetch("/api/master-lock", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ entityKey: e.key, locked: next }),
+      });
+      if (res.ok) {
+        await loadLocks();
+        setSaveNote(next ? `"${e.label}" dikunci.` : `"${e.label}" dibuka.`);
+      } else {
+        // Revert optimistic toggle on rejection (e.g. not Super Admin / DB down).
+        setLockOverrides((prev) => {
+          const nextState = { ...prev };
+          delete nextState[e.key];
+          return nextState;
+        });
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setSaveNote(err.error ?? "Gagal mengubah status kunci.");
+      }
+    } catch {
+      setLockOverrides((prev) => {
+        const nextState = { ...prev };
+        delete nextState[e.key];
+        return nextState;
+      });
+      setSaveNote("Gagal mengubah status kunci.");
+    }
   }
 
   // Version-history modal.
@@ -44,7 +124,17 @@ export function MasterLockClient() {
     [historyEntity],
   );
 
-  const entities = listMasterEntities();
+  // Merge DB lock/version state onto the config catalogue (keeps href + grouping).
+  const entities = useMemo<MasterEntity[]>(() => {
+    const base = listMasterEntities();
+    if (!dbByKey) return base;
+    return base.map((e) => {
+      const d = dbByKey[e.key];
+      return d
+        ? { ...e, locked: d.locked, version: d.version, lastModifiedBy: d.lastModifiedBy, lastModifiedAt: d.lastModifiedAt }
+        : e;
+    });
+  }, [dbByKey]);
 
   const byCategory = useMemo(
     () =>
@@ -82,6 +172,12 @@ export function MasterLockClient() {
             {entities.length - lockedCount} terbuka
           </Badge>
         </div>
+
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {saveNote}
+          </div>
+        )}
 
         {byCategory.map(({ category, items }) => (
           <Card key={category}>

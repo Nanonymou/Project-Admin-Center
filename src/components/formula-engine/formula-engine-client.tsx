@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FunctionSquare,
   Building2,
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { LockBanner } from "@/components/master-lock/lock-banner";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { useMasterEditable } from "@/lib/hooks/use-master-editable";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { canAccessProject } from "@/lib/personas";
@@ -111,7 +112,12 @@ export function FormulaEngineClient() {
   const [valueOverrides, setValueOverrides] = useState<Record<string, Record<string, number>>>({});
   const [inactive, setInactive] = useState<Record<string, string[]>>({});
 
-  const baseParams: CalcParam[] = useMemo(() => {
+  // DB-sourced effective parameters for the active project — durable layer.
+  const [dbParams, setDbParams] = useState<CalcParam[] | null>(null);
+  const [dbInactiveKeys, setDbInactiveKeys] = useState<string[]>([]);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const configParams: CalcParam[] = useMemo(() => {
     if (!project) return [];
     const tax = getTaxConfig(project.projectCode);
     const penalty = getPenaltyConfig(project.projectCode);
@@ -125,13 +131,73 @@ export function FormulaEngineClient() {
     ];
   }, [project]);
 
+  const loadParams = useCallback(async () => {
+    if (!projectCode) return;
+    try {
+      const res = await fetch(`/api/formula-engine?projectId=${encodeURIComponent(projectCode)}`, {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbParams(null);
+        setDbInactiveKeys([]);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        parameters?: Array<{
+          key: string;
+          label: string;
+          group: string;
+          type: ParamType;
+          value: number;
+          builtin: boolean;
+          active: boolean;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.parameters)) {
+        setDbParams(
+          data.parameters.map((p) => ({
+            key: p.key,
+            label: p.label,
+            group: p.group,
+            type: p.type,
+            value: p.value,
+            builtin: p.builtin,
+          })),
+        );
+        setDbInactiveKeys(data.parameters.filter((p) => !p.active).map((p) => p.key));
+      } else {
+        setDbParams(null);
+        setDbInactiveKeys([]);
+      }
+    } catch {
+      setDbParams(null);
+      setDbInactiveKeys([]);
+    }
+  }, [projectCode, persona.id]);
+
+  useEffect(() => {
+    void loadParams();
+  }, [loadParams]);
+
+  // Effective base = DB parameters when available, else config built-ins.
+  const baseParams = dbParams ?? configParams;
+
   const projOverrides = valueOverrides[projectCode] ?? {};
-  const projInactive = inactive[projectCode] ?? [];
+  // Displayed deactivations combine persisted (DB) and this-session toggles.
+  const projInactive = useMemo(
+    () => Array.from(new Set([...(inactive[projectCode] ?? []), ...dbInactiveKeys])),
+    [inactive, projectCode, dbInactiveKeys],
+  );
   const isInactive = (key: string) => projInactive.includes(key);
   const isEdited = (key: string) => key in projOverrides;
 
   const params: CalcParam[] = useMemo(() => {
-    const merged = [...baseParams, ...(customParams[projectCode] ?? [])];
+    // Avoid duplicating custom params already persisted (present in dbParams).
+    const baseKeys = new Set(baseParams.map((p) => p.key));
+    const sessionCustoms = (customParams[projectCode] ?? []).filter((c) => !baseKeys.has(c.key));
+    const merged = [...baseParams, ...sessionCustoms];
     return merged.map((p) => (p.key in projOverrides ? { ...p, value: projOverrides[p.key] } : p));
   }, [baseParams, customParams, projectCode, projOverrides]);
 
@@ -192,6 +258,32 @@ export function FormulaEngineClient() {
 
   const fmtVal = (type: ParamType, v: number) => formatValue({ type, value: v } as CalcParam);
 
+  /** Persist a create/update to the DB (best-effort) and refetch on success. */
+  async function persistParam(p: { key: string; label: string; group: string; type: ParamType; value: number }) {
+    try {
+      const res = await fetch("/api/formula-engine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectCode,
+          key: p.key,
+          label: p.label,
+          group: p.group,
+          type: p.type,
+          value: p.value,
+        }),
+      });
+      if (res.ok) {
+        await loadParams();
+        setSaveNote("Parameter tersimpan ke database.");
+      } else {
+        setSaveNote(null);
+      }
+    } catch {
+      setSaveNote(null);
+    }
+  }
+
   function saveForm() {
     const label = formLabel.trim();
     if (!editKey && !label) return;
@@ -205,14 +297,39 @@ export function FormulaEngineClient() {
         [projectCode]: { ...(prev[projectCode] ?? {}), [editKey]: newVal },
       }));
       if (before !== after) recordAudit(target?.label ?? editKey, "update", before, after);
+      void persistParam({
+        key: editKey,
+        label: target?.label ?? editKey,
+        group: target?.group ?? "",
+        type: editType,
+        value: newVal,
+      });
     } else {
       const key = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
       const value = toStored(formType, formValue);
-      const param: CalcParam = { key, label, group: formGroup.trim() || "Lainnya", type: formType, value, builtin: false };
+      const group = formGroup.trim() || "Lainnya";
+      const param: CalcParam = { key, label, group, type: formType, value, builtin: false };
       setCustomParams((prev) => ({ ...prev, [projectCode]: [...(prev[projectCode] ?? []), param] }));
       recordAudit(label, "create", null, fmtVal(formType, value));
+      void persistParam({ key, label, group, type: formType, value });
     }
     setFormOpen(false);
+  }
+
+  async function persistActive(key: string, active: boolean) {
+    try {
+      const res = await fetch("/api/formula-engine", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ projectCode, key, active }),
+      });
+      if (res.ok) {
+        await loadParams();
+        setSaveNote(active ? "Parameter diaktifkan." : "Parameter dinonaktifkan.");
+      }
+    } catch {
+      // best-effort — optimistic toggle already applied
+    }
   }
 
   function toggleActive(key: string) {
@@ -224,6 +341,7 @@ export function FormulaEngineClient() {
       return { ...prev, [projectCode]: next };
     });
     recordAudit(label, willDeactivate ? "deactivate" : "activate", null, null);
+    void persistActive(key, !willDeactivate);
   }
 
   // Live calculation simulation inputs.
@@ -275,6 +393,11 @@ export function FormulaEngineClient() {
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${projects.length} proyek`} />
         <LockBanner reason={lock.reason} />
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {saveNote}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <Building2 className="h-4 w-4 text-muted-foreground" />

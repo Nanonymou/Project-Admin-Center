@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Wallet, MapPin, ArrowDownCircle, ArrowUpCircle, PiggyBank, Plus, Pencil, Trash2, History, Lock } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { AttachmentCenter } from "@/components/attachments/attachment-center";
@@ -37,10 +38,66 @@ export function DanaCashClient() {
     persona.role === "site_admin" || persona.role === "leader_admin" || persona.role === "super_admin";
 
   const opening = ws ? danaCashOpeningBalance(ws.locationId) : 0;
-  const seededLedger = useMemo(
+  const mockLedger = useMemo(
     () => (ws ? buildDanaCashLedger(ws.projectCode, ws.locationId) : []),
     [ws],
   );
+
+  // DB-sourced ledger for the active workspace — authoritative when present.
+  const [dbLedger, setDbLedger] = useState<DanaCashEntry[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadLedger = useCallback(async () => {
+    if (!ws) return;
+    try {
+      const res = await fetch(
+        `/api/dana-cash?projectId=${encodeURIComponent(ws.projectCode)}&locationId=${encodeURIComponent(ws.locationId)}`,
+        { headers: personaHeaders(persona.id), cache: "no-store" },
+      );
+      if (!res.ok) {
+        setDbLedger(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        transactions?: Array<{
+          id: string;
+          trxDate: string;
+          direction: "top_up" | "expense";
+          categoryKey: string | null;
+          description: string | null;
+          signedAmount: number;
+          performedBy?: string | null;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.transactions)) {
+        setDbLedger(
+          data.transactions.map((t) => ({
+            id: t.id,
+            date: t.trxDate,
+            categoryKey: t.direction === "top_up" ? "top_up" : t.categoryKey ?? "misc",
+            categoryLabel:
+              t.direction === "top_up"
+                ? "Top-up Dana Cash"
+                : getCostCategories(ws.projectCode).find((c) => c.key === t.categoryKey)?.label ?? "Pengeluaran",
+            description: t.description ?? "",
+            amount: t.signedAmount,
+            by: t.performedBy ?? persona.roleLabel,
+          })),
+        );
+      } else {
+        setDbLedger(null);
+      }
+    } catch {
+      setDbLedger(null);
+    }
+  }, [ws, persona.id, persona.roleLabel]);
+
+  useEffect(() => {
+    void loadLedger();
+  }, [loadLedger]);
+
+  const seededLedger = dbLedger ?? mockLedger;
   const [added, setAdded] = useState<DanaCashEntry[]>([]);
   // Reset session additions when the workspace changes.
   const addedForWs = ws ? added : [];
@@ -82,21 +139,56 @@ export function DanaCashClient() {
     ]);
   }
 
-  function addTransaction() {
+  async function addTransaction() {
     if (!ws || formAmount <= 0 || periodLocked) return;
     const cat = categories.find((c) => c.key === catKey);
     const amount = formType === "top_up" ? formAmount : -formAmount;
     const label = formType === "top_up" ? "Top-up Dana Cash" : cat?.label ?? "Pengeluaran";
-    const entry: DanaCashEntry = {
-      id: `local-${Date.now()}`,
-      date: formDate,
-      categoryKey: formType === "top_up" ? "top_up" : catKey,
-      categoryLabel: label,
-      description: formDesc.trim() || (formType === "top_up" ? "Pengisian ulang kas" : "Pengeluaran kas"),
-      amount,
-      by: persona.roleLabel,
-    };
-    setAdded((prev) => [...prev, entry]);
+    const description = formDesc.trim() || (formType === "top_up" ? "Pengisian ulang kas" : "Pengeluaran kas");
+
+    // Try to persist to the DB first; on success the refetched ledger is
+    // authoritative, so we don't also add a session-local row (avoids a dup).
+    let persisted = false;
+    try {
+      const res = await fetch("/api/dana-cash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: ws.projectCode,
+          locationId: ws.locationId,
+          trxDate: formDate,
+          direction: formType,
+          categoryKey: formType === "top_up" ? null : catKey,
+          description,
+          amount: formAmount,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        if (data.source === "db") {
+          persisted = true;
+          await loadLedger();
+          setSaveNote("Tersimpan ke database.");
+        }
+      }
+    } catch {
+      // fall through to optimistic local add
+    }
+
+    if (!persisted) {
+      const entry: DanaCashEntry = {
+        id: `local-${Date.now()}`,
+        date: formDate,
+        categoryKey: formType === "top_up" ? "top_up" : catKey,
+        categoryLabel: label,
+        description,
+        amount,
+        by: persona.roleLabel,
+      };
+      setAdded((prev) => [...prev, entry]);
+      setSaveNote(null);
+    }
+
     logChange("add", label, amount);
     setFormAmount(0);
     setFormDesc("");
@@ -265,6 +357,12 @@ export function DanaCashClient() {
                     Periode {formDate.slice(0, 7)} terkunci — input dan edit transaksi dinonaktifkan.
                     Pilih tanggal pada periode yang masih terbuka.
                   </span>
+                </div>
+              )}
+              {saveNote && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-emerald-700">
+                  <PiggyBank className="h-3.5 w-3.5 shrink-0" />
+                  <span>{saveNote}</span>
                 </div>
               )}
             </CardContent>
