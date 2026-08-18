@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClipboardCheck, Eye, CheckCircle2, Clock, XCircle, Check, X, Send, LayoutDashboard, Info } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
 import { canAccessLocation } from "@/lib/personas";
+import { personaHeaders } from "@/lib/client/notif";
+import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { getServiceCategories } from "@/lib/mock/service-config";
 import {
@@ -68,10 +70,57 @@ export function PersetujuanDailySalesClient() {
 
   const canApprove = persona.capabilities.canApprove;
 
+  const [dbSubs, setDbSubs] = useState<DailySalesSubmission[] | null>(null);
+
+  const loadSubmissions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/persetujuan-daily-sales?scope=executive", {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        source?: string;
+        submissions?: Array<{
+          id: string;
+          trxDate?: string;
+          projectId?: string;
+          locationId?: string;
+          total?: number | string;
+          itemCount?: number;
+          submittedBy?: string;
+          status?: string;
+        }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.submissions)) {
+        setDbSubs(null);
+        return;
+      }
+      setDbSubs(
+        data.submissions.map((r) => ({
+          id: String(r.id),
+          trxDate: r.trxDate ?? "",
+          projectCode: r.projectId ?? "",
+          locationId: r.locationId ?? "",
+          locationName: SITE_KPI.find((s) => s.locationId === r.locationId)?.locationName ?? (r.locationId ?? "—"),
+          total: Number(r.total ?? 0),
+          itemCount: Number(r.itemCount ?? 0),
+          submittedBy: r.submittedBy ?? "—",
+          status: (r.status ?? "submitted") as DsApprovalStatus,
+        })),
+      );
+    } catch {
+      setDbSubs(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadSubmissions();
+  }, [loadSubmissions]);
+
   const base = useMemo(
     () =>
-      buildDailySalesSubmissions().filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
-    [persona],
+      (dbSubs ?? buildDailySalesSubmissions()).filter((s) => canAccessLocation(persona, s.locationId, s.projectCode)),
+    [persona, dbSubs],
   );
 
   // Session-local status overrides after an approve/reject/submit action.
@@ -80,6 +129,19 @@ export function PersetujuanDailySalesClient() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const submissions = base.map((s) => ({ ...s, status: overrides[s.id] ?? s.status }));
+
+  async function persistApproval(id: string, action: "approve" | "reject") {
+    try {
+      const res = await fetch("/api/daily-sales/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ id, action }),
+      });
+      if (res.ok) await loadSubmissions();
+    } catch {
+      /* keep optimistic override */
+    }
+  }
 
   const [statusFilter, setStatusFilter] = useState<"all" | DsApprovalStatus>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
@@ -93,6 +155,7 @@ export function PersetujuanDailySalesClient() {
     if (!canApprove) return;
     setOverrides((prev) => ({ ...prev, [s.id]: "approved" }));
     setMsg(`Pengajuan ${s.locationName} ${formatDate(s.trxDate)} disetujui.`);
+    void persistApproval(s.id, "approve");
   }
 
   function resubmit(s: DailySalesSubmission) {
@@ -102,11 +165,13 @@ export function PersetujuanDailySalesClient() {
 
   function confirmReject() {
     if (!rejectTarget || rejectReason.trim().length < 3) return;
-    setOverrides((prev) => ({ ...prev, [rejectTarget.id]: "rejected" }));
-    setRejectReasons((prev) => ({ ...prev, [rejectTarget.id]: rejectReason.trim() }));
-    setMsg(`Pengajuan ${rejectTarget.locationName} ${formatDate(rejectTarget.trxDate)} ditolak.`);
+    const target = rejectTarget;
+    setOverrides((prev) => ({ ...prev, [target.id]: "rejected" }));
+    setRejectReasons((prev) => ({ ...prev, [target.id]: rejectReason.trim() }));
+    setMsg(`Pengajuan ${target.locationName} ${formatDate(target.trxDate)} ditolak.`);
     setRejectTarget(null);
     setRejectReason("");
+    void persistApproval(target.id, "reject");
   }
 
   const locations = useMemo(() => {

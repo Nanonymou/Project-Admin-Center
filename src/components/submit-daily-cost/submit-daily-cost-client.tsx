@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Send, Wallet, CheckCircle2, Undo2, AlertTriangle, X } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation } from "@/lib/personas";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -55,19 +56,85 @@ export function SubmitDailyCostClient() {
   const [siteFilter, setSiteFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<"all" | "draft" | "in_progress" | "done">("all");
 
-  const rows = baseline.map((r) => ({
-    ...r,
-    costState: overrides[r.locationId] ?? r.costState,
-    // Only rows the user submitted this session can be reverted locally.
-    submittedLocally: overrides[r.locationId] === "submitted",
-    dailyCost: SITE_KPI.find((s) => s.locationId === r.locationId)?.cost ?? 0,
-  }));
+  // DB-sourced submissions for the selected date — authoritative when present.
+  const [dbSubs, setDbSubs] = useState<Array<{ locationId: string; status: string }> | null>(null);
+
+  const loadSubmissions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/submit-daily-cost?scope=executive&status=submitted`, {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbSubs(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        submissions?: Array<{ locationId: string; status: string }>;
+      };
+      if (data.source === "db" && Array.isArray(data.submissions)) {
+        setDbSubs(data.submissions.map((s) => ({ locationId: s.locationId, status: s.status })));
+      } else {
+        setDbSubs(null);
+      }
+    } catch {
+      setDbSubs(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadSubmissions();
+  }, [loadSubmissions]);
+
+  // Locations that already have a submitted batch in the DB.
+  const dbSubmittedLocs = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of dbSubs ?? []) set.add(s.locationId);
+    return set;
+  }, [dbSubs]);
+
+  const rows = baseline.map((r) => {
+    const dbState: ClosingState | undefined = dbSubmittedLocs.has(r.locationId) ? "submitted" : undefined;
+    const costState = overrides[r.locationId] ?? dbState ?? r.costState;
+    return {
+      ...r,
+      costState,
+      // Only rows the user submitted this session can be reverted locally.
+      submittedLocally: overrides[r.locationId] === "submitted",
+      dailyCost: SITE_KPI.find((s) => s.locationId === r.locationId)?.cost ?? 0,
+    };
+  });
+
+  async function persistSubmit(locationId: string) {
+    const site = SITE_KPI.find((s) => s.locationId === locationId);
+    if (!site) return;
+    try {
+      const res = await fetch("/api/submit-daily-cost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: site.projectCode,
+          locationId,
+          submissionDate: dateFilter,
+          lock: false,
+        }),
+      });
+      if (res.ok) {
+        await loadSubmissions();
+      }
+    } catch {
+      // best-effort — optimistic override already reflects the submit
+    }
+  }
 
   function confirmSubmit() {
     if (!confirm) return;
-    setOverrides((prev) => ({ ...prev, [confirm.locationId]: "submitted" }));
-    setMsg(`Daily Cost ${confirm.locationName} berhasil disubmit untuk approval.`);
+    const { locationId, locationName } = confirm;
+    setOverrides((prev) => ({ ...prev, [locationId]: "submitted" }));
+    setMsg(`Daily Cost ${locationName} berhasil disubmit untuk approval.`);
     setConfirm(null);
+    void persistSubmit(locationId);
   }
 
   function undo(locationId: string, locationName: string) {
