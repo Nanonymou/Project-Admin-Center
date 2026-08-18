@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import {
@@ -22,7 +22,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { findInvoiceByNumber } from "@/lib/mock/invoice-lookup";
+import { getSiteDetail, type MockInvoice, type SiteDetail } from "@/lib/mock/site-detail";
 import { buildApprovalReminders } from "@/lib/mock/approvals";
 import { buildInvoiceAuditTrail } from "@/lib/mock/invoice-audit";
 import { AUDIT_ACTION_META } from "@/lib/mock/audit-trail";
@@ -45,11 +47,84 @@ const BUCKET_COLOR: Record<string, string> = {
   ">90": "hsl(0 84% 60%)",
 };
 
+/** Map the DB invoice status enum to the client's InvoiceStatus. */
+function mapDbStatus(status: string): MockInvoice["status"] {
+  if (status === "overdue") return "overdue";
+  if (status === "at_risk") return "atRisk";
+  return "onTime";
+}
+
 export function InvoiceDetailClient({ invoiceNumber }: { invoiceNumber: string }) {
   const { persona } = usePersona();
   const router = useRouter();
-  const lookup = findInvoiceByNumber(invoiceNumber);
+  const mockLookup = findInvoiceByNumber(invoiceNumber);
 
+  // Invoices created in the DB are not in the mock lookup — resolve them from
+  // the API and pair the DB invoice with its site's context so the detail page
+  // renders instead of 404-ing.
+  const [dbLookup, setDbLookup] = useState<{ invoice: MockInvoice; detail: SiteDetail } | null>(null);
+  const [resolving, setResolving] = useState(!mockLookup);
+
+  useEffect(() => {
+    if (mockLookup) return; // mock already has it; no DB lookup needed
+    let cancelled = false;
+    async function resolve() {
+      try {
+        const res = await fetch("/api/invoices?scope=executive", {
+          headers: personaHeaders(persona.id),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            source?: string;
+            invoices?: Array<{
+              number: string;
+              projectId: string;
+              locationId: string;
+              amount: number | string;
+              status: string;
+              stage: string;
+              agingBucket: string;
+              dueDate: string | null;
+              pic: string | null;
+            }>;
+          };
+          const row = data.invoices?.find((i) => i.number === invoiceNumber);
+          const siteDetail = row ? getSiteDetail(row.locationId) : undefined;
+          if (!cancelled && row && siteDetail) {
+            setDbLookup({
+              invoice: {
+                number: row.number,
+                amount: Number(row.amount) || 0,
+                stage: row.stage,
+                status: mapDbStatus(row.status),
+                agingBucket: row.agingBucket as MockInvoice["agingBucket"],
+                dueDate: row.dueDate ?? "",
+                pic: row.pic ?? "-",
+              },
+              detail: siteDetail,
+            });
+          }
+        }
+      } catch {
+        // ignore — falls through to not-found
+      } finally {
+        if (!cancelled) setResolving(false);
+      }
+    }
+    void resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [mockLookup, invoiceNumber, persona.id]);
+
+  const lookup = mockLookup ?? dbLookup;
+
+  if (resolving && !lookup) {
+    return (
+      <div className="p-8 text-center text-sm text-muted-foreground">Memuat detail invoice…</div>
+    );
+  }
   if (!lookup) notFound();
   const { invoice, detail } = lookup;
 
