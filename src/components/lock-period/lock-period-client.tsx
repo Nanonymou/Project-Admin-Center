@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Filter, Lock, LockOpen, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { LockPeriodForm } from "@/components/lock-period/lock-period-form";
 import { LockIndicator } from "@/components/lock-period/lock-indicator";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
@@ -34,10 +35,81 @@ export function LockPeriodClient() {
     [persona],
   );
 
+  // Persisted lock state keyed by `${locationId}::${periodLabel}` from the DB.
+  const [dbLockByKey, setDbLockByKey] = useState<Record<string, boolean>>({});
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadLocks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/lock-period?scope=executive", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbLockByKey({});
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        periods?: Array<{ locationId: string; periodLabel: string; locked: boolean }>;
+      };
+      if (data.source === "db" && Array.isArray(data.periods)) {
+        const map: Record<string, boolean> = {};
+        for (const p of data.periods) map[`${p.locationId}::${p.periodLabel}`] = p.locked;
+        setDbLockByKey(map);
+      } else {
+        setDbLockByKey({});
+      }
+    } catch {
+      setDbLockByKey({});
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadLocks();
+  }, [loadLocks]);
+
   const baseRows = useMemo(() => buildPeriodLocks(scopedSites), [scopedSites]);
   const rows = useMemo(
-    () => baseRows.map((r) => ({ ...r, state: overrides[r.id] ?? r.state })),
-    [baseRows, overrides],
+    () =>
+      baseRows.map((r) => {
+        const dbLocked = dbLockByKey[`${r.locationId}::${r.periodLabel}`];
+        const dbState: PeriodLockState | undefined =
+          dbLocked === undefined ? undefined : dbLocked ? "locked" : "open";
+        return { ...r, state: overrides[r.id] ?? dbState ?? r.state };
+      }),
+    [baseRows, overrides, dbLockByKey],
+  );
+
+  /** Persist a lock/unlock action to the DB (best-effort). */
+  const persistLock = useCallback(
+    async (row: PeriodLockRow, action: "lock" | "unlock", reason?: string) => {
+      try {
+        const res = await fetch("/api/lock-period", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+          body: JSON.stringify({
+            projectId: row.projectCode,
+            locationId: row.locationId,
+            periodLabel: row.periodLabel,
+            action,
+            reason,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { source?: string };
+          if (data.source === "db") {
+            await loadLocks();
+            setSaveNote(action === "lock" ? `Periode ${row.periodLabel} dikunci.` : `Periode ${row.periodLabel} dibuka.`);
+            return;
+          }
+        }
+        setSaveNote(null);
+      } catch {
+        setSaveNote(null);
+      }
+    },
+    [persona.id, loadLocks],
   );
 
   const filtered = useMemo(
@@ -55,7 +127,9 @@ export function LockPeriodClient() {
   );
 
   function toggle(row: PeriodLockRow) {
-    setOverrides((prev) => ({ ...prev, [row.id]: row.state === "locked" ? "open" : "locked" }));
+    const action = row.state === "locked" ? "unlock" : "lock";
+    setOverrides((prev) => ({ ...prev, [row.id]: action === "lock" ? "locked" : "open" }));
+    void persistLock(row, action);
   }
 
   function lockMany(ids: string[]) {
@@ -64,6 +138,11 @@ export function LockPeriodClient() {
       for (const id of ids) next[id] = "locked";
       return next;
     });
+    // Persist each newly-locked period to the DB.
+    for (const id of ids) {
+      const row = rows.find((r) => r.id === id);
+      if (row && row.state !== "locked") void persistLock(row, "lock");
+    }
   }
 
   function requestUnlock(row: PeriodLockRow) {
@@ -75,7 +154,10 @@ export function LockPeriodClient() {
   function confirmUnlock() {
     setUnlockTouched(true);
     if (!unlockTarget || unlockReason.trim().length < 4) return;
-    setOverrides((prev) => ({ ...prev, [unlockTarget.id]: "open" }));
+    const target = unlockTarget;
+    const reason = unlockReason.trim();
+    setOverrides((prev) => ({ ...prev, [target.id]: "open" }));
+    void persistLock(target, "unlock", reason);
     setUnlockTarget(null);
     setUnlockReason("");
     setUnlockTouched(false);
@@ -98,6 +180,12 @@ export function LockPeriodClient() {
             <span>
               Peran <b>{persona.roleLabel}</b> tidak dapat mengubah kunci periode. Tampilan hanya-baca.
             </span>
+          </div>
+        )}
+
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {saveNote}
           </div>
         )}
 

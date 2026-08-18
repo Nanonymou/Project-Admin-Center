@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Database, Download, DownloadCloud, HardDrive, Plus, RotateCcw, ShieldAlert, Upload } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import {
   buildBackups,
   BACKUP_STATUS_META,
@@ -28,7 +29,74 @@ export function BackupRestoreClient() {
 
   const seeded = useMemo(() => buildBackups(), []);
   const [added, setAdded] = useState<BackupSnapshot[]>([]);
-  const backups = useMemo(() => [...added, ...seeded], [added, seeded]);
+
+  // DB-sourced backups — authoritative list when present.
+  const [dbBackups, setDbBackups] = useState<BackupSnapshot[] | null>(null);
+
+  const loadBackups = useCallback(async () => {
+    try {
+      const res = await fetch("/api/backups", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbBackups(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        backups?: Array<{
+          id: string;
+          label?: string | null;
+          projectId?: string | null;
+          kind?: string | null;
+          status?: string | null;
+          createdBy?: string | null;
+          createdAt?: string | null;
+          completedAt?: string | null;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.backups)) {
+        setDbBackups(
+          data.backups.map((b) => {
+            const when = b.completedAt ?? b.createdAt ?? "";
+            const createdAt = when
+              ? new Date(when).toLocaleString("id-ID", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "—";
+            return {
+              id: b.id,
+              createdAt,
+              createdBy: b.createdBy ?? "-",
+              type: "manual",
+              scope: b.projectId ?? "Seluruh Project",
+              sizeMb: 0,
+              status: (b.status ?? "completed") as BackupSnapshot["status"],
+              records: 0,
+            } satisfies BackupSnapshot;
+          }),
+        );
+      } else {
+        setDbBackups(null);
+      }
+    } catch {
+      setDbBackups(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadBackups();
+  }, [loadBackups]);
+
+  const backups = useMemo(
+    () => dbBackups ?? [...added, ...seeded],
+    [dbBackups, added, seeded],
+  );
 
   type LogEntry = { id: string; time: string; text: string };
   const [activityLog, setActivityLog] = useState<LogEntry[]>(() =>
@@ -150,21 +218,43 @@ export function BackupRestoreClient() {
     logActivity(`Impor master data dari ${file.name}`);
   }
 
-  function createBackup() {
-    const now = new Date();
-    setAdded((prev) => [
-      {
-        id: `bkp-manual-${Date.now()}`,
-        createdAt: now.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
-        createdBy: persona.roleLabel,
-        type: "manual",
-        scope: "Seluruh Project",
-        sizeMb: Math.round((60 + Math.random() * 120) * 10) / 10,
-        status: "completed",
-        records: 5000 + Math.round(Math.random() * 4000),
-      },
-      ...prev,
-    ]);
+  async function createBackup() {
+    // Try to persist a real backup record first; the refetched DB list is then
+    // authoritative (so no optimistic row is added, avoiding a duplicate).
+    let persisted = false;
+    try {
+      const res = await fetch("/api/backups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ kind: "full", label: "Backup manual Seluruh Project" }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        if (data.source === "db") {
+          persisted = true;
+          await loadBackups();
+        }
+      }
+    } catch {
+      // fall through to optimistic local add
+    }
+
+    if (!persisted) {
+      const now = new Date();
+      setAdded((prev) => [
+        {
+          id: `bkp-manual-${Date.now()}`,
+          createdAt: now.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+          createdBy: persona.roleLabel,
+          type: "manual",
+          scope: "Seluruh Project",
+          sizeMb: Math.round((60 + Math.random() * 120) * 10) / 10,
+          status: "completed",
+          records: 5000 + Math.round(Math.random() * 4000),
+        },
+        ...prev,
+      ]);
+    }
     logActivity(`Backup manual "Seluruh Project" oleh ${persona.roleLabel}`);
   }
 
