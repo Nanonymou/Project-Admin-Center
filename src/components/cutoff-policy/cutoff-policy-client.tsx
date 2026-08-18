@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { canAccessLocation } from "@/lib/personas";
 import {
@@ -29,20 +30,54 @@ export function CutOffPolicyClient() {
 
   // Session flags for periods reopened this session.
   const [reopened, setReopened] = useState<Record<string, boolean>>({});
-  const [modalTarget, setModalTarget] = useState<{ locationId: string; label: string } | null>(null);
+  const [modalTarget, setModalTarget] = useState<{
+    locationId: string;
+    projectCode: string;
+    periodLabel: string;
+    label: string;
+  } | null>(null);
   const [reason, setReason] = useState("");
   const [touched, setTouched] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
-  function openReopenModal(locationId: string, label: string) {
-    setModalTarget({ locationId, label });
+  function openReopenModal(target: { locationId: string; projectCode: string; periodLabel: string; label: string }) {
+    setModalTarget(target);
     setReason("");
     setTouched(false);
+  }
+
+  /** Persist the reopen as a period unlock (existing endpoint; no new schema). */
+  async function persistReopen(
+    target: { projectCode: string; locationId: string; periodLabel: string },
+    reasonText: string,
+  ) {
+    try {
+      const res = await fetch("/api/unlock-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          projectId: target.projectCode,
+          locationId: target.locationId,
+          periodLabel: target.periodLabel,
+          reason: reasonText,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { source?: string };
+        setSaveNote(data.source === "db" ? "Periode dibuka kembali & tersimpan ke database." : null);
+      }
+    } catch {
+      // best-effort — optimistic reopen flag already applied
+    }
   }
 
   function confirmReopen() {
     setTouched(true);
     if (!modalTarget || reason.trim().length < 4) return;
-    setReopened((prev) => ({ ...prev, [modalTarget.locationId]: true }));
+    const target = modalTarget;
+    const reasonText = reason.trim();
+    setReopened((prev) => ({ ...prev, [target.locationId]: true }));
+    void persistReopen(target, reasonText);
     setModalTarget(null);
     setReason("");
     setTouched(false);
@@ -87,6 +122,12 @@ export function CutOffPolicyClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+
+        {saveNote && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {saveNote}
+          </div>
+        )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Project" value={projectCodes.length} format="number" icon={Building2} tone="primary" />
@@ -183,7 +224,14 @@ export function CutOffPolicyClient() {
                               size="sm"
                               variant="outline"
                               className="h-7"
-                              onClick={() => openReopenModal(r.locationId, `${r.projectCode} · ${r.locationName}`)}
+                              onClick={() =>
+                                openReopenModal({
+                                  locationId: r.locationId,
+                                  projectCode: r.projectCode,
+                                  periodLabel: r.periodLabel,
+                                  label: `${r.projectCode} · ${r.locationName}`,
+                                })
+                              }
                             >
                               <LockOpen className="h-3.5 w-3.5" />
                               Buka Kembali
