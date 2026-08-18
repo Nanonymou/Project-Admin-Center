@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireSuperAdmin } from "@/lib/server/require-super-admin";
 import { createAppUser, emailExists, listAppUsers } from "@/lib/server/app-users";
 import { PERSONAS } from "@/lib/personas";
+import { sanitizeLocationIds } from "@/lib/site-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     name?: string;
     personaId?: string;
     password?: string;
+    locations?: string[];
     isActive?: boolean;
   } | null;
   if (!body) return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
@@ -35,6 +37,7 @@ export async function POST(req: NextRequest) {
   const name = (body.name ?? "").trim();
   const personaId = body.personaId ?? "";
   const password = body.password ?? "";
+  const locations = sanitizeLocationIds(Array.isArray(body.locations) ? body.locations : []);
 
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Email tidak valid." }, { status: 400 });
   if (name.length < 2) return NextResponse.json({ error: "Nama minimal 2 karakter." }, { status: 400 });
@@ -42,6 +45,6 @@ export async function POST(req: NextRequest) {
   if (password.length < 6) return NextResponse.json({ error: "Kata sandi minimal 6 karakter." }, { status: 400 });
   if (await emailExists(email)) return NextResponse.json({ error: "Email sudah dipakai." }, { status: 409 });
 
-  const user = await createAppUser({ email, name, personaId, password, isActive: body.isActive ?? true });
+  const user = await createAppUser({ email, name, personaId, password, locations, isActive: body.isActive ?? true });
   return NextResponse.json({ user }, { status: 201 });
 }

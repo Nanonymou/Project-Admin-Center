@@ -1,0 +1,1 @@
+ALTER TABLE "app_users" ADD COLUMN "locations" varchar(512) DEFAULT '' NOT NULL;

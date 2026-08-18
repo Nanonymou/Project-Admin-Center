@@ -1,4 +1,19 @@
 import { canAccessProject, getPersonaById, type Persona } from "@/lib/personas";
+import { projectsForLocations, sanitizeLocationIds } from "@/lib/site-access";
+
+/**
+ * Apply a per-account site grant (`x-persona-locations`) over the persona
+ * template. A Super Admin can scope an account to specific sites; the client
+ * sends that grant alongside the persona id so server authorization matches the
+ * client's view (same client-trusted model as `x-persona-id`).
+ */
+function applyGrantedScope(persona: Persona, headers: Headers): Persona {
+  const raw = headers.get("x-persona-locations");
+  if (!raw) return persona;
+  const locations = sanitizeLocationIds(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  if (locations.length === 0) return persona;
+  return { ...persona, scope: { projects: projectsForLocations(locations), locations } };
+}
 
 /**
  * Resolve the calling persona from request headers. The frontend sends the
@@ -7,7 +22,7 @@ import { canAccessProject, getPersonaById, type Persona } from "@/lib/personas";
  */
 export function getPersonaFromHeaders(headers: Headers): Persona {
   const id = headers.get("x-persona-id") ?? "persona-viewer";
-  return getPersonaById(id);
+  return applyGrantedScope(getPersonaById(id), headers);
 }
 
 export type AuthzResult = { ok: true } | { ok: false; status: number; message: string };
@@ -21,7 +36,7 @@ export function requirePersona(
 ): { ok: true; persona: Persona } | { ok: false; status: 401; message: string } {
   const id = headers.get("x-persona-id");
   if (!id) return { ok: false, status: 401, message: "Autentikasi diperlukan (x-persona-id)." };
-  return { ok: true, persona: getPersonaById(id) };
+  return { ok: true, persona: applyGrantedScope(getPersonaById(id), headers) };
 }
 
 /**

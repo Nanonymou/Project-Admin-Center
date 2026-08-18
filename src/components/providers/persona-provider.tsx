@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { DEFAULT_PERSONA_ID, getPersonaById, PERSONAS, type Persona } from "@/lib/personas";
+import { setGrantedLocations } from "@/lib/client/notif";
+import { projectsForLocations } from "@/lib/site-access";
 
 type PersonaContextValue = {
   persona: Persona;
@@ -11,7 +13,7 @@ type PersonaContextValue = {
 
 const PersonaContext = createContext<PersonaContextValue | null>(null);
 
-type LiveUser = { personaId: string; name: string; email: string };
+type LiveUser = { personaId: string; name: string; email: string; locations: string[] };
 
 /** Initials from a display name, e.g. "Desy Carolina" → "DC". */
 function initialsOf(name: string): string {
@@ -44,7 +46,12 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
         }
         const data = await res.json().catch(() => null);
         if (!cancelled && data?.user) {
-          setLive({ personaId: data.user.personaId, name: data.user.name, email: data.user.email });
+          setLive({
+            personaId: data.user.personaId,
+            name: data.user.name,
+            email: data.user.email,
+            locations: Array.isArray(data.user.locations) ? data.user.locations : [],
+          });
         }
       })
       .catch(() => {
@@ -60,8 +67,23 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
     const base = getPersonaById(personaId);
     const name = live?.name ?? session?.user?.name ?? base.name;
     const email = live?.email ?? session?.user?.email ?? base.email;
-    return { ...base, name, email, initials: initialsOf(name) };
+
+    // A Super Admin can grant this account an explicit set of sites; when present
+    // it overrides the persona template's site scope (and its covered projects).
+    const granted = live?.locations ?? [];
+    const scope =
+      granted.length > 0
+        ? { projects: projectsForLocations(granted), locations: granted }
+        : base.scope;
+
+    return { ...base, name, email, initials: initialsOf(name), scope };
   }, [live, session?.user?.personaId, session?.user?.name, session?.user?.email]);
+
+  // Mirror the resolved site grant into the header cache so persona-scoped API
+  // calls carry it (server honours the same scope the client sees).
+  useEffect(() => {
+    setGrantedLocations(persona.scope.locations);
+  }, [persona.scope.locations]);
 
   const value = useMemo<PersonaContextValue>(() => ({ persona, personas: PERSONAS }), [persona]);
 

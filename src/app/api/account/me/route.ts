@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { appUsers } from "@/db/schema/app-users";
 import { getPersonaById } from "@/lib/personas";
+import { parseLocations } from "@/lib/server/app-users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,7 @@ export async function GET() {
         personaId: row.personaId,
         role: persona.role,
         roleLabel: persona.roleLabel,
+        locations: parseLocations(row.locations),
       },
     });
   } catch {
