@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Hash, Repeat, Braces, Plus, Pencil, Ban, RotateCcw, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import {
   listNumberFormats,
   generateSample,
@@ -49,12 +50,48 @@ export function NumberGeneratorClient() {
 
   const [customFormats, setCustomFormats] = useState<NumberFormat[]>([]);
   const [overrides, setOverrides] = useState<Record<string, Partial<NumberFormat>>>({});
+  const [dbFormats, setDbFormats] = useState<NumberFormat[] | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const loadFormats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/number-generator", { cache: "no-store", headers: personaHeaders(persona.id) });
+      const data = (await res.json()) as {
+        source?: string;
+        formats?: Array<{ key: string; docType?: string; label: string; prefix?: string; pattern?: string; seqPadding?: number; resetPeriod?: NumberFormat["resetPeriod"]; nextSeq?: number; active?: boolean }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.formats)) {
+        setDbFormats(null);
+        return;
+      }
+      setDbFormats(
+        data.formats.map((f) => ({
+          key: f.key,
+          docType: f.docType ?? f.key,
+          label: f.label,
+          prefix: f.prefix ?? "",
+          pattern: f.pattern ?? "",
+          seqPadding: Number(f.seqPadding ?? 1) || 1,
+          resetPeriod: f.resetPeriod ?? "yearly",
+          nextSeq: Number(f.nextSeq ?? 1) || 1,
+          active: f.active !== false,
+        })),
+      );
+    } catch {
+      setDbFormats(null);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadFormats();
+  }, [loadFormats]);
+
   const formats = useMemo(
     () =>
-      [...listNumberFormats(), ...customFormats].map((f) =>
+      [...(dbFormats ?? listNumberFormats()), ...customFormats].map((f) =>
         overrides[f.key] ? { ...f, ...overrides[f.key] } : f,
       ),
-    [customFormats, overrides],
+    [customFormats, overrides, dbFormats],
   );
   const isEdited = (key: string) => key in overrides;
 
@@ -100,25 +137,65 @@ export function NumberGeneratorClient() {
     };
   }
 
-  function saveForm() {
+  async function saveForm() {
     if (!formValid) return;
+    const key = editKey ?? `custom_${form.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
+    const built = buildFromForm(key, editKey ? formats.find((f) => f.key === editKey)?.active ?? true : true);
     if (editKey) {
-      const built = buildFromForm(editKey, formats.find((f) => f.key === editKey)?.active ?? true);
       const { key: _k, docType: _d, ...fields } = built;
       void _k;
       void _d;
       setOverrides((prev) => ({ ...prev, [editKey]: fields }));
     } else {
-      const key = `custom_${form.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${Date.now()}`;
-      setCustomFormats((prev) => [...prev, buildFromForm(key, true)]);
+      setCustomFormats((prev) => [...prev, built]);
     }
     setFormOpen(false);
+
+    // Persist (upsert by key) to the database.
+    try {
+      const res = await fetch("/api/number-generator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({
+          key,
+          docType: built.docType,
+          label: built.label,
+          prefix: built.prefix,
+          pattern: built.pattern,
+          seqPadding: built.seqPadding,
+          resetPeriod: built.resetPeriod,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string; ok?: boolean };
+      if (res.ok && (data.source === "db" || data.ok)) {
+        setSaveNote("Tersimpan ke database ✓");
+        setCustomFormats([]);
+        setOverrides({});
+        await loadFormats();
+      } else if (res.ok) {
+        setSaveNote("Tersimpan di sesi ini (database tidak tersedia).");
+      } else {
+        setSaveNote(data.error ?? "Gagal menyimpan.");
+      }
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
   }
 
   const previewFormat = formValid ? buildFromForm("preview", true) : null;
 
-  function toggleActive(f: NumberFormat) {
+  async function toggleActive(f: NumberFormat) {
     setOverrides((prev) => ({ ...prev, [f.key]: { ...prev[f.key], active: !f.active } }));
+    try {
+      await fetch("/api/number-generator", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ key: f.key, active: !f.active }),
+      });
+      await loadFormats();
+    } catch {
+      /* keep optimistic */
+    }
   }
 
   // Usage-history modal: the recently issued numbers before the next sequence.
@@ -143,6 +220,7 @@ export function NumberGeneratorClient() {
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <PersonaBanner persona={persona} scopeSummary={`${formats.length} format`} />
+          {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
           {editable && (
             <Button size="sm" onClick={openAdd} className="ml-auto gap-1.5">
               <Plus className="h-4 w-4" />
