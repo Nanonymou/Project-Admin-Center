@@ -13,6 +13,7 @@ import { AgingDonut } from "@/components/dashboard/aging-donut";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { SiteKpiGrid } from "@/components/site/site-kpi-grid";
@@ -75,14 +76,63 @@ export function ExecutiveDashboardClient() {
 
   const selectedLocationIds = useMemo(() => new Set(filters.locations), [filters.locations]);
 
+  // Live financial figures (sales/cost/profit) per site from the DB, aggregated
+  // for the active period. Operational metrics (SLA, aging, overdue, closing)
+  // remain config-derived, so every column stays internally consistent.
+  const [dbFinance, setDbFinance] = useState<Map<string, { sales: number; cost: number; profit: number }> | null>(null);
+  const dbActive = dbFinance !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/dashboard/overview?from=${filters.from}&to=${filters.to}&scope=executive`,
+          { headers: personaHeaders(persona.id), cache: "no-store" },
+        );
+        if (!res.ok) {
+          if (!cancelled) setDbFinance(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          source?: string;
+          sites?: Array<{ locationId: string; sales: number; cost: number; profit: number }>;
+        };
+        if (!cancelled && data.source === "db" && Array.isArray(data.sites) && data.sites.length > 0) {
+          const map = new Map<string, { sales: number; cost: number; profit: number }>();
+          for (const s of data.sites) map.set(s.locationId, { sales: s.sales, cost: s.cost, profit: s.profit });
+          setDbFinance(map);
+        } else if (!cancelled) {
+          setDbFinance(null);
+        }
+      } catch {
+        if (!cancelled) setDbFinance(null);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [persona.id, filters.from, filters.to]);
+
   const scopedSites = useMemo(() => {
-    const rows = accessibleSites.filter((s) => {
+    // Apply DB financials over the config rows when the live data is available.
+    const base = accessibleSites.map((s) => {
+      if (!dbActive) return s;
+      const f = dbFinance?.get(s.locationId);
+      const sales = f ? f.sales : 0;
+      const cost = f ? f.cost : 0;
+      const netMargin = f ? f.profit : 0;
+      return { ...s, sales, cost, netMargin, marginPct: sales > 0 ? (netMargin / sales) * 100 : 0 };
+    });
+    const rows = base.filter((s) => {
       if (filters.projects.length > 0 && !filters.projects.includes(s.projectCode)) return false;
       if (filters.locations.length > 0 && !selectedLocationIds.has(s.locationId)) return false;
       return true;
     });
-    return scaleSiteKpisByPeriod(rows, filters.from, filters.to);
-  }, [accessibleSites, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
+    // DB figures already reflect the selected period; only scale the config values.
+    return dbActive ? rows : scaleSiteKpisByPeriod(rows, filters.from, filters.to);
+  }, [accessibleSites, dbActive, dbFinance, filters.projects, filters.locations, filters.from, filters.to, selectedLocationIds]);
 
   const periodDays = daysBetween(filters.from, filters.to);
 
@@ -177,6 +227,13 @@ export function ExecutiveDashboardClient() {
           projectOptions={personaProjectOptions}
           locationOptions={personaLocationOptions}
         />
+
+        {dbActive && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Angka finansial (sales, cost, margin) diambil langsung dari database untuk periode aktif.
+          </div>
+        )}
 
         <PortfolioSummary totals={totals} />
 
