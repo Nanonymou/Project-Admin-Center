@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlarmClock, CalendarClock, Download, Info, Lock, RefreshCcw, Truck } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import {
   buildCutOffRows,
@@ -34,7 +35,74 @@ export function CutOffMonitoringClient() {
     [persona],
   );
 
-  const rows = useMemo(() => buildCutOffRows(scopedSites), [scopedSites]);
+  const mockRows = useMemo(() => buildCutOffRows(scopedSites), [scopedSites]);
+
+  // Live cut-off rows from the DB — used when the store has data, else mock.
+  const [dbRows, setDbRows] = useState<CutOffRow[] | null>(null);
+  const [live, setLive] = useState(false);
+
+  const loadCutoff = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cutoff-monitoring?scope=executive", {
+        headers: personaHeaders(persona.id),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setDbRows(null);
+        return;
+      }
+      const data = (await res.json()) as {
+        source?: string;
+        rows?: Array<{
+          projectId: string;
+          locationId: string;
+          periodLabel: string;
+          cutOffDate: string | null;
+          status: CutOffRow["status"];
+          submittedPct: number;
+          delivery: CutOffRow["delivery"];
+          pendingInvoices: number;
+        }>;
+      };
+      if (data.source === "db" && Array.isArray(data.rows) && data.rows.length > 0) {
+        const today = Date.now();
+        setDbRows(
+          data.rows.map((r) => {
+            const site = SITE_KPI.find((s) => s.locationId === r.locationId);
+            const daysLeft = r.cutOffDate
+              ? Math.ceil((new Date(r.cutOffDate).getTime() - today) / 86_400_000)
+              : 0;
+            return {
+              locationId: r.locationId,
+              locationName: site?.locationName ?? r.locationId,
+              projectCode: r.projectId,
+              periodLabel: r.periodLabel,
+              cutOffDate: r.cutOffDate ?? "",
+              daysLeft,
+              status: r.status,
+              submittedPct: r.submittedPct,
+              delivery: r.delivery,
+              pendingInvoices: r.pendingInvoices,
+            } satisfies CutOffRow;
+          }),
+        );
+        setLive(true);
+      } else {
+        // DB reachable but no cut-off rows seeded → keep the richer mock view.
+        setDbRows(null);
+        setLive(false);
+      }
+    } catch {
+      setDbRows(null);
+      setLive(false);
+    }
+  }, [persona.id]);
+
+  useEffect(() => {
+    void loadCutoff();
+  }, [loadCutoff]);
+
+  const rows = dbRows ?? mockRows;
 
   const counts = useMemo(
     () => ({
@@ -75,6 +143,13 @@ export function CutOffMonitoringClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+
+        {live && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Data cut-off langsung dari database.
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
