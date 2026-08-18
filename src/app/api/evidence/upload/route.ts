@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/db/repositories/audit-log-repository";
 import { requirePersona } from "@/lib/server/rbac";
 import { canAccessLocation } from "@/lib/personas";
 import { isAllowedUpload } from "@/lib/server/file-types";
+import { notifySiteEvent } from "@/lib/server/services/event-notifier";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,17 @@ export async function POST(req: NextRequest) {
     } catch {
       // audit trail is best-effort; never fail the upload on log error
     }
+    // Notify site reviewers that a new evidence file awaits verification.
+    await notifySiteEvent({
+      projectCode: projectId,
+      locationId,
+      source: "evidence",
+      level: "info",
+      title: `Bukti baru menunggu verifikasi (${kind})`,
+      detail: `${persona.name} mengunggah "${fileName}".`,
+      href: "/upload-bukti",
+      excludeActor: persona.name,
+    });
     return NextResponse.json({ source: "db", evidence: row, stored }, { status: 201 });
   } catch {
     return NextResponse.json(

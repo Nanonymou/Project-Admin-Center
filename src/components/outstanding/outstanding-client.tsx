@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Info, Lock, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -9,13 +9,15 @@ import { OutstandingInvoiceTable } from "@/components/outstanding/outstanding-in
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
+import { loadOutstandingFromDb } from "@/lib/client/invoices";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { ActivePeriodBadge } from "@/components/common/active-period-badge";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS } from "@/lib/mock/site-detail";
-import { buildOutstandingInvoicesFor } from "@/lib/mock/outstanding";
+import { buildOutstandingInvoicesFor, type OutstandingInvoice } from "@/lib/mock/outstanding";
 import { cn } from "@/lib/utils";
 
 export function OutstandingClient() {
@@ -60,10 +62,29 @@ export function OutstandingClient() {
     });
   }, [scopedSites, filters.projects, filters.locations, selectedLocationIds]);
 
-  const outstanding = useMemo(
-    () => buildOutstandingInvoicesFor(filteredSites, SITE_DETAILS),
+  // Live outstanding invoices from the DB (all accessible sites), else config.
+  const [dbOutstanding, setDbOutstanding] = useState<OutstandingInvoice[] | null>(null);
+  const live = dbOutstanding !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadOutstandingFromDb(personaHeaders(persona.id)).then((rows) => {
+      if (!cancelled) setDbOutstanding(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [persona.id]);
+
+  const allowedLocationIds = useMemo(
+    () => new Set(filteredSites.map((s) => s.locationId)),
     [filteredSites],
   );
+
+  const outstanding = useMemo(() => {
+    if (dbOutstanding) return dbOutstanding.filter((o) => allowedLocationIds.has(o.locationId));
+    return buildOutstandingInvoicesFor(filteredSites, SITE_DETAILS);
+  }, [dbOutstanding, allowedLocationIds, filteredSites]);
 
   const canExport = persona.capabilities.canExport;
 
@@ -103,6 +124,13 @@ export function OutstandingClient() {
             Outstanding = invoice yang belum masuk stage Payment atau berstatus overdue.
           </span>
         </div>
+
+        {live && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Daftar outstanding diambil langsung dari database.
+          </div>
+        )}
 
         <OutstandingFilterBar
           locations={personaLocationOptions}

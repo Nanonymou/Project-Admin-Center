@@ -8,6 +8,7 @@ import {
 import { authorizeDashboard, requirePersona } from "@/lib/server/rbac";
 import { revalidateApprovals } from "@/lib/server/approval-cache";
 import { revalidateKpi } from "@/lib/server/kpi-cache";
+import { notifySiteEvent } from "@/lib/server/services/event-notifier";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,17 @@ export async function POST(req: NextRequest) {
     // Data changed → refresh approval views (and KPI, since Payment settles).
     revalidateApprovals();
     revalidateKpi();
+    // Notify everyone who can see this site that the approval moved.
+    await notifySiteEvent({
+      projectCode: projectId,
+      locationId,
+      source: "approval",
+      level: action === "reject" ? "danger" : action === "approve" ? "success" : "info",
+      title: `Approval ${action}: ${toStage}`,
+      detail: `${persona.name} ${action === "reject" ? "menolak" : action === "approve" ? "menyetujui" : "memindahkan"} approval ke tahap "${toStage}".`,
+      href: "/approvals",
+      excludeActor: persona.name,
+    });
     return NextResponse.json({ source: "db", ...result });
   } catch (err) {
     // No live database: still refresh cached (mock) readers and echo the intent.

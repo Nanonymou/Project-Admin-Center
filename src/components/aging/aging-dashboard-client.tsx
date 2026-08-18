@@ -10,13 +10,15 @@ import { KpiCard } from "@/components/common/kpi-card";
 import { ActivityFilterBar } from "@/components/activity/activity-filter-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
+import { loadOutstandingFromDb } from "@/lib/client/invoices";
 import { useActiveSite } from "@/components/providers/active-site-provider";
 import { useGlobalFilters } from "@/components/providers/global-filter-provider";
 import { LOCATION_OPTIONS, PROJECT_OPTIONS } from "@/lib/mock/filters";
 import { canAccessLocation } from "@/lib/personas";
 import { SITE_KPI } from "@/lib/mock/site-kpi";
 import { SITE_DETAILS, type MockInvoice } from "@/lib/mock/site-detail";
-import { buildOutstandingInvoicesFor, summarizeOutstanding } from "@/lib/mock/outstanding";
+import { buildOutstandingInvoicesFor, summarizeOutstanding, type OutstandingInvoice } from "@/lib/mock/outstanding";
 import { invoiceHref } from "@/lib/mock/invoice-lookup";
 import { weightedAverageAge } from "@/lib/aging";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -76,10 +78,29 @@ export function AgingDashboardClient() {
     [scopedSites, syncWorkspace, activeWorkspace.locationId, filters.projects, filters.locations, selectedLocationIds],
   );
 
-  const outstanding = useMemo(
-    () => buildOutstandingInvoicesFor(filteredSites, SITE_DETAILS),
+  // Live outstanding invoices from the DB (all accessible sites), else config.
+  const [dbOutstanding, setDbOutstanding] = useState<OutstandingInvoice[] | null>(null);
+  const live = dbOutstanding !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadOutstandingFromDb(personaHeaders(persona.id)).then((rows) => {
+      if (!cancelled) setDbOutstanding(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [persona.id]);
+
+  const allowedLocationIds = useMemo(
+    () => new Set(filteredSites.map((s) => s.locationId)),
     [filteredSites],
   );
+
+  const outstanding = useMemo(() => {
+    if (dbOutstanding) return dbOutstanding.filter((o) => allowedLocationIds.has(o.locationId));
+    return buildOutstandingInvoicesFor(filteredSites, SITE_DETAILS);
+  }, [dbOutstanding, allowedLocationIds, filteredSites]);
   const summary = useMemo(() => summarizeOutstanding(outstanding), [outstanding]);
 
   const projectAging = useMemo(() => {
@@ -131,6 +152,13 @@ export function AgingDashboardClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${scopedSites.length} site accessible`} />
+
+        {live && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Data aging diambil langsung dari database.
+          </div>
+        )}
 
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
