@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { UtensilsCrossed, MapPin, Tag, Pencil, Plus, Ban, RotateCcw, History } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { PersonaBanner } from "@/components/activity/persona-banner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { PriceHistoryModal } from "@/components/harga-meals/price-history-modal";
 import { usePersona } from "@/components/providers/persona-provider";
+import { personaHeaders } from "@/lib/client/notif";
 import { canAccessLocation, type Persona } from "@/lib/personas";
 import { formatCurrency } from "@/lib/utils";
 import { MOCK_WORKSPACES } from "@/lib/mock/workspaces";
@@ -53,6 +54,34 @@ export function HargaMealsClient() {
   // Deactivated category keys per site — a price kept for reference but marked
   // inactive so it is excluded from active pricing.
   const [inactive, setInactive] = useState<Record<string, string[]>>({});
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  // Load persisted per-location price overrides from the DB for the active site.
+  const loadPrices = useCallback(async () => {
+    if (!ws) return;
+    try {
+      const params = new URLSearchParams({ projectId: ws.projectCode, locationId: ws.locationId });
+      const res = await fetch(`/api/master-pricing?${params.toString()}`, {
+        cache: "no-store",
+        headers: personaHeaders(persona.id),
+      });
+      const data = (await res.json()) as {
+        source?: string;
+        prices?: Array<{ categoryKey: string; price: number; source?: string }>;
+      };
+      if (data.source !== "db" || !Array.isArray(data.prices)) return;
+      const loc = ws.locationId;
+      const map: Record<string, number> = {};
+      for (const p of data.prices) if (p.source === "db") map[p.categoryKey] = Number(p.price);
+      if (Object.keys(map).length > 0) setOverrides((prev) => ({ ...prev, [loc]: { ...(prev[loc] ?? {}), ...map } }));
+    } catch {
+      /* keep config prices */
+    }
+  }, [ws, persona.id]);
+
+  useEffect(() => {
+    void loadPrices();
+  }, [loadPrices]);
   // Session-local change entries (this session's edits) per site — prepended to
   // the seeded master history so the user sees their own actions reflected.
   const [sessionLog, setSessionLog] = useState<Record<string, PriceChangeEntry[]>>({});
@@ -141,6 +170,22 @@ export function HargaMealsClient() {
     setFormOpen(true);
   }
 
+  async function persistPrice(categoryKey: string, price: number) {
+    if (!ws) return;
+    try {
+      const res = await fetch("/api/master-pricing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...personaHeaders(persona.id) },
+        body: JSON.stringify({ projectCode: ws.projectCode, locationId: ws.locationId, categoryKey, price }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { source?: string; error?: string };
+      setSaveNote(res.ok && data.source === "db" ? "Harga tersimpan ke database ✓" : res.ok ? "Tersimpan di sesi ini." : data.error ?? "Gagal menyimpan.");
+      if (res.ok) await loadPrices();
+    } catch {
+      setSaveNote("Tersimpan di sesi ini (jaringan bermasalah).");
+    }
+  }
+
   function saveForm() {
     const price = Math.max(0, Math.round(Number(formPrice) || 0));
     if (editKey) {
@@ -150,6 +195,7 @@ export function HargaMealsClient() {
         ...prev,
         [siteKey]: { ...(prev[siteKey] ?? {}), [editKey]: price },
       }));
+      void persistPrice(editKey, price);
       if (price !== prevPrice) {
         recordChange({
           categoryKey: editKey,
@@ -169,6 +215,7 @@ export function HargaMealsClient() {
         [siteKey]: [...(prev[siteKey] ?? []), { key, label, unit: formUnit.trim() || "unit", price, custom: true }],
       }));
       recordChange({ categoryKey: key, categoryLabel: label, action: "create", before: null, after: price });
+      void persistPrice(key, price);
     }
     setFormOpen(false);
   }
@@ -316,6 +363,7 @@ export function HargaMealsClient() {
 
       <div className="space-y-6 p-4 md:p-6">
         <PersonaBanner persona={persona} scopeSummary={`${workspaces.length} site`} />
+        {saveNote && <span className="text-xs text-emerald-700">{saveNote}</span>}
 
         <div className="flex flex-wrap items-center gap-3">
           <MapPin className="h-4 w-4 text-muted-foreground" />
